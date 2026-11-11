@@ -8,6 +8,28 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.1.0 – 2026-11-11
+
+### Added
+
+- On macOS, BudgetMint has its own menu bar: About BudgetMint, Settings… (⌘,), Check for Updates…, and the Edit, View and Window menus.
+- The tray's menu has Settings… and Check for Updates… too. Check for Updates… says what it found, even when BudgetMint is up to date.
+- The window opens where you left it, at the size you left it. The first time, it opens in the middle of the screen.
+- Settings → Updates shows the version you have and when BudgetMint last checked for a new one.
+- The update dialog has Skip this version: the daily check stops asking about that version, until a newer one is out.
+- Settings → Troubleshooting opens the folder with BudgetMint's log, to attach to a bug report. The log now has the window's errors too.
+
+### Changed
+
+- On macOS, closing the window to the menu bar takes its Dock icon away too, and opening it from the menu bar brings both back.
+- On Windows, a single click on the tray icon opens the window. A right click opens its menu.
+- After you sign in with Google in the browser, BudgetMint's window comes back in front.
+
+### Fixed
+
+- In light mode, the outline around the focused day on the Calendar is dark enough to see.
+- In Safari and the Mac app, a field's border no longer runs through its label while it's selected, or leaves a gap above an empty field you've left.
+
 ## 1.0.1 – 2026-11-11
 
 ### Fixed
