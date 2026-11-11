@@ -6,7 +6,9 @@ const PAY = item({
   id: 'pay',
   kind: 'income',
   name: 'Paycheck',
-  schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'weeks', n: 2 }, amountCents: 80_000 }],
+  schedule: [
+    { from: '2026-11-13', until: null, repeat: { every: 'weeks', n: 2 }, amountCents: 80_000, weekends: 'keep' },
+  ],
 });
 
 describe('the overview', () => {
@@ -156,7 +158,7 @@ describe('the overview', () => {
       id: 'refund',
       kind: 'income',
       name: 'Refund',
-      schedule: [{ from: '2026-11-09', until: null, repeat: { every: 'once' }, amountCents: 2_000 }],
+      schedule: [{ from: '2026-11-09', until: null, repeat: { every: 'once' }, amountCents: 2_000, weekends: 'keep' }],
     });
     await startBudget({
       items: [late, monthly('rent', 'Rent', 1, 50_000)],

@@ -48,6 +48,7 @@ const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,
+  spendingCents: 0,
   earnedCents: 0,
   earnedUncertainCents: 0,
   earnedArrivesOn: null,
@@ -180,7 +181,7 @@ describe('an occurrence’s dialog', () => {
       kind: 'income',
       name: 'Pay',
       autopay: true,
-      schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 9_000 }],
+      schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 9_000, weekends: 'keep' }],
     });
     const { user } = await startBudget({
       items: [pay, monthly('water', 'Water', 9, 1_000)],
@@ -335,7 +336,7 @@ describe('the pages’ other buttons and states', () => {
       id: 'fix',
       kind: 'bill',
       name: 'Repair',
-      schedule: [{ from: '2026-10-05', until: null, repeat: { every: 'once' }, amountCents: 4_000 }],
+      schedule: [{ from: '2026-10-05', until: null, repeat: { every: 'once' }, amountCents: 4_000, weekends: 'keep' }],
     });
     const { user, store } = await startBudget({
       items: [once],
@@ -451,7 +452,7 @@ describe('the last branches', () => {
       id: 'pay',
       kind: 'income',
       name: 'Paycheck',
-      schedule: [{ from: '2026-11-12', until: null, repeat: { every: 'once' }, amountCents: 20_000 }],
+      schedule: [{ from: '2026-11-12', until: null, repeat: { every: 'once' }, amountCents: 20_000, weekends: 'keep' }],
     });
     const { user } = await startBudget({ items: [pay] });
     await user.click(screen.getByRole('button', { name: 'Mark Paycheck received' }));

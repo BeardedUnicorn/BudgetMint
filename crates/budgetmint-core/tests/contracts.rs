@@ -8,15 +8,25 @@
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
 use budgetmint_core::backup::BudgetExport;
+use budgetmint_core::balance::{BalanceCheckView, OccRef, PaidInput, SpendingEstimate};
+use budgetmint_core::bank::{
+    BankTransaction, CsvColumns, StatementFormat, StatementMatch, StatementView,
+};
 use budgetmint_core::command::*;
 use budgetmint_core::docs::{DocWrite, DocsApplied, IncomingDoc, BUDGET_SCHEMA, MAX_ID_LEN};
+use budgetmint_core::earn::EarnToCover;
 use budgetmint_core::forecast::contract::FORECAST_SCHEMA;
 use budgetmint_core::forecast::{ForecastDoc, ForecastState, ForecastStatus};
+use budgetmint_core::goals::{GoalPart, GoalView, GoalsView};
 use budgetmint_core::model::*;
+use budgetmint_core::occur::{Estimate, ESTIMATE_FROM};
 use budgetmint_core::plan::{
     ItemInput, OccurrenceInput, Planned, MAX_CATEGORY, MAX_LEADS, MAX_LEAD_DAYS, MAX_NAME, MAX_NOTE,
 };
 use budgetmint_core::reminders::{Reminder, ReminderKind, MAX_REMINDERS, MAX_WINDOW_DAYS};
+use budgetmint_core::report::{
+    CategoryReport, MonthTotals, OutsideSpending, PaidLate, ReportTotals, ReportView,
+};
 use budgetmint_core::views::*;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -56,6 +66,12 @@ fn export_types(cfg: &Config) {
         SaveSettingsArgs,
         UndoArgs,
         RestoreBudgetArgs,
+        BalanceCheckArgs,
+        SettleArgs,
+        ReadStatementArgs,
+        OccRef,
+        PaidInput,
+        CsvColumns,
         IncomingDoc,
         ForecastDoc,
         ItemInput,
@@ -75,11 +91,32 @@ fn export_types(cfg: &Config) {
         Planned,
         DocWrite,
         BudgetExport,
+        GoalsView,
+        GoalView,
+        GoalPart,
+        ReportView,
+        ReportTotals,
+        PaidLate,
+        CategoryReport,
+        OutsideSpending,
+        MonthTotals,
+        BalanceCheckView,
+        SpendingEstimate,
+        StatementView,
+        StatementFormat,
+        StatementMatch,
+        BankTransaction,
+        SafeToSpend,
+        EarnToCover,
+        Estimate,
         // The documents' own types
         Item,
         ItemKind,
         Segment,
         Repeat,
+        Weekends,
+        SaveUp,
+        BalanceCheck,
         ItemReminder,
         Override,
         OccStatus,
@@ -131,6 +168,7 @@ fn constants() -> String {
             "MAX_HORIZON_DAYS": MAX_HORIZON_DAYS,
             "MAX_REMINDER_WINDOW_DAYS": MAX_WINDOW_DAYS,
             "MAX_REMINDERS": MAX_REMINDERS,
+            "ESTIMATE_FROM": ESTIMATE_FROM,
         }),
     );
     out

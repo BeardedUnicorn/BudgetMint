@@ -27,7 +27,15 @@ describe('bills and income', () => {
           id: 'pay',
           kind: 'income',
           name: 'Paycheck',
-          schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'weeks', n: 2 }, amountCents: 80_000 }],
+          schedule: [
+            {
+              from: '2026-11-13',
+              until: null,
+              repeat: { every: 'weeks', n: 2 },
+              amountCents: 80_000,
+              weekends: 'keep',
+            },
+          ],
         }),
       ],
     });
@@ -79,7 +87,7 @@ describe('bills and income', () => {
       autopay: true,
       reminder: null,
       note: 'Fridays',
-      schedule: [{ from: '2026-11-13', repeat: { every: 'weeks', n: 2 }, amountCents: 80_000 }],
+      schedule: [{ from: '2026-11-13', repeat: { every: 'weeks', n: 2 }, amountCents: 80_000, weekends: 'keep' }],
     });
   });
 
@@ -105,7 +113,7 @@ describe('bills and income', () => {
     const docs = [...store.docs.values()].map(doc => JSON.parse(doc.json));
     expect(docs.find(doc => doc.name === 'Insurance')).toMatchObject({
       reminder: { leadDays: [2] },
-      schedule: [{ repeat: { every: 'months', n: 1, day: 31 }, amountCents: 9_000 }],
+      schedule: [{ repeat: { every: 'months', n: 1, day: 31 }, amountCents: 9_000, weekends: 'keep' }],
     });
 
     await user.click(screen.getAllByRole('button', { name: 'Add bill' })[0]);
@@ -130,7 +138,15 @@ describe('bills and income', () => {
       id: 'gym',
       kind: 'bill',
       name: 'Gym',
-      schedule: [{ from: '2026-12-05', until: null, repeat: { every: 'months', n: 1, day: 5 }, amountCents: 3_000 }],
+      schedule: [
+        {
+          from: '2026-12-05',
+          until: null,
+          repeat: { every: 'months', n: 1, day: 5 },
+          amountCents: 3_000,
+          weekends: 'keep',
+        },
+      ],
       reminder: { leadDays: [1] },
     });
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000), future] });
@@ -165,7 +181,7 @@ describe('bills and income', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(docOf(store, 'gym').schedule).toEqual([
-        { from: '2026-12-07', until: null, repeat: { every: 'days', n: 1 }, amountCents: 3_000 },
+        { from: '2026-12-07', until: null, repeat: { every: 'days', n: 1 }, amountCents: 3_000, weekends: 'keep' },
       ])
     );
   });
@@ -383,7 +399,9 @@ describe('bills and income', () => {
       id: 'lunch',
       kind: 'bill',
       name: 'Lunch',
-      schedule: [{ from: '2026-10-02', until: null, repeat: { every: 'weeks', n: 1 }, amountCents: 1_000 }],
+      schedule: [
+        { from: '2026-10-02', until: null, repeat: { every: 'weeks', n: 1 }, amountCents: 1_000, weekends: 'keep' },
+      ],
     });
     const { user } = await startBudget({ items: [weekly] });
     await open(user, 'Bills');
@@ -432,7 +450,7 @@ describe('bills and income', () => {
       items: [
         monthly('rent', 'Rent', 1, 120_000),
         monthly('new', 'New', 1, 1, {
-          schedule: [{ from: '2030-01-01', until: null, repeat: { every: 'once' }, amountCents: 1 }],
+          schedule: [{ from: '2030-01-01', until: null, repeat: { every: 'once' }, amountCents: 1, weekends: 'keep' }],
         }),
       ],
       overrides: [

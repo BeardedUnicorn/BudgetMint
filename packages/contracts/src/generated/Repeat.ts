@@ -3,4 +3,4 @@
 /**
  * How often an item comes round.
  */
-export type Repeat = { "every": "once" } | { "every": "days", n: number, } | { "every": "weeks", n: number, } | { "every": "months", n: number, day: number, } | { "every": "years", n: number, };
+export type Repeat = { "every": "once" } | { "every": "days", n: number, } | { "every": "weeks", n: number, } | { "every": "months", n: number, day: number, } | { "every": "twiceMonthly", first: number, second: number, } | { "every": "monthWeekday", n: number, week: number, weekday: number, } | { "every": "years", n: number, };

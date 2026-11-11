@@ -1,0 +1,110 @@
+{
+  "name": "Paydays, a varying bill, money set aside, a balance checked, a month's report and a bank statement",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    { "call": "set_balance", "args": { "balance": { "cents": 100000, "asOf": "2026-11-01" } } },
+    {
+      "call": "save_settings",
+      "args": { "settings": { "spendingWeeklyCents": 7000 } },
+      "expect": { "writes": [{ "docId": "settings~account", "schema": 2 }] }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "car", "kind": "bill", "name": "Car insurance", "saveUp": true, "schedule": [
+        { "from": "2027-03-03", "repeat": { "every": "years", "n": 1 }, "amountCents": 120000 }
+      ] } },
+      "expect": { "writes": [{ "docId": "item~car", "kind": "item" }] }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "pay", "kind": "income", "name": "Paycheck", "schedule": [
+        { "from": "2026-11-01", "repeat": { "every": "twiceMonthly", "first": 15, "second": 31 }, "amountCents": 150000, "weekends": "before" }
+      ] } }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "power", "kind": "bill", "name": "City Power", "varies": true, "schedule": [
+        { "from": "2026-10-05", "repeat": { "every": "monthWeekday", "n": 1, "week": 1, "weekday": 0 }, "amountCents": 8000 }
+      ] } }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "gym", "kind": "bill", "name": "Gym", "saveUp": true, "schedule": [
+        { "from": "2026-11-20", "repeat": { "every": "weeks", "n": 1 }, "amountCents": 3000 }
+      ] } },
+      "error": "Money can be set aside for bills that come monthly or less often"
+    },
+    {
+      "call": "set_occurrence",
+      "args": { "occurrence": { "itemId": "power", "date": "2026-10-05", "status": { "state": "done", "on": "2026-10-05", "amountCents": 9500 } } }
+    },
+    {
+      "call": "get_items",
+      "expect": [
+        { "item": { "id": "power" }, "next": { "due": "2026-11-02", "expectedCents": 9500, "estimated": true }, "estimate": { "cents": 9500, "from": 1 } },
+        { "item": { "id": "pay" }, "next": { "due": "2026-11-13" }, "monthlyCents": 300000 },
+        { "item": { "id": "car" }, "next": { "due": "2027-03-03" }, "estimate": null }
+      ]
+    },
+    {
+      "call": "get_goals",
+      "expect": {
+        "setAsideCents": 30000,
+        "goals": [{ "itemId": "car", "targetCents": 120000, "setAsideCents": 30000, "partsLeft": 3, "nextPart": { "date": "2026-12-10", "cents": 30000 }, "once": false }]
+      }
+    },
+    {
+      "call": "get_overview",
+      "expect": { "setAsideCents": 30000, "safeToSpend": { "through": "2027-01-09", "spendingWeeklyCents": 7000 }, "earnToCover": null }
+    },
+    { "call": "get_month", "args": { "month": "2026-11" }, "expect": { "month": "2026-11" } },
+    {
+      "call": "get_balance_check",
+      "args": { "balance": { "cents": 80000, "asOf": "2026-11-10" } },
+      "expect": {
+        "previous": { "asOf": "2026-11-01" },
+        "expectedCents": 81500,
+        "differenceCents": -1500,
+        "open": [{ "itemId": "power", "scheduled": "2026-11-02", "expectedCents": 9500 }]
+      }
+    },
+    {
+      "call": "get_balance_check",
+      "args": { "balance": { "cents": 80000, "asOf": "2026-11-10" }, "stillOpen": [{ "itemId": "power", "date": "2026-11-02" }] },
+      "expect": { "expectedCents": 91000, "differenceCents": -11000 }
+    },
+    {
+      "call": "settle",
+      "args": {
+        "paid": [{ "itemId": "power", "date": "2026-11-02", "on": "2026-11-03", "amountCents": 9200 }],
+        "balance": { "cents": 80000, "asOf": "2026-11-10" }
+      },
+      "expect": { "writes": [{ "docId": "occ~2026-11-02~power" }, { "docId": "settings~account" }] }
+    },
+    { "call": "settle", "args": { "stillOpen": [{ "itemId": "power", "date": "2026-12-07" }] }, "error": "Say what the balance is, for a bill to come after it" },
+    { "call": "get_spending_estimate", "expect": { "weeklyCents": 8400, "days": 9, "checks": 1 } },
+    {
+      "call": "get_settings",
+      "expect": { "settings": { "checks": [{ "from": "2026-11-01", "to": "2026-11-10", "expectedCents": 81800, "actualCents": 80000, "assumedSpendingCents": 9000 }] } }
+    },
+    {
+      "call": "get_report",
+      "args": { "month": "2026-11" },
+      "expect": {
+        "month": "2026-11",
+        "unfinished": true,
+        "bills": { "count": 1, "expectedCents": 8000, "doneCents": 9200, "openCents": 0, "skipped": 0 },
+        "paidLate": [{ "itemId": "power" }],
+        "outside": { "cents": 10800, "days": 9 }
+      }
+    },
+    { "call": "get_report", "args": { "month": "13" }, "error": "Not a month: 13" },
+    {
+      "call": "read_statement",
+      "args": { "text": "Date,Description,Amount\n2026-11-13,ACME PAYROLL,1500.00\n" },
+      "expect": { "format": "csv", "matches": [{ "transaction": 0, "occurrence": { "itemId": "pay", "scheduled": "2026-11-13" }, "exact": true }], "already": [] }
+    },
+    { "call": "read_statement", "args": { "text": "" }, "error": "That file isn't a bank statement BudgetMint can read: export it as CSV or OFX" }
+  ]
+}

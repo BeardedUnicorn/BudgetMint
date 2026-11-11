@@ -96,6 +96,13 @@ impl Curve {
         }
     }
 
+    /// The curve with `step` in it too.
+    pub fn with_step(&self, step: CurveStep) -> Curve {
+        let mut steps = self.steps.clone();
+        steps.push(step);
+        Curve::new(self.carried, steps).with_carried_days(self.carried_days.clone())
+    }
+
     /// The curve, with what each work day put in `carried`.
     pub fn with_carried_days(self, carried_days: Vec<(NaiveDate, Money)>) -> Curve {
         Curve {
@@ -224,6 +231,14 @@ pub fn assumed_per_day(forecast: &PayoutForecast, ctx: &Ctx, plan: &TaskMintPlan
     (total.max(0) + days / 2) / days
 }
 
+/// When what's earned on work day `day` (here, by 5 pm) is released: the
+/// release days after.
+pub fn released_at(forecast: &PayoutForecast, ctx: &Ctx, day: NaiveDate) -> i64 {
+    let ends =
+        NaiveTime::from_hms_opt(ASSUMED_DAY_ENDS.0, ASSUMED_DAY_ENDS.1, 0).expect("a time of day");
+    ctx.add_days(ctx.at(day, ends), forecast.funds_release_days)
+}
+
 /// Earnings assumed for each day from tomorrow, released by `until_ms`.
 fn assumed_steps(
     forecast: &PayoutForecast,
@@ -235,12 +250,10 @@ fn assumed_steps(
     if per_day <= 0 {
         return Vec::new();
     }
-    let ends =
-        NaiveTime::from_hms_opt(ASSUMED_DAY_ENDS.0, ASSUMED_DAY_ENDS.1, 0).expect("a time of day");
     let mut steps = Vec::new();
     let mut day = ctx.today() + Duration::days(1);
     loop {
-        let at_ms = ctx.add_days(ctx.at(day, ends), forecast.funds_release_days);
+        let at_ms = released_at(forecast, ctx, day);
         if at_ms > until_ms || steps.len() >= 400 {
             break;
         }

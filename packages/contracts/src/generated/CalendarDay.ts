@@ -39,6 +39,10 @@ earnedUncertainCents: number,
  */
 earnedArrivesOn: string | null, 
 /**
+ * The everyday spending the cash flow takes out that day.
+ */
+spendingCents: number, 
+/**
  * The balance at the day's end, where the cash flow covers the day.
  */
 closingCents: number | null, short: boolean, low: boolean, };

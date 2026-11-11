@@ -1,8 +1,9 @@
 /**
  * Forecast: the balance day by day to the horizon (a line, with zero and
- * the low mark), TaskMint's withdrawals ahead with what's estimated in
- * them, and each day money moves. What it assumes is said, and changed in
- * Settings.
+ * the low mark, and what's left of it besides the money set aside for
+ * bills), TaskMint's withdrawals ahead with what's estimated in them, and
+ * each day money moves besides the everyday spending. What it assumes is
+ * said, and changed in Settings.
  */
 
 import {
@@ -37,6 +38,7 @@ const MONO = '"Roboto Mono", monospace';
 
 /** A flow's line in the day table. */
 function flowLabel(flow: Flow): string {
+  if (flow.kind === 'spending') return 'Everyday spending';
   if (flow.kind === 'withdrawal')
     return flow.status === 'projected' ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal';
   const note = { overdue: ' (overdue)', done: flow.kind === 'bill' ? ' (paid)' : ' (received)', autopay: ' (autopay)' }[
@@ -69,15 +71,29 @@ export function assumptions(view: ForecastView): string[] {
   return sentences;
 }
 
+/** What the forecast assumes besides TaskMint, in words. */
+export function spendingAssumption(view: ForecastView): string | null {
+  const weekly = view.spendingWeeklyCents;
+  return weekly > 0 ? `Everyday spending: ${formatCents(weekly)} a week, a day’s share each day.` : null;
+}
+
 /** The chart's money on its axis (whole dollars), and in its tooltip. */
 export const axisMoney = (dollars: number) => formatWholeCents(dollars * 100);
-export const tooltipMoney = (dollars: unknown): [string, string] => [formatCents(Number(dollars) * 100), 'Balance'];
+export const tooltipMoney = (dollars: unknown, name?: unknown): [string, string] => [
+  formatCents(Number(dollars) * 100),
+  name === 'free' ? 'Besides what’s set aside' : 'Balance',
+];
 export const tooltipDay = (day: unknown) => formatWeekday(String(day));
 
 function BalanceChart({ view }: { view: ForecastView }) {
   const theme = useTheme();
   const compact = useCompactLayout();
-  const data = view.days.map(day => ({ date: day.date, balance: day.closingCents / 100 }));
+  const data = view.days.map(day => ({
+    date: day.date,
+    balance: day.closingCents / 100,
+    free: (day.closingCents - day.setAsideCents) / 100,
+  }));
+  const setAside = view.days.some(day => day.setAsideCents > 0);
   // The picture in words, for those who can't see it: where it starts, its lowest point, where it ends
   const { lowest } = useCoreQuery('get_overview');
   const last = view.days[view.days.length - 1];
@@ -112,6 +128,16 @@ function BalanceChart({ view }: { view: ForecastView }) {
             <ReferenceLine y={view.lowBalanceCents / 100} stroke={theme.palette.warning.main} strokeDasharray="4 4" />
           )}
           <Line type="monotone" dataKey="balance" stroke={theme.palette.primary.main} strokeWidth={3} dot={false} />
+          {setAside && (
+            <Line
+              type="monotone"
+              dataKey="free"
+              stroke={theme.palette.secondary.main}
+              strokeWidth={2}
+              strokeDasharray="6 4"
+              dot={false}
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </Box>
@@ -121,7 +147,9 @@ function BalanceChart({ view }: { view: ForecastView }) {
 export function ForecastPage() {
   const view = useCoreQuery('get_forecast');
   const { navigate } = useNavigation();
-  const moving = view.days.filter(day => day.flows.length > 0);
+  // The days money moves besides the everyday spending (each day has that)
+  const moving = view.days.filter(day => day.flows.some(flow => flow.kind !== 'spending'));
+  const spending = spendingAssumption(view);
   const last = view.days[view.days.length - 1];
 
   return (
@@ -138,7 +166,13 @@ export function ForecastPage() {
 
       <Paper component="section" aria-label="Balance ahead" sx={SECTION}>
         <BalanceChart view={view} />
-        {assumptions(view).map(line => (
+        {[
+          ...assumptions(view),
+          ...(spending ? [spending] : []),
+          ...(view.days.some(day => day.setAsideCents > 0)
+            ? ['The dashed line leaves out the money set aside for bills.']
+            : []),
+        ].map(line => (
           <Typography key={line} variant="caption" color="text.secondary" component="p">
             {line}
           </Typography>

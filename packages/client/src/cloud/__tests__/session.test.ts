@@ -8,7 +8,15 @@ const RENT = item({
   id: 'rent',
   kind: 'bill',
   name: 'Rent',
-  schedule: [{ from: '2026-12-01', until: null, repeat: { every: 'months', n: 1, day: 1 }, amountCents: 120_000 }],
+  schedule: [
+    {
+      from: '2026-12-01',
+      until: null,
+      repeat: { every: 'months', n: 1, day: 1 },
+      amountCents: 120_000,
+      weekends: 'keep',
+    },
+  ],
 });
 
 function started(store: FakeStore = createFakeStore(), google: (() => Promise<string | null>) | null = null) {
@@ -71,7 +79,16 @@ describe('the session', () => {
     store.putDoc('item~later', '{}', 9);
     expect(session.getView().held).toBe(1);
     const planned = core.call('save_item', {
-      item: { ...RENT, category: null, autopay: false, reminder: null, archived: false, note: null },
+      item: {
+        ...RENT,
+        category: null,
+        autopay: false,
+        reminder: null,
+        archived: false,
+        note: null,
+        varies: false,
+        saveUp: false,
+      },
     });
     await session.write(planned.writes);
     expect(store.writes[0]).toMatchObject({ uid: 'cal', meta: { deviceId: 'desk', epoch: 1 } });

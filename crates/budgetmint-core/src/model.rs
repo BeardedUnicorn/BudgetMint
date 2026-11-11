@@ -14,7 +14,7 @@ pub type Cents = i64;
 /// The most a single amount may be: $10 billion, far past any bill.
 pub const MAX_CENTS: Cents = 1_000_000_000_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum ItemKind {
@@ -38,9 +38,30 @@ pub enum Repeat {
     /// Every `n` months, on day `day` (1–31). A month shorter than `day`
     /// has it on its last day, so 31 is "the last day of the month".
     Months { n: u8, day: u8 },
+    /// Twice a month, on days `first` and `second` (1–31, `first` the
+    /// earlier; 31 is the last day): the 1st and 15th, the 15th and last.
+    TwiceMonthly { first: u8, second: u8 },
+    /// Every `n` months on a weekday (0 Monday … 6 Sunday) of the month's
+    /// `week`th week (1–4; 5 is the last): the second Friday, the last Monday.
+    MonthWeekday { n: u8, week: u8, weekday: u8 },
     /// Every `n` years, on the first date's month and day (Feb 29 is Feb 28
     /// in other years).
     Years { n: u8 },
+}
+
+/// What becomes of a date that falls on a weekend (a payday banks move,
+/// a bill due on a Sunday that's taken on Monday).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum Weekends {
+    /// It stays on the weekend.
+    #[default]
+    Keep,
+    /// The Friday before.
+    Before,
+    /// The Monday after.
+    After,
 }
 
 /// A stretch of an item's schedule: from `from` (its first date) to `until`
@@ -57,6 +78,11 @@ pub struct Segment {
     pub repeat: Repeat,
     /// What each occurrence is expected to be (positive, for bills and income alike).
     pub amount_cents: Cents,
+    /// Where a date on a weekend goes. The schedule's date is the one it
+    /// moves to (that's the occurrence); `from` and `until` hold the dates
+    /// before they move.
+    #[serde(default)]
+    pub weekends: Weekends,
 }
 
 /// When to be reminded of an item's occurrences: days before each (0: on the day).
@@ -90,8 +116,25 @@ pub struct Item {
     pub archived: bool,
     #[serde(default)]
     pub note: Option<String>,
+    /// Its amount varies (a utility bill): the ones still to come are
+    /// expected at the average of the last few paid (crate::occur::estimate),
+    /// unless one has its own.
+    #[serde(default)]
+    pub varies: bool,
+    /// Money is set aside for it ahead of each time it's due (crate::goals).
+    #[serde(default)]
+    pub save_up: Option<SaveUp>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Setting money aside for a bill: from when.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SaveUp {
+    /// The day it was turned on: nothing is set aside before it.
+    pub since: NaiveDate,
 }
 
 /// What happened to one occurrence.
@@ -241,6 +284,42 @@ pub struct Settings {
     pub currency: String,
     /// The calendar's weeks start on Monday (else Sunday).
     pub week_starts_monday: bool,
+    /// What's spent in a week outside the bills (food, fuel): the cash flow
+    /// takes it out a day at a time (crate::project::day_spending). 0: none.
+    pub spending_weekly_cents: Cents,
+    /// The balance's past updates, against what BudgetMint expected then,
+    /// newest last (crate::plan::MAX_CHECKS of them).
+    pub checks: Vec<BalanceCheck>,
+}
+
+/// An update of the balance, against what the cash flow expected it to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceCheck {
+    /// The balance before: as of the end of this day.
+    pub from: NaiveDate,
+    /// The new balance's day.
+    pub to: NaiveDate,
+    /// What the cash flow had the balance at by the end of `to`.
+    pub expected_cents: Cents,
+    /// What it was.
+    pub actual_cents: Cents,
+    /// The everyday spending the cash flow took out over those days.
+    pub assumed_spending_cents: Cents,
+}
+
+impl BalanceCheck {
+    /// What went out over its days besides the bills: the spending assumed,
+    /// and what the balance came in below what was expected.
+    pub fn spent_outside_cents(&self) -> Cents {
+        self.assumed_spending_cents + self.expected_cents - self.actual_cents
+    }
+
+    /// The days it covers.
+    pub fn days(&self) -> i64 {
+        (self.to - self.from).num_days()
+    }
 }
 
 /// The currency amounts are in until the user chooses another.
@@ -260,6 +339,8 @@ impl Default for Settings {
             reminders: ReminderSettings::default(),
             currency: DEFAULT_CURRENCY.into(),
             week_starts_monday: false,
+            spending_weekly_cents: 0,
+            checks: Vec::new(),
         }
     }
 }
@@ -272,6 +353,9 @@ impl Item {
         self.schedule
             .iter()
             .all(|segment| in_calendar(segment.from) && segment.until.is_none_or(in_calendar))
+            && self
+                .save_up
+                .is_none_or(|save_up| in_calendar(save_up.since))
     }
 }
 
@@ -294,6 +378,10 @@ impl Settings {
     pub fn in_calendar(&self) -> bool {
         self.balance
             .is_none_or(|balance| in_calendar(balance.as_of))
+            && self
+                .checks
+                .iter()
+                .all(|check| in_calendar(check.from) && in_calendar(check.to))
     }
 }
 
@@ -325,11 +413,14 @@ mod tests {
                 until: None,
                 repeat: Repeat::Months { n: 1, day: 31 },
                 amount_cents: 120_000,
+                weekends: crate::model::Weekends::Keep,
             }],
             autopay: false,
             reminder: Some(ItemReminder { lead_days: vec![3] }),
             archived: false,
             note: None,
+            varies: false,
+            save_up: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         };
@@ -338,8 +429,10 @@ mod tests {
             json!({
                 "id": "rent", "kind": "bill", "name": "Rent", "category": null,
                 "schedule": [{ "from": "2026-01-31", "until": null,
-                               "repeat": { "every": "months", "n": 1, "day": 31 }, "amountCents": 120000 }],
+                               "repeat": { "every": "months", "n": 1, "day": 31 }, "amountCents": 120000,
+                               "weekends": "keep" }],
                 "autopay": false, "reminder": { "leadDays": [3] }, "archived": false, "note": null,
+                "varies": false, "saveUp": null,
                 "createdAt": "1970-01-01T00:00:00Z", "updatedAt": "1970-01-01T00:00:00Z"
             })
         );
@@ -362,6 +455,33 @@ mod tests {
         assert_eq!(
             serde_json::to_value(FutureEarnings::Trailing { weeks: 4 }).unwrap(),
             json!({ "kind": "trailing", "weeks": 4 })
+        );
+        assert_eq!(
+            serde_json::to_value(Repeat::TwiceMonthly {
+                first: 1,
+                second: 15
+            })
+            .unwrap(),
+            json!({ "every": "twiceMonthly", "first": 1, "second": 15 })
+        );
+        assert_eq!(
+            serde_json::to_value(Repeat::MonthWeekday {
+                n: 1,
+                week: 2,
+                weekday: 4
+            })
+            .unwrap(),
+            json!({ "every": "monthWeekday", "n": 1, "week": 2, "weekday": 4 })
+        );
+        // A segment from before weekends could move keeps its dates
+        let older: Segment = serde_json::from_value(json!({
+            "from": "2026-01-31", "repeat": { "every": "once" }, "amountCents": 1
+        }))
+        .unwrap();
+        assert_eq!(older.weekends, Weekends::Keep);
+        assert_eq!(
+            serde_json::to_value(Weekends::Before).unwrap(),
+            json!("before")
         );
     }
 }

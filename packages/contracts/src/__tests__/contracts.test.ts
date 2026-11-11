@@ -1,11 +1,13 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { BUDGET_SCHEMA, COMMAND_NAMES, FORECAST_SCHEMA, LIMITS } from '../index';
-import type { CommandArgs, CommandName, CommandReply, OccStatus, Overview, Repeat } from '../index';
+import type { CommandArgs, CommandName, CommandReply, OccStatus, Overview, Repeat, SpendingEstimate } from '../index';
 
 describe('the generated contracts', () => {
   it('name every command core runs, and its schemas and limits', () => {
     expect(COMMAND_NAMES).toContain('get_overview');
-    expect(BUDGET_SCHEMA).toBe(1);
+    expect(BUDGET_SCHEMA).toBe(2);
+    expect(COMMAND_NAMES).toContain('settle');
+    expect(LIMITS.ESTIMATE_FROM).toBe(3);
     expect(FORECAST_SCHEMA).toBe(1);
     expect(LIMITS.MAX_NAME).toBe(80);
   });
@@ -17,5 +19,11 @@ describe('the generated contracts', () => {
     expectTypeOf<CommandReply<'reset_docs'>>().toEqualTypeOf<null>();
     expectTypeOf<Extract<Repeat, { every: 'months' }>>().toEqualTypeOf<{ every: 'months'; n: number; day: number }>();
     expectTypeOf<Extract<OccStatus, { state: 'done' }>['amountCents']>().toEqualTypeOf<number>();
+    expectTypeOf<Extract<Repeat, { every: 'twiceMonthly' }>>().toEqualTypeOf<{
+      every: 'twiceMonthly';
+      first: number;
+      second: number;
+    }>();
+    expectTypeOf<CommandReply<'get_spending_estimate'>>().toEqualTypeOf<SpendingEstimate | null>();
   });
 });

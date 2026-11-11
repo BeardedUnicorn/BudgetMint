@@ -2,13 +2,13 @@
 // change the Rust, then run `cargo test -p budgetmint-core --features ts --test contracts`.
 
 /** Every command core runs, by name. */
-export const COMMAND_NAMES = ["apply_docs","reset_docs","apply_forecast","get_overview","get_month","get_forecast","get_items","get_item_history","get_reminders","get_settings","save_item","change_schedule","archive_item","delete_item","set_occurrence","set_balance","save_settings","undo","export_budget","restore_budget"] as const;
+export const COMMAND_NAMES = ["apply_docs","reset_docs","apply_forecast","get_overview","get_month","get_forecast","get_items","get_item_history","get_reminders","get_settings","save_item","change_schedule","archive_item","delete_item","set_occurrence","set_balance","save_settings","undo","export_budget","restore_budget","get_goals","get_report","get_balance_check","get_spending_estimate","settle","read_statement"] as const;
 
 /** The documents' schema: written into each, and one from a newer BudgetMint is held. */
-export const BUDGET_SCHEMA = 1 as const;
+export const BUDGET_SCHEMA = 2 as const;
 
 /** The payout forecast's contract this BudgetMint reads (TaskMint's). */
 export const FORECAST_SCHEMA = 1 as const;
 
 /** The limits core holds edits to, for the forms to hold them too. */
-export const LIMITS = {"MAX_CATEGORY":40,"MAX_CENTS":1000000000000,"MAX_HORIZON_DAYS":366,"MAX_ID_LEN":64,"MAX_LEADS":3,"MAX_LEAD_DAYS":30,"MAX_NAME":80,"MAX_NOTE":500,"MAX_REMINDERS":64,"MAX_REMINDER_WINDOW_DAYS":60,"MIN_HORIZON_DAYS":14} as const;
+export const LIMITS = {"ESTIMATE_FROM":3,"MAX_CATEGORY":40,"MAX_CENTS":1000000000000,"MAX_HORIZON_DAYS":366,"MAX_ID_LEN":64,"MAX_LEADS":3,"MAX_LEAD_DAYS":30,"MAX_NAME":80,"MAX_NOTE":500,"MAX_REMINDERS":64,"MAX_REMINDER_WINDOW_DAYS":60,"MIN_HORIZON_DAYS":14} as const;

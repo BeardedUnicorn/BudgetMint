@@ -22,6 +22,8 @@ import { CalendarPage } from './components/pages/calendar/CalendarPage';
 import { ForecastPage } from './components/pages/forecast/ForecastPage';
 import { ItemsPage } from './components/pages/items/ItemsPage';
 import { OverviewPage } from './components/pages/overview/OverviewPage';
+import { ReportsPage } from './components/pages/reports/ReportsPage';
+import { SavingsPage } from './components/pages/savings/SavingsPage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
 import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -40,8 +42,10 @@ const PAGES: Record<SidebarView, ComponentType> = {
   overview: OverviewPage,
   bills: () => <ItemsPage kind="bill" />,
   income: () => <ItemsPage kind="income" />,
+  savings: SavingsPage,
   calendar: CalendarPage,
   forecast: ForecastPage,
+  reports: ReportsPage,
   settings: SettingsPage,
 };
 

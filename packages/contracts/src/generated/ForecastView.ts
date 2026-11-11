@@ -13,4 +13,8 @@ days: Array<DayRow>, withdrawals: Array<ProjectedWithdrawal>, lowBalanceCents: n
 /**
  * What a day is assumed to earn, when earnings ahead are assumed.
  */
-assumedPerDayCents: number, taskmint: ForecastStatus, };
+assumedPerDayCents: number, taskmint: ForecastStatus, 
+/**
+ * The everyday spending taken out, a week's.
+ */
+spendingWeeklyCents: number, };

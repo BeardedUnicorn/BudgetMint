@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 /// What a backup says it is.
 pub const BACKUP_FORMAT: &str = "budgetmint-backup";
 /// The backup's version this BudgetMint writes (and the newest it reads).
-pub const BACKUP_VERSION: u32 = 1;
+pub const BACKUP_VERSION: u32 = 2;
 /// How far back the spreadsheet starts: a year.
 pub const CSV_DAYS_BACK: i64 = 366;
 
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(read_backup("{").unwrap_err().to_string(), not_one);
         assert_eq!(with(&|v| v["format"] = "taskmint".into()), not_one);
         assert_eq!(
-            with(&|v| v["version"] = 2.into()),
+            with(&|v| v["version"] = (BACKUP_VERSION + 1).into()),
             "That backup is from a newer BudgetMint. Update BudgetMint to restore it."
         );
         assert_eq!(with(&|v| v["items"] = 7.into()), damaged);

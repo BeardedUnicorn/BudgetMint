@@ -2,7 +2,7 @@
  * The app's pages (sidebar order) and the settings sections a link can open.
  */
 
-export const VIEWS = ['overview', 'bills', 'income', 'calendar', 'forecast', 'settings'] as const;
+export const VIEWS = ['overview', 'bills', 'income', 'savings', 'calendar', 'forecast', 'reports', 'settings'] as const;
 
 export type SidebarView = (typeof VIEWS)[number];
 
@@ -10,8 +10,10 @@ export const VIEW_LABELS: Record<SidebarView, string> = {
   overview: 'Overview',
   bills: 'Bills',
   income: 'Income',
+  savings: 'Savings',
   calendar: 'Calendar',
   forecast: 'Forecast',
+  reports: 'Reports',
   settings: 'Settings',
 };
 

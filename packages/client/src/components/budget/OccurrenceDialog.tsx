@@ -9,7 +9,7 @@ import type { OccStatus, OccurrenceView } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
-import { centsToInput, formatCents, parseDollars } from '../../utils/money';
+import { centsToInput, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
 
@@ -95,8 +95,9 @@ export function OccurrenceDialog({
       <Stack spacing={2}>
         {problem && <Alert severity="error">{problem}</Alert>}
         <Typography variant="body2" color="text.secondary">
-          {formatCents(occurrence.expectedCents)} due {formatDay(occurrence.due)}
+          {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} due {formatDay(occurrence.due)}
           {occurrence.autopay ? ', on autopay' : ''}
+          {occurrence.estimated ? ' (its amount varies: this is the average of the last few)' : ''}
         </Typography>
         <RadioGroup value={state} onChange={event => setState(event.target.value as State)} aria-label="What happened">
           <FormControlLabel value="open" control={<Radio />} label={bill ? 'Still to pay' : 'Still to come'} />

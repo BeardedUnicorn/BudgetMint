@@ -7,7 +7,8 @@ use crate::docs::{valid_id, DocKey, DocWrite, Snapshot};
 use crate::error::{invalid, CoreError};
 use crate::model::{
     Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, OccStatus, Override, Repeat,
-    Segment, Settings, WithdrawPolicy, MAX_CENTS, MAX_HORIZON_DAYS, MIN_HORIZON_DAYS,
+    SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAX_CENTS, MAX_HORIZON_DAYS,
+    MIN_HORIZON_DAYS,
 };
 use crate::occur::MOVE_DAYS;
 use crate::recur::is_item_date;
@@ -36,11 +37,17 @@ pub struct Planned {
 }
 
 impl Planned {
-    fn add(&mut self, write: Option<(DocWrite, DocWrite)>) {
+    pub(crate) fn add(&mut self, write: Option<(DocWrite, DocWrite)>) {
         if let Some((write, undo)) = write {
             self.writes.push(write);
             self.undo.insert(0, undo);
         }
+    }
+
+    /// `then`, made after this: its undo comes first.
+    pub(crate) fn then(&mut self, then: Planned) {
+        self.writes.extend(then.writes);
+        self.undo.splice(0..0, then.undo);
     }
 }
 
@@ -77,6 +84,12 @@ pub struct ItemInput {
     pub archived: bool,
     #[serde(default)]
     pub note: Option<String>,
+    /// Its amount varies: expect the average of the last few paid.
+    #[serde(default)]
+    pub varies: bool,
+    /// Set money aside for it ahead of each time (bills that come monthly or less often).
+    #[serde(default)]
+    pub save_up: bool,
 }
 
 /// `text` trimmed, None when empty; refused when longer than `max`.
@@ -122,6 +135,22 @@ fn check_repeat(repeat: Repeat) -> Result<(), CoreError> {
         Repeat::Days { n } => (1..=365).contains(&n),
         Repeat::Weeks { n } => (1..=52).contains(&n),
         Repeat::Months { n, day } => (1..=12).contains(&n) && (1..=31).contains(&day),
+        Repeat::TwiceMonthly { first, second } => {
+            if !(1..=31).contains(&first) || !(first + 1..=31).contains(&second) {
+                return Err(invalid(
+                    "Choose two days of the month for it, the earlier first",
+                ));
+            }
+            true
+        }
+        Repeat::MonthWeekday { n, week, weekday } => {
+            if !(1..=5).contains(&week) || weekday > 6 {
+                return Err(invalid(
+                    "Choose which week of the month (first to fourth, or last) and which day",
+                ));
+            }
+            (1..=12).contains(&n)
+        }
         Repeat::Years { n } => (1..=10).contains(&n),
     };
     if ok {
@@ -157,6 +186,23 @@ fn check_schedule(schedule: &[Segment]) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Money is set aside for bills, a month or more apart: for one that comes
+/// every few days or weeks, there's no time to.
+fn check_save_up(kind: ItemKind, schedule: &[Segment]) -> Result<(), CoreError> {
+    let often = schedule.iter().any(|segment| {
+        matches!(
+            segment.repeat,
+            Repeat::Days { .. } | Repeat::Weeks { .. } | Repeat::TwiceMonthly { .. }
+        )
+    });
+    if kind != ItemKind::Bill || often {
+        return Err(invalid(
+            "Money can be set aside for bills that come monthly or less often",
+        ));
+    }
+    Ok(())
+}
+
 fn check_reminder(reminder: Option<ItemReminder>) -> Result<Option<ItemReminder>, CoreError> {
     let Some(mut reminder) = reminder else {
         return Ok(None);
@@ -183,7 +229,7 @@ pub const NEWER: &str =
 
 /// A document a newer BudgetMint wrote isn't this version's to change: it
 /// would write back what it last read, without what the newer one added.
-fn ours(snapshot: &Snapshot, key: &DocKey) -> Result<(), CoreError> {
+pub(crate) fn ours(snapshot: &Snapshot, key: &DocKey) -> Result<(), CoreError> {
     if snapshot.is_held(key) {
         return Err(invalid(NEWER));
     }
@@ -215,6 +261,10 @@ pub struct ScheduleChange {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub until: Option<NaiveDate>,
+    /// Where its weekend dates go (they stay, without it).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub weekends: Option<Weekends>,
 }
 
 /// `schedule` with `change` from its date on: what comes before stays as it was.
@@ -225,6 +275,7 @@ fn rescheduled(mut schedule: Vec<Segment>, change: ScheduleChange) -> Vec<Segmen
         until: change.until,
         repeat: change.repeat,
         amount_cents: change.amount_cents,
+        weekends: change.weekends.unwrap_or_default(),
     });
     schedule
 }
@@ -261,10 +312,19 @@ pub fn save_item_from(
         input.schedule = rescheduled(input.schedule, change);
     }
     check_schedule(&input.schedule)?;
-    let created_at = snapshot
-        .items
-        .get(&input.id)
-        .map_or(ctx.now, |existing| existing.created_at);
+    let existing = snapshot.items.get(&input.id);
+    let created_at = existing.map_or(ctx.now, |existing| existing.created_at);
+    let save_up = if input.save_up {
+        check_save_up(input.kind, &input.schedule)?;
+        // Set aside from when it was turned on
+        Some(
+            existing
+                .and_then(|existing| existing.save_up)
+                .unwrap_or(SaveUp { since: ctx.today() }),
+        )
+    } else {
+        None
+    };
     let saved = Item {
         id: input.id,
         kind: input.kind,
@@ -275,6 +335,8 @@ pub fn save_item_from(
         reminder: check_reminder(input.reminder)?,
         archived: input.archived,
         note: text(input.note, MAX_NOTE, "note")?,
+        varies: input.varies,
+        save_up,
         created_at,
         updated_at: ctx.now,
     };
@@ -305,6 +367,8 @@ pub fn change_schedule(
         repeat,
         amount_cents,
         until: None,
+        // Weekend dates go where they went
+        weekends: changed.schedule.last().map(|last| last.weekends),
     };
     changed.schedule = rescheduled(changed.schedule, change);
     check_schedule(&changed.schedule)?;
@@ -489,12 +553,13 @@ pub fn set_occurrence(
     Ok(planned)
 }
 
-/// Sets the balance the forecast starts from.
-pub fn set_balance(
-    snapshot: &mut Snapshot,
+/// Whether `balance` is one the forecast can start from (and the settings
+/// this version's to change).
+pub(crate) fn check_balance(
+    snapshot: &Snapshot,
     balance: Balance,
     ctx: &Ctx,
-) -> Result<Planned, CoreError> {
+) -> Result<(), CoreError> {
     ours(snapshot, &DocKey::Settings)?;
     let today = ctx.today();
     if balance.as_of > today {
@@ -508,6 +573,16 @@ pub fn set_balance(
             "The balance must be between -$10,000,000,000 and $10,000,000,000",
         ));
     }
+    Ok(())
+}
+
+/// Sets the balance the forecast starts from.
+pub fn set_balance(
+    snapshot: &mut Snapshot,
+    balance: Balance,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    check_balance(snapshot, balance, ctx)?;
     let settings = Settings {
         balance: Some(balance),
         ..snapshot.settings()
@@ -556,8 +631,11 @@ pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Plan
             MAX_LEAD_DAYS
         )));
     }
+    cents(settings.spending_weekly_cents, "everyday spending")?;
+    // The balance and its checks are set_balance's and settle's: they stay as they are
     let saved = Settings {
         balance: snapshot.settings().balance,
+        checks: snapshot.settings().checks,
         ..settings
     };
     let mut planned = Planned::default();
@@ -587,6 +665,7 @@ mod tests {
                 until: None,
                 repeat: Repeat::Months { n: 1, day: 1 },
                 amount_cents: 120_000,
+                weekends: crate::model::Weekends::Keep,
             }],
             autopay: false,
             reminder: Some(ItemReminder {
@@ -594,6 +673,8 @@ mod tests {
             }),
             archived: false,
             note: None,
+            varies: false,
+            save_up: false,
         }
     }
 
@@ -681,8 +762,39 @@ mod tests {
             Repeat::Weeks { n: 2 },
             Repeat::Years { n: 1 },
             Repeat::Days { n: 365 },
+            Repeat::TwiceMonthly {
+                first: 1,
+                second: 15,
+            },
+            Repeat::TwiceMonthly {
+                first: 30,
+                second: 31,
+            },
+            Repeat::MonthWeekday {
+                n: 1,
+                week: 5,
+                weekday: 6,
+            },
         ] {
             assert!(check_repeat(repeat).is_ok());
+        }
+        let twice_wrong = "Choose two days of the month for it, the earlier first";
+        let weekday_wrong =
+            "Choose which week of the month (first to fourth, or last) and which day";
+        for (repeat, expected) in [
+            (Repeat::TwiceMonthly { first: 0, second: 15 }, twice_wrong),
+            (Repeat::TwiceMonthly { first: 15, second: 15 }, twice_wrong),
+            (Repeat::TwiceMonthly { first: 15, second: 32 }, twice_wrong),
+            (Repeat::TwiceMonthly { first: 31, second: 31 }, twice_wrong),
+            (Repeat::MonthWeekday { n: 1, week: 0, weekday: 4 }, weekday_wrong),
+            (Repeat::MonthWeekday { n: 1, week: 6, weekday: 4 }, weekday_wrong),
+            (Repeat::MonthWeekday { n: 1, week: 2, weekday: 7 }, weekday_wrong),
+            (
+                Repeat::MonthWeekday { n: 13, week: 2, weekday: 4 },
+                "Choose how often it repeats: every 1–365 days, 1–52 weeks, 1–12 months or 1–10 years",
+            ),
+        ] {
+            assert_eq!(check_repeat(repeat).unwrap_err().to_string(), expected);
         }
         assert!(s.items.is_empty());
     }
@@ -741,6 +853,7 @@ mod tests {
                 until: None,
                 repeat: Repeat::Once,
                 amount_cents: 1,
+                weekends: crate::model::Weekends::Keep,
             })
             .collect();
         save_item(&mut s, full, &ctx()).unwrap();
@@ -1054,6 +1167,10 @@ mod tests {
                 refused(|s| s.reminders.lead_days = 31),
                 "Remind at an hour of the day, up to 30 days before",
             ),
+            (
+                refused(|s| s.spending_weekly_cents = -1),
+                "The everyday spending must be between $0 and $10,000,000,000",
+            ),
         ];
         for (value, expected) in cases {
             assert_eq!(message(save_settings(&mut s, value)), expected);
@@ -1102,7 +1219,7 @@ mod tests {
         let newer = |doc_id: &str| IncomingDoc {
             doc_id: doc_id.into(),
             json: Some("{}".into()),
-            schema: 2,
+            schema: crate::docs::BUDGET_SCHEMA + 1,
         };
         let refused = |result: Result<Planned, CoreError>| {
             assert_eq!(result.unwrap_err().to_string(), NEWER);
@@ -1163,6 +1280,7 @@ mod tests {
             repeat: Repeat::Months { n: 1, day: 1 },
             amount_cents,
             until: None,
+            weekends: None,
         };
         // The change refused: the name isn't saved either
         assert!(save_item_from(&mut s, edit.clone(), Some(change(-1)), true, &ctx()).is_err());

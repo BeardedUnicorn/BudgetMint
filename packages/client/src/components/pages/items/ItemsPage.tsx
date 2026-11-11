@@ -43,7 +43,7 @@ import { useNotification } from '../../../contexts/NotificationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { formatRelativeDay } from '../../../utils/dates';
-import { describeEnd, describeRepeat, occurrenceLabel } from '../../../utils/describe';
+import { describeEnd, describeRepeat, describeWeekends, occurrenceLabel } from '../../../utils/describe';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
@@ -56,6 +56,9 @@ import { HistoryDialog } from './HistoryDialog';
 import { ALL_ITEMS, CategoryTotals, categoriesOf, findItems, ItemFilters, type ItemQuery } from './ItemFilters';
 
 const MONO = '"Roboto Mono", monospace';
+
+/** A note under an amount: on one line, in the body's type rather than the figures'. */
+const NOTE_UNDER = { display: 'block', whiteSpace: 'nowrap', fontFamily: 'fontFamily' } as const;
 
 const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; empty: string }> = {
   bill: {
@@ -201,13 +204,19 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
             return (
               <TableRow key={item.id} hover>
                 <TableCell>
-                  {/* A long name wraps (and its chips go under it) rather than widening the table */}
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+                  {/* A long name wraps (and its chips go under it) rather than widening the table,
+                      but a long schedule beside it doesn't squeeze it to a few letters a line */}
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5, minWidth: compact ? 0 : 120 }}
+                  >
                     <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
                       {item.name}
                     </Typography>
                     {item.category && <Chip size="small" label={item.category} />}
                     {item.autopay && <Chip size="small" label="Autopay" variant="outlined" color="info" />}
+                    {item.saveUp && <Chip size="small" label="Saving up" variant="outlined" color="secondary" />}
                     {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
                   </Stack>
                   {item.note && (
@@ -221,11 +230,25 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                   )}
                 </TableCell>
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
-                  {formatCents(segment.amountCents)}
+                  {view.estimate ? `~${formatCents(view.estimate.cents)}` : formatCents(segment.amountCents)}
+                  {(view.estimate || item.varies) && (
+                    <Typography variant="caption" color="text.secondary" sx={NOTE_UNDER}>
+                      {!view.estimate
+                        ? 'varies'
+                        : view.estimate.from === 1
+                          ? 'as last time'
+                          : `average of last ${view.estimate.from}`}
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell>
                   {describeRepeat(segment.repeat, segment.from)}
                   {segment.repeat.every !== 'once' && describeEnd(view.item.schedule.at(-1)!.until)}
+                  {segment.weekends !== 'keep' && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {describeWeekends(segment.weekends)}
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell sx={{ color: view.next?.late ? 'error.main' : undefined }}>
                   {/* Said in words too, not only in red */}

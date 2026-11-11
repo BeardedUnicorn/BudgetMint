@@ -4,11 +4,12 @@
 //! the client formats them.
 
 use crate::docs::Snapshot;
+use crate::earn::{earn_to_cover, EarnToCover};
 use crate::forecast::contract::PayoutForecast;
 use crate::forecast::series::ProjectedWithdrawal;
 use crate::forecast::ForecastStatus;
 use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Segment, Settings, TaskMintPlan};
-use crate::occur::{item_occurrences, occurrences, Occurrence};
+use crate::occur::{estimate, item_occurrences, occurrences, Estimate, Occurrence};
 use crate::project::{
     project, recorded_arrivals, settled_through, DayRow, FlowKind, FlowStatus, Projection,
 };
@@ -35,6 +36,8 @@ pub struct OccurrenceView {
     pub scheduled: NaiveDate,
     pub due: NaiveDate,
     pub expected_cents: Cents,
+    /// The expected amount is the average of the last few paid (its amount varies).
+    pub estimated: bool,
     pub status: OccStatus,
     /// Still open after its due day, not on autopay, and not settled by the
     /// balance (which has taken what was due by its day as paid).
@@ -47,7 +50,7 @@ pub struct OccurrenceView {
 }
 
 /// `settled`: the last day the balance has settled (project::settled_through).
-fn occurrence_view(
+pub(crate) fn occurrence_view(
     occurrence: &Occurrence<'_>,
     today: NaiveDate,
     settled: NaiveDate,
@@ -62,6 +65,7 @@ fn occurrence_view(
         scheduled: occurrence.scheduled,
         due: occurrence.due,
         expected_cents: occurrence.expected_cents,
+        estimated: occurrence.estimated,
         status: occurrence.status.clone(),
         late: occurrence.status == OccStatus::Open
             && !item.autopay
@@ -139,6 +143,46 @@ pub struct Overview {
     pub taskmint: ForecastStatus,
     /// TaskMint's withdrawals are counted.
     pub uses_taskmint: bool,
+    /// What can be spent today, beyond the everyday spending, and the balance
+    /// still stay above the low mark (or zero) to the horizon, leaving what's
+    /// set aside for bills alone.
+    pub safe_to_spend: SafeToSpend,
+    /// Set aside for bills by the end of today (crate::goals).
+    pub set_aside_cents: Cents,
+    /// When it goes short or low: what more TaskMint would have to earn, and by when.
+    pub earn_to_cover: Option<EarnToCover>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SafeToSpend {
+    pub cents: Cents,
+    /// The day that holds it to that: its balance, less what's set aside then.
+    pub tightest: DayBalance,
+    /// The horizon's last day: what it's safe through.
+    pub through: NaiveDate,
+    /// The everyday spending the cash flow takes out already (a week's).
+    pub spending_weekly_cents: Cents,
+}
+
+/// What's free to spend today: the least, from today to the end, that the
+/// balance less what's set aside gets to, above the mark it's kept over.
+pub fn safe_to_spend(ahead: &[DayRow], settings: &Settings) -> SafeToSpend {
+    let tightest = ahead
+        .iter()
+        .min_by_key(|day| day.closing_cents - day.set_aside_cents)
+        .map(|day| DayBalance {
+            date: day.date,
+            cents: day.closing_cents - day.set_aside_cents,
+        })
+        .expect("the projection covers today");
+    SafeToSpend {
+        cents: (tightest.cents - settings.low_balance_cents.max(0)).max(0),
+        tightest,
+        through: ahead.last().expect("the projection covers today").date,
+        spending_weekly_cents: settings.spending_weekly_cents.max(0),
+    }
 }
 
 /// The horizon's last day.
@@ -254,6 +298,9 @@ pub fn overview(
         upcoming,
         taskmint: status.clone(),
         uses_taskmint: settings.taskmint.use_forecast,
+        safe_to_spend: safe_to_spend(ahead, &settings),
+        set_aside_cents: projection.today_row().set_aside_cents,
+        earn_to_cover: earn_to_cover(taskmint, ctx, &settings, ahead),
     }
 }
 
@@ -281,6 +328,8 @@ pub struct CalendarDay {
     pub earned_uncertain_cents: Cents,
     /// When the last of it reaches the bank; null when no withdrawal ahead takes it.
     pub earned_arrives_on: Option<NaiveDate>,
+    /// The everyday spending the cash flow takes out that day.
+    pub spending_cents: Cents,
     /// The balance at the day's end, where the cash flow covers the day.
     pub closing_cents: Option<Cents>,
     pub short: bool,
@@ -400,6 +449,13 @@ pub fn month(
                 earned.money.estimated_cents + earned.money.assumed_cents
             }),
             earned_arrives_on: earned.and_then(|earned| earned.arrives_on),
+            spending_cents: row.map_or(0, |row| {
+                -row.flows
+                    .iter()
+                    .filter(|flow| flow.kind == FlowKind::Spending)
+                    .map(|flow| flow.amount_cents)
+                    .sum::<Cents>()
+            }),
             closing_cents: row.map(|row| row.closing_cents),
             short: row.is_some_and(|row| row.short),
             low: row.is_some_and(|row| row.low),
@@ -423,6 +479,8 @@ pub struct ForecastView {
     /// What a day is assumed to earn, when earnings ahead are assumed.
     pub assumed_per_day_cents: Cents,
     pub taskmint: ForecastStatus,
+    /// The everyday spending taken out, a week's.
+    pub spending_weekly_cents: Cents,
 }
 
 pub fn forecast(
@@ -447,6 +505,7 @@ pub fn forecast(
                 crate::forecast::curve::assumed_per_day(forecast, ctx, &settings.taskmint)
             }),
         taskmint: status.clone(),
+        spending_weekly_cents: settings.spending_weekly_cents.max(0),
     }
 }
 
@@ -460,8 +519,11 @@ pub struct ItemView {
     pub next: Option<OccurrenceView>,
     /// The last one done.
     pub last_done: Option<OccurrenceView>,
-    /// What it comes to a month, on average (its current schedule).
+    /// What it comes to a month, on average (its current schedule, at
+    /// its estimate when its amount varies).
     pub monthly_cents: Cents,
+    /// Its amount varies: what the ones to come are expected at, once one's paid.
+    pub estimate: Option<Estimate>,
     /// The part of its schedule in force today (its first, before it starts).
     pub current: Segment,
     /// Its schedule has begun: a change to it applies from a date, and what's before stays.
@@ -478,18 +540,20 @@ fn current_segment(item: &Item, today: NaiveDate) -> Option<&Segment> {
         .or(item.schedule.first())
 }
 
-/// What `item`'s current schedule comes to a month, on average.
-fn monthly_cents(item: &Item, today: NaiveDate) -> Cents {
+/// What `item`'s current schedule comes to a month, on average, each time
+/// at `each` (its estimate) when given.
+fn monthly_cents(item: &Item, today: NaiveDate, each: Option<Cents>) -> Cents {
     use crate::model::Repeat;
     let Some(segment) = current_segment(item, today) else {
         return 0;
     };
-    let cents = i128::from(segment.amount_cents);
+    let cents = i128::from(each.unwrap_or(segment.amount_cents));
     let per_month = match segment.repeat {
         Repeat::Once => 0,
         Repeat::Days { n } => cents * 3044 / (100 * i128::from(n.max(1))),
         Repeat::Weeks { n } => cents * 3044 / (700 * i128::from(n.max(1))),
-        Repeat::Months { n, .. } => cents / i128::from(n.max(1)),
+        Repeat::Months { n, .. } | Repeat::MonthWeekday { n, .. } => cents / i128::from(n.max(1)),
+        Repeat::TwiceMonthly { .. } => cents * 2,
         Repeat::Years { n } => cents / (12 * i128::from(n.max(1))),
     };
     per_month as Cents
@@ -524,11 +588,13 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                 })
                 .max_by_key(|(on, _)| *on)
                 .map(|(_, o)| occurrence_view(o, today, settled));
+            let estimate = estimate(snapshot, item);
             Some(ItemView {
                 item: item.clone(),
                 next,
                 last_done,
-                monthly_cents: monthly_cents(item, today),
+                monthly_cents: monthly_cents(item, today, estimate.map(|e| e.cents)),
+                estimate,
                 started: item.schedule[0].from <= today,
                 current,
             })
@@ -798,11 +864,11 @@ mod tests {
             Repeat::Days { n: 1 },
             100,
         );
-        assert_eq!(monthly_cents(&every, today), 3044);
+        assert_eq!(monthly_cents(&every, today, None), 3044);
         every.schedule[0].repeat = Repeat::Years { n: 1 };
-        assert_eq!(monthly_cents(&every, today), 8);
+        assert_eq!(monthly_cents(&every, today, None), 8);
         every.schedule[0].repeat = Repeat::Once;
-        assert_eq!(monthly_cents(&every, today), 0);
+        assert_eq!(monthly_cents(&every, today, None), 0);
         // The segment in force today, or the first one before any starts
         every.schedule = vec![
             Segment {
@@ -810,24 +876,40 @@ mod tests {
                 until: None,
                 repeat: Repeat::Months { n: 1, day: 1 },
                 amount_cents: 100,
+                weekends: crate::model::Weekends::Keep,
             },
             Segment {
                 from: d(2026, 6, 1),
                 until: None,
                 repeat: Repeat::Months { n: 2, day: 1 },
                 amount_cents: 300,
+                weekends: crate::model::Weekends::Keep,
             },
             Segment {
                 from: d(2027, 1, 1),
                 until: None,
                 repeat: Repeat::Months { n: 1, day: 1 },
                 amount_cents: 999,
+                weekends: crate::model::Weekends::Keep,
             },
         ];
-        assert_eq!(monthly_cents(&every, today), 150);
-        assert_eq!(monthly_cents(&every, d(2025, 1, 1)), 100);
+        assert_eq!(monthly_cents(&every, today, None), 150);
+        assert_eq!(monthly_cents(&every, d(2025, 1, 1), None), 100);
+        // At its estimate, when its amount varies
+        assert_eq!(monthly_cents(&every, d(2025, 1, 1), Some(250)), 250);
+        every.schedule[0].repeat = Repeat::TwiceMonthly {
+            first: 1,
+            second: 15,
+        };
+        assert_eq!(monthly_cents(&every, d(2025, 1, 1), None), 200);
+        every.schedule[0].repeat = Repeat::MonthWeekday {
+            n: 2,
+            week: 1,
+            weekday: 4,
+        };
+        assert_eq!(monthly_cents(&every, d(2025, 1, 1), None), 50);
         every.schedule.clear();
-        assert_eq!(monthly_cents(&every, today), 0);
+        assert_eq!(monthly_cents(&every, today, None), 0);
         assert_eq!(monday_first(d(2026, 11, 9)), 0);
     }
 
@@ -1054,6 +1136,7 @@ mod tests {
             until: None,
             repeat: monthly(12),
             amount_cents: 60_000,
+            weekends: crate::model::Weekends::Keep,
         });
         put_item(&mut s, rent);
         let paid = OccStatus::Done {

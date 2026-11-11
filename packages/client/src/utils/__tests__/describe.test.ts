@@ -12,6 +12,7 @@ function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
     scheduled: '2026-11-01',
     due: '2026-11-01',
     expectedCents: 100,
+    estimated: false,
     status: { state: 'open' },
     late: false,
     amountCents: null,
