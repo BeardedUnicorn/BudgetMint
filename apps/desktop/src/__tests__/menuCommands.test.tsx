@@ -19,7 +19,6 @@ function emit(event: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   localStorage.clear();
   resetUpdatesForTest();
   listening.clear();

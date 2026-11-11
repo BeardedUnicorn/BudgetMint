@@ -14,7 +14,6 @@ let stop: () => void;
 let printed: { error: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   // Quiet: what the console prints is the test runner's
   printed = {
     error: vi.spyOn(console, 'error').mockImplementation(() => undefined),

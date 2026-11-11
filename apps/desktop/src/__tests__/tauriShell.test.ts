@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { command, createTauriShell, subscribe } from '../tauriShell';
@@ -9,7 +9,6 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
 const mockInvoke = vi.mocked(invoke);
 const sent = () => mockInvoke.mock.calls.map(([, payload]) => payload);
 
-beforeEach(() => vi.clearAllMocks());
 afterEach(() => {
   delete window.BudgetMintSystemBars;
   delete window.BudgetMintSplash;

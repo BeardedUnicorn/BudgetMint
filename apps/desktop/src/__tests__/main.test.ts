@@ -26,7 +26,6 @@ describe('the desktop entry', () => {
   let root: HTMLElement;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     root = document.createElement('div');
     root.id = 'root';
     document.body.appendChild(root);

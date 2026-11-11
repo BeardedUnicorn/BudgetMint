@@ -1,5 +1,5 @@
 // Adapted from TaskMint packages/client/src/cloud/__tests__/firebaseStore.test.ts @ 1623bee.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CloudConfig } from '../types';
 
 // The SDK, as far as the store uses it: each call recorded
@@ -81,10 +81,6 @@ const CONFIG: CloudConfig = {
   cache: 'memory',
   popupSignIn: false,
 };
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 const metadata = (fromCache = false, hasPendingWrites = false) => ({ fromCache, hasPendingWrites });
 

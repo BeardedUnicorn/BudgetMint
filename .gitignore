@@ -44,3 +44,6 @@ ui-debug.log
 
 # The core in WebAssembly, built by scripts/build-wasm.mjs
 packages/client/src/core/wasm/
+
+# Vitest 5 artifacts (attachments, reports, caches)
+.vitest/

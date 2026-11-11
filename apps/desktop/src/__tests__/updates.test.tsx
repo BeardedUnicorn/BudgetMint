@@ -57,7 +57,6 @@ function emit(event: string, payload: unknown) {
 let focused: boolean;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   localStorage.clear();
   resetUpdatesForTest();
   listening.clear();
