@@ -15,6 +15,28 @@ async function settings(seed: Parameters<typeof startBudget>[0] = {}) {
 
 const section = (name: string) => screen.getByRole('heading', { name }).closest('.MuiPaper-root') as HTMLElement;
 
+describe('signing out', () => {
+  it('asks first while changes are still on their way to the cloud', async () => {
+    const { user, store, session } = await settings({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    // A change the cloud hasn't confirmed
+    vi.mocked(store.write).mockImplementationOnce(() => new Promise(() => undefined));
+    void session.write([{ docId: 'item~rent', kind: 'item', json: null, schema: 1 }]);
+    const account = section('Account');
+    await user.click(within(account).getByRole('button', { name: 'Sign out' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out before your changes are saved?' });
+    expect(store.signOut).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out anyway' }));
+    await waitFor(() => expect(store.signOut).toHaveBeenCalled());
+  });
+
+  it('says when signing out fails', async () => {
+    const { user, store } = await settings();
+    vi.mocked(store.signOut).mockRejectedValueOnce(new Error('No connection'));
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out' }));
+    expect(await within(section('Account')).findByText('No connection')).toBeInTheDocument();
+  });
+});
+
 describe('currency and weeks', () => {
   it('writes amounts in the chosen currency, and starts weeks on the chosen day', async () => {
     const { user, store } = await settings({ settings: { ...SETTLED } });
