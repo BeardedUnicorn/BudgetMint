@@ -72,7 +72,7 @@ pub fn install(state: &AppState) -> Result<(), String> {
     let mut reporter = Reporter::default();
     state.platform.install_update(&mut |event| {
         if let Some(progress) = reporter.next(event) {
-            emit_quiet(state, UPDATE_PROGRESS, progress);
+            emit_quiet(state.platform.as_ref(), UPDATE_PROGRESS, progress);
         }
     })?;
     log::info!("Installed an update; restarting into it");

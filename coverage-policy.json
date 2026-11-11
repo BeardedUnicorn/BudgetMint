@@ -23,8 +23,8 @@
     ],
     "apps/desktop/src-tauri": [
       { "file": "src/main.rs", "why": "binary entry; calls budgetmint_lib::run" },
-      { "file": "src/app.rs", "why": "tauri::Builder, plugins, generate_context! and the run loop: they need a real event loop and main thread" },
-      { "file": "src/platform/os.rs", "why": "the Platform on Tauri: tray rendering, OS notifications, window focus. They need a real UI session" }
+      { "file": "src/app.rs", "why": "tauri::Builder, plugins, the menu bar, generate_context! and the run loop: they need a real event loop and main thread" },
+      { "file": "src/platform/os.rs", "why": "the Platform on Tauri: menu and tray rendering, OS notifications, the window and the Dock icon, the logs folder. They need a real UI session" }
     ]
   }
 }

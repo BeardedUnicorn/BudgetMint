@@ -12,8 +12,8 @@ Tauri or plugin versions, or to the `Platform` trait they implement.
 
 | File | What it does | Section |
 |---|---|---|
-| `apps/desktop/src-tauri/src/app.rs` | the Tauri builder: plugins, setup, the window, the tray's clicks, the reminders' thread, the run loop | [Startup and wiring](#startup-and-wiring-apprs) |
-| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the window, the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [Updates](#updates-platformosrs) |
+| `apps/desktop/src-tauri/src/app.rs` | the Tauri builder: plugins, setup, the window and its saved place, the macOS menu bar, the menus' clicks, the reminders' thread, the run loop | [Startup and wiring](#startup-and-wiring-apprs), [The menus](#the-menus-apprs-platformosrs) |
+| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the window and the Dock icon, the menus and the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs) |
 | `apps/desktop/src-tauri/src/main.rs` | calls `budgetmint_lib::run`; no console window on Windows | [Windows](#windows) |
 | BudgetMint against the real Firebase project | the tested store and session, on Google's servers and in real webviews | [The cloud](#the-cloud) |
 
@@ -31,12 +31,23 @@ Note anything that fails with the build, the OS version and what you saw.
 ## Startup and wiring (app.rs)
 
 - [ ] **Launch.** The window opens on the sign-in page, or on the Overview
-      when signed in, and the tray icon appears with Open BudgetMint and Quit.
+      when signed in, and the tray icon appears with Open BudgetMint,
+      Settings…, Check for Updates… and Quit BudgetMint.
 - [ ] **Second launch.** Launching again while it runs brings the first
       window forward instead of opening another.
-- [ ] **Close to the tray.** Closing the window hides it; the tray's Open
-      BudgetMint (or double-clicking the icon, or the Dock icon on macOS)
-      brings it back. Quit BudgetMint quits.
+- [ ] **Close to the tray.** Closing the window (its close button, or ⌘W)
+      hides it. On macOS its Dock icon goes too, leaving the menu-bar icon,
+      and ⌘-Tab no longer lists BudgetMint. The tray's Open BudgetMint brings
+      the window back, with the Dock icon and the menu bar. Quit BudgetMint
+      quits.
+- [ ] **Window size and position.** On a first launch (no
+      `.window-state.json` in the app's config folder: on macOS
+      `~/Library/Application Support/com.budgetmint.desktop`) the window is
+      1280×860 and centered. Move and resize it, quit from the tray and
+      launch again: it comes back where it was, at that size. Again after
+      closing it to the tray first, and after an update's restart. Move it
+      to a second display, quit, disconnect the display and launch: the
+      window is on the remaining display.
 - [ ] **The tray's lines.** Signed in with a balance, the tray menu shows
       today's balance, the next bill and the lowest point ahead. Marking a
       bill paid changes them.
@@ -48,24 +59,76 @@ Note anything that fails with the build, the OS version and what you saw.
       time and open it after (within a day): the reminder comes at launch,
       worded as of now ("is due today", "was due yesterday"), and only once.
 - [ ] **Open at login.** Turn on Settings → Reminders → Open BudgetMint at
-      login, log out and in: BudgetMint runs in the tray without its window,
-      and reminders come. Turning it off removes the login item (macOS:
-      System Settings → General → Login Items).
+      login, log out and in: BudgetMint runs in the tray without its window
+      (and on macOS without a Dock icon), and reminders come. Open BudgetMint
+      from the tray: the window is where it was last time. Turning it off
+      removes the login item (macOS: System Settings → General → Login
+      Items).
 - [ ] **Development storage.** With `BUDGETMINT_DATA_DIR` set, a dev build
       keeps its own sign-in and cache: the installed app's account is left
       alone.
 
 ## The platform (platform/os.rs)
 
-- [ ] **Notifications permission.** Turning on Remind me on this device asks
-      the first time (macOS), and the switch stays off if you refuse.
+- [ ] **Notifications permission.** The desktop notification plugin
+      (tauri-plugin-notification 2.8.1, `desktop.rs`) always reports the
+      permission as granted, without asking, so turning on Remind me on this
+      device turns it on at once, and the "turned off for BudgetMint" warning
+      never shows on a desktop. Send a test reminder: the first one may bring
+      macOS's own prompt. Refuse it (or turn BudgetMint off in System
+      Settings → Notifications): the switch stays on, the test says "Sent. If
+      nothing appeared, allow BudgetMint's notifications…", and nothing
+      appears. Allowing them again in System Settings brings the next test
+      through.
 - [ ] **Google sign-in.** Continue with Google opens the system browser on
-      Google's page; after choosing an account the browser says "You're
-      signed in… go back to BudgetMint", and the app is signed in. Closing
-      the browser tab instead leaves the app on the sign-in page after five
+      Google's page. After choosing an account the browser says "Google's
+      part is done. Close this tab and go back to BudgetMint.", the
+      BudgetMint window comes forward over the browser, and the app is
+      signed in. Cancelling on Google's page leaves the browser saying
+      "Signing in didn't finish" and the window where it was. Closing the
+      browser tab instead leaves the app on the sign-in page after five
       minutes, with an error.
 - [ ] **Window focus.** Open BudgetMint from the tray while another app is in
-      front: the window comes forward and has the focus.
+      front: the window comes forward and has the focus. Again with the
+      window minimized: it comes back unminimized.
+- [ ] **Logs folder.** Settings → Troubleshooting → Open logs folder opens
+      Finder (Explorer on Windows) on the log folder: on macOS
+      `~/Library/Logs/com.budgetmint.desktop`, on Windows
+      `%LOCALAPPDATA%\com.budgetmint.desktop\logs`. It holds `BudgetMint.log`.
+- [ ] **The webview's errors in the log.** In a dev build, open the
+      webview's inspector (right-click → Inspect Element), and in its
+      console run `console.error('QA check')` and
+      `Promise.reject('QA rejection')`. `BudgetMint.log` gets both, under
+      `[webview]`: `QA check`, and `Unhandled rejection: QA rejection`.
+- [ ] **Capabilities.** After a launch, a sign-in, an update check and a
+      click on Settings → About → Source and releases (which opens GitHub in
+      the browser), the log has no `not allowed` line: everything the
+      webview calls is in `capabilities/default.json`.
+
+## The menus (app.rs, platform/os.rs)
+
+The macOS menu bar, and the tray's menu on both platforms. Windows has no
+menu bar.
+
+- [ ] **About BudgetMint** (macOS, the BudgetMint menu) shows the version
+      and "Copyright © 2026 Mike Herold".
+- [ ] **Settings…** (BudgetMint menu, or ⌘,) opens Settings, from any page.
+      With a dialog open (Add a bill) neither does anything, as the
+      shortcut doesn't. With the window closed to the tray, the menu-bar
+      icon's Settings… brings the window forward on Settings (Windows: the
+      tray icon's).
+- [ ] **Check for Updates…** (BudgetMint menu, and the tray's) brings the
+      window forward with a dialog: "Checking for updates…", then
+      "BudgetMint is up to date" with the version, OK to close. With the
+      network off it says "Couldn't check for updates" and why. Against a
+      newer feed it opens the update dialog (see [Updates](#updates-platformosrs)).
+- [ ] **Edit.** In a text field (a bill's name), ⌘C, ⌘X, ⌘V, ⌘A, ⌘Z and
+      ⇧⌘Z work, and so do the same items in the Edit menu. Copy a bill's
+      name from BudgetMint and paste it into another app, and the other way.
+- [ ] **View and Window.** Toggle Full Screen fills the screen and back;
+      Minimize, Zoom and Close Window act on the window, Close Window hiding
+      it to the tray. Hide BudgetMint, Hide Others, Show All and Quit
+      BudgetMint do as they say.
 
 ## Updates (platform/os.rs)
 
@@ -112,10 +175,17 @@ leaves CI). Every file goes in one scratch folder, `$S`:
 - [ ] **Automatic check.** About 10 seconds after launch, the dialog says
       BudgetMint 0.9.99 is available and that you have 0.9.0, with the
       notes. Later closes it.
-- [ ] **Check now.** Settings → Updates → Check for updates opens the dialog
-      again. Stop the feed and check again: the section says why it couldn't
-      check. Turning off "Check for updates automatically" survives a
-      relaunch.
+- [ ] **Check now.** Settings → Updates says "You have BudgetMint 0.9.0"
+      and when it last checked. Check for updates opens the dialog again,
+      and the time of the last check changes. Stop the feed and check again:
+      the section says why it couldn't check. Turning off "Check for updates
+      automatically" survives a relaunch.
+- [ ] **Skip this version.** In the dialog, Skip this version closes it.
+      Relaunch: no dialog and no notification about 0.9.99, and Settings →
+      Updates → Check for updates says it's available and you chose to skip
+      it, with Update… still there. The menu's Check for Updates… still
+      offers it. Change the feed's `latest.json` to `"version": "0.9.100"`
+      and relaunch: the automatic check asks again.
 - [ ] **Install.** Click Download and install. The progress shows MB
       downloaded, then "Installing…". The app restarts as 0.9.99 and is
       still signed in: Check for updates now says it's up to date.
@@ -128,6 +198,34 @@ leaves CI). Every file goes in one scratch folder, `$S`:
       development build can't install updates.
 - [ ] **A real release.** After a release, an install of the version before
       it finds and installs it from GitHub.
+
+### On Windows
+
+The same two builds and local feed, on Windows (PowerShell, `$S` a scratch
+folder), as NSIS installers:
+
+1. **The key** as on macOS, and the two configs with
+   `"bundle": { "createUpdaterArtifacts": true, "targets": ["nsis"] }`.
+2. **Both builds**, from `apps\desktop`, with
+   `$env:TAURI_SIGNING_PRIVATE_KEY = "$S\test.key"` and
+   `$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""`. Build the old one and run
+   its `target\release\bundle\nsis\BudgetMint Update Test_0.9.0_x64-setup.exe`
+   to install it. Build the new one, and copy its
+   `BudgetMint Update Test_0.9.99_x64-setup.exe` and `.exe.sig` to `$S\feed\`.
+3. **The feed:** `latest.json` as on macOS, with
+   `"platforms": { "windows-x86_64": { "url": "http://127.0.0.1:8765/BudgetMint%20Update%20Test_0.9.99_x64-setup.exe", "signature": "<the .sig's contents>" } }`.
+   Serve it with `py -m http.server 8765 --bind 127.0.0.1 -d $S\feed`.
+4. **Afterwards**, uninstall BudgetMint Update Test (Settings → Apps), and
+   delete `$S`, `%APPDATA%\com.budgetmint.updatetest` and
+   `%LOCALAPPDATA%\com.budgetmint.updatetest`.
+
+- [ ] **Automatic check and Skip this version**, as on macOS.
+- [ ] **Install.** Download and install shows the download, then the
+      installer runs in passive mode: a progress window, no questions. It
+      starts BudgetMint Update Test again as 0.9.99 (Settings → Updates says
+      so), still signed in, and Settings → Apps lists one copy, 0.9.99.
+- [ ] **Bad signature.** As on macOS: the dialog says the update couldn't be
+      installed, and nothing is installed.
 
 ## The cloud
 
@@ -147,5 +245,17 @@ leaves CI). Every file goes in one scratch folder, `$S`:
 - [ ] **No console window** opens with the app (`main.rs`).
 - [ ] **The tray icon** is the app icon (macOS uses the one-color template),
       and its menu works as on macOS.
-- [ ] **The installer** updates in passive mode: a progress window, no
-      questions, then BudgetMint starts again.
+- [ ] **A click on the tray icon** opens the window, from hidden or from
+      behind another app; a right click opens the menu. A double click opens
+      the window too.
+- [ ] **No menu bar** in the window.
+- [ ] **The installer and the app's details:** Settings → Apps lists
+      BudgetMint by Mike Herold, and the installed `BudgetMint.exe`'s
+      Properties → Details show "Copyright © 2026 Mike Herold".
+- [ ] **The updater:** [Updates, on Windows](#on-windows).
+
+## Bundle metadata (tauri.conf.json)
+
+- [ ] **macOS:** Finder's Get Info on BudgetMint.app shows "Copyright © 2026
+      Mike Herold", and its `Contents/Info.plist` has
+      `LSApplicationCategoryType` `public.app-category.finance`.

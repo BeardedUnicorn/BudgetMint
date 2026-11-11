@@ -3,6 +3,7 @@
 //! the shell's own.
 
 use crate::google_sign_in::{sign_in_with_google, GoogleClient};
+use crate::logs;
 use crate::reminders::{self, Reminder};
 use crate::state::AppState;
 use crate::tray;
@@ -23,6 +24,8 @@ pub const COMMANDS: &[&str] = &[
     "google_sign_in",
     "check_for_update",
     "install_update",
+    "log",
+    "open_logs_folder",
 ];
 
 #[derive(Deserialize)]
@@ -44,6 +47,12 @@ struct AutostartArgs {
 #[derive(Deserialize)]
 struct TrayArgs {
     lines: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct LogArgs {
+    level: String,
+    message: String,
 }
 
 fn args<T: DeserializeOwned>(command: &str, args: Value) -> Result<T, String> {
@@ -88,6 +97,15 @@ pub fn run(state: &AppState, command: &str, value: Value) -> Result<Value, Strin
             updates::install(state)?;
             Ok(Value::Null)
         }
+        "log" => {
+            let LogArgs { level, message } = args(command, value)?;
+            logs::webview(&level, &message);
+            Ok(Value::Null)
+        }
+        "open_logs_folder" => {
+            platform.open_logs_folder()?;
+            Ok(Value::Null)
+        }
         _ => Err(format!("Unknown command: {}", command)),
     }
 }
@@ -129,7 +147,7 @@ mod tests {
             run(&phone.state, "nope", Value::Null),
             Err("Unknown command: nope".to_string())
         );
-        assert_eq!(COMMANDS.len(), 10);
+        assert_eq!(COMMANDS.len(), 12);
     }
 
     #[test]
@@ -183,7 +201,7 @@ mod tests {
             ),
             Ok(Value::Null)
         );
-        assert_eq!(f.platform.recorded().menus[0].0.len(), 4);
+        assert_eq!(f.platform.recorded().menus[0].0.len(), 7);
         assert!(run(&f.state, "set_tray_status", json!({ "lines": 3 })).is_err());
         f.platform.fail("tray");
         assert!(run(&f.state, "set_tray_status", json!({ "lines": [] })).is_err());
@@ -245,6 +263,37 @@ mod tests {
         f.platform.fail("install_update");
         assert!(run(&f.state, "check_for_update", Value::Null).is_err());
         assert!(run(&f.state, "install_update", Value::Null).is_err());
+    }
+
+    #[test]
+    fn writes_the_webviews_lines_to_the_log() {
+        let f = fixture();
+        assert_eq!(
+            run(
+                &f.state,
+                "log",
+                json!({ "level": "error", "message": "TypeError: x is undefined" })
+            ),
+            Ok(Value::Null)
+        );
+        assert!(run(&f.state, "log", json!({ "level": "error" }))
+            .unwrap_err()
+            .starts_with("Invalid arguments for log"));
+    }
+
+    #[test]
+    fn opens_the_logs_folder() {
+        let f = fixture();
+        assert_eq!(
+            run(&f.state, "open_logs_folder", json!({})),
+            Ok(Value::Null)
+        );
+        assert_eq!(f.platform.recorded().logs_folders_opened, 1);
+        f.platform.fail("open_logs_folder");
+        assert_eq!(
+            run(&f.state, "open_logs_folder", json!({})),
+            Err("open_logs_folder failed".to_string())
+        );
     }
 
     /// The webview's view: an app on the mock runtime, managing `state`.
