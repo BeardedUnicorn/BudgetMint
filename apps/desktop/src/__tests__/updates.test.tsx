@@ -14,7 +14,8 @@ import {
   type AvailableUpdate,
 } from '../updates';
 import { DUE_CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, UpdatePrompt } from '../UpdatePrompt';
-import { UpdatesSection } from '../settings/UpdatesSection';
+import { checkedAt, UpdatesSection } from '../settings/UpdatesSection';
+import { APP_VERSION } from '../appVersion';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -78,11 +79,74 @@ describe('the update store', () => {
   it('says when BudgetMint is up to date, and remembers when it checked', async () => {
     answer({ check_for_update: null });
     expect(lastCheckedAt()).toBeNull();
+    expect(updates.get().lastCheckedAt).toBeNull();
 
     await updates.check({ manual: true });
 
     expect(updates.get().update).toEqual({ status: 'upToDate' });
     expect(lastCheckedAt()).toBeGreaterThan(0);
+    expect(updates.get().lastCheckedAt).toBe(lastCheckedAt());
+    // And next launch
+    resetUpdatesForTest();
+    expect(updates.get().lastCheckedAt).toBe(lastCheckedAt());
+  });
+
+  it('skips a version: automatic checks stop asking about it, until a newer one', async () => {
+    focused = false;
+    answer({ check_for_update: release, show_notification: undefined });
+    await updates.check({ manual: false });
+    updates.skip();
+    expect(updates.get().update).toEqual({ status: 'available', update: release, open: false });
+    expect(updates.get().skippedVersion).toBe('2.3.0');
+    expect(localStorage.getItem('updateSkippedVersion')).toBe('2.3.0');
+
+    // Not next launch either, and no notification
+    resetUpdatesForTest();
+    await updates.check({ manual: false });
+    expect(updates.get().update).toEqual({ status: 'available', update: release, open: false });
+    expect(sent('show_notification')).toHaveLength(1);
+
+    // A check the user asks for shows it anyway
+    await updates.check({ manual: true });
+    expect(updates.get().update).toEqual({ status: 'available', update: release, open: true });
+
+    // A newer version asks again
+    const newer = { ...release, version: '2.3.1' };
+    answer({ check_for_update: newer, show_notification: undefined });
+    await updates.check({ manual: false });
+    expect(updates.get().update).toEqual({ status: 'available', update: newer, open: true });
+    expect(sent('show_notification')).toHaveLength(2);
+  });
+
+  it('skips only an update it found, or one that failed to install', async () => {
+    updates.skip();
+    expect(updates.get().skippedVersion).toBeNull();
+
+    answer({ check_for_update: release, install_update: rejects('interrupted') });
+    await updates.check({ manual: true });
+    await updates.install();
+    expect(updates.get().update.status).toBe('installFailed');
+    updates.skip();
+    expect(updates.get().update).toEqual({ status: 'available', update: release, open: false });
+    expect(updates.get().skippedVersion).toBe('2.3.0');
+  });
+
+  it("makes a check the user's when they ask while it runs", async () => {
+    let fail: (reason: string) => void = () => undefined;
+    answer({ check_for_update: () => new Promise((_, reject) => (fail = reject)) });
+    const automatic = updates.check({ manual: false });
+    await updates.check({ manual: true, report: true });
+    expect(updates.get().update).toEqual({ status: 'checking', manual: true });
+    expect(updates.get().reporting).toBe(true);
+    // An automatic one asking meanwhile changes nothing
+    await updates.check({ manual: false });
+    expect(updates.get().reporting).toBe(true);
+
+    fail('offline');
+    await automatic;
+    // So its failure is shown, not just logged
+    expect(updates.get().update).toEqual({ status: 'checkFailed', error: 'Offline.' });
+    expect(sent('check_for_update')).toHaveLength(1);
   });
 
   it('opens the dialog for a release it finds', async () => {
@@ -349,6 +413,13 @@ describe('the update dialog', () => {
     expect(updates.get().update).toMatchObject({ status: 'available', open: false });
   });
 
+  it('skips this version', async () => {
+    const dialog = await found();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Skip this version' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(updates.get().skippedVersion).toBe('2.3.0');
+  });
+
   it('closes on Escape, as Later', async () => {
     const dialog = await found({ ...release, notes: null });
     expect(within(dialog).queryByRole('heading', { name: "What's new" })).not.toBeInTheDocument();
@@ -363,6 +434,7 @@ describe('the update dialog', () => {
 
     expect(await within(dialog).findByText('Starting the download…')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Later' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Skip this version' })).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: 'Download and install' })).toBeDisabled();
     // Nothing closes it mid-install
     fireEvent.keyDown(dialog, { key: 'Escape' });
@@ -402,7 +474,93 @@ describe('the update dialog', () => {
   });
 });
 
+describe("the menus' Check for Updates…", () => {
+  it('shows the check, then that BudgetMint is up to date', async () => {
+    let finish: (value: null) => void = () => undefined;
+    answer({ check_for_update: () => new Promise(resolve => (finish = resolve)) });
+    render(<UpdatePrompt />);
+    act(() => {
+      void updates.check({ manual: true, report: true });
+    });
+
+    const checking = await screen.findByRole('dialog', { name: 'Checking for updates…' });
+    expect(within(checking).getByRole('progressbar', { name: 'Checking for updates' })).toBeInTheDocument();
+    await act(async () => finish(null));
+
+    const done = screen.getByRole('dialog', { name: 'BudgetMint is up to date' });
+    expect(done).toHaveTextContent(`You have ${APP_VERSION}, the newest version.`);
+    fireEvent.click(within(done).getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(updates.get().reporting).toBe(false);
+  });
+
+  it('can be closed while it checks, and says why a check failed', async () => {
+    let fail: (reason: string) => void = () => undefined;
+    answer({ check_for_update: () => new Promise((_, reject) => (fail = reject)) });
+    render(<UpdatePrompt />);
+    act(() => {
+      void updates.check({ manual: true, report: true });
+    });
+    const checking = await screen.findByRole('dialog', { name: 'Checking for updates…' });
+    fireEvent.click(within(checking).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await act(async () => fail('no network'));
+    // Closed, it stays closed
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    answer({ check_for_update: rejects('no network') });
+    await act(() => updates.check({ manual: true, report: true }));
+    const failed = screen.getByRole('dialog', { name: "Couldn't check for updates" });
+    expect(failed).toHaveTextContent('No network.');
+    fireEvent.keyDown(failed, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('opens the update dialog for a release it finds, a skipped one too', async () => {
+    localStorage.setItem('updateSkippedVersion', release.version);
+    resetUpdatesForTest();
+    answer({ check_for_update: release });
+    render(<UpdatePrompt />);
+    await act(() => updates.check({ manual: true, report: true }));
+    const dialog = screen.getByRole('dialog', { name: 'BudgetMint 2.3.0 is available' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Later' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it("doesn't show a check Settings asked for", async () => {
+    answer({ check_for_update: null });
+    render(<UpdatePrompt />);
+    await act(() => updates.check({ manual: true }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
 describe('Settings → Updates', () => {
+  it('shows the version running and when it last checked', async () => {
+    answer({ check_for_update: null });
+    render(<UpdatesSection />);
+    expect(screen.getByText(/^You have BudgetMint/)).toHaveTextContent(
+      `You have BudgetMint ${APP_VERSION}. Not checked yet.`
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+    await screen.findByText('BudgetMint is up to date.');
+    const at = updates.get().lastCheckedAt as number;
+    expect(screen.getByText(/^You have BudgetMint/).textContent).toBe(
+      `You have BudgetMint ${APP_VERSION}. Last checked ${checkedAt(at)}.`
+    );
+    expect(checkedAt(Date.UTC(2026, 10, 11, 9, 41))).toMatch(/2026/);
+  });
+
+  it('says an update was skipped', async () => {
+    localStorage.setItem('updateSkippedVersion', release.version);
+    resetUpdatesForTest();
+    answer({ check_for_update: release });
+    render(<UpdatesSection />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+    expect(await screen.findByText('BudgetMint 2.3.0 is available; you chose to skip it.')).toBeInTheDocument();
+  });
+
   it('turns automatic checks off and on', () => {
     render(<UpdatesSection />);
     const toggle = screen.getByRole('switch', { name: 'Check for updates automatically' });

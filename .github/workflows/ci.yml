@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# It only reads the code: nothing is pushed, released or commented on
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -14,88 +18,49 @@ jobs:
     # macOS: the app's primary platform, and no extra WebKitGTK system
     # packages are needed to compile the Tauri crate.
     runs-on: macos-26
+    # A run takes 5 to 15 minutes; a cold cache builds Tauri twice (the
+    # tests, then the coverage)
+    timeout-minutes: 45
+    # The actions are pinned to a commit, with the version alongside;
+    # Dependabot keeps them current (.github/dependabot.yml)
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Version comes from package.json's packageManager field.
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - run: node scripts/check-coverage-policy.mjs
-
-      - run: node scripts/check-toolchains.mjs
-
-      # TaskMint's rules and forecast contract, as pinned (firebase/UPSTREAM.json)
-      - run: node scripts/sync-upstream.mjs --check
-
-      # Formatting and lint for the TypeScript and JavaScript (biome.jsonc)
-      - run: pnpm exec biome ci
-
-      # The scripts' own tests (release, sync-upstream)
-      - run: pnpm test:scripts
-
       # The version and components in rust-toolchain.toml, with the wasm
       # target (rustup no longer installs it on first use)
       - run: rustup toolchain install
 
-      # The wasm-bindgen CLI, the version Cargo.lock has (check-toolchains)
-      - uses: taiki-e/install-action@v2
+      # The wasm-bindgen CLI, the version Cargo.lock has (check-toolchains
+      # reads it here)
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: wasm-bindgen@0.2.127
 
-      - uses: Swatinem/rust-cache@v2
+      # The Rust coverage gates
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-llvm-cov
 
-      # Core in WebAssembly: the TypeScript imports it
-      - run: pnpm build:wasm
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # The Firestore emulator needs Java 21 or later
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: 21
 
-      - name: BudgetMint's writes against TaskMint's rules (emulator)
-        run: scripts/test-emulator.sh
-
-      # Sources and tests, every package.
-      - run: pnpm typecheck
-
-      # tsc for every package + the vite builds. Must run before cargo:
-      # tauri::generate_context! embeds apps/desktop/dist.
-      - run: pnpm build
-
-      - run: pnpm test:coverage
-
-      - uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: cargo fmt
-        run: cargo fmt --all --check
-
-      - name: cargo clippy
-        run: |
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo clippy -p budgetmint-core --features ts --all-targets -- -D warnings
-
-      - name: Contracts match the Rust
-        run: scripts/check-contracts.sh
-
-      - name: cargo test
-        run: cargo test --workspace
-
-      - name: budgetmint-core coverage (100%)
-        run: >-
-          cargo llvm-cov -p budgetmint-core --summary-only
-          --ignore-filename-regex "$(node scripts/check-coverage-policy.mjs --rust-ignore-regex crates/budgetmint-core)"
-          --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
-
-      - name: desktop shell coverage (100%)
-        run: >-
-          cargo llvm-cov -p budgetmint --summary-only
-          --ignore-filename-regex "$(node scripts/check-coverage-policy.mjs --rust-ignore-regex apps/desktop/src-tauri)"
-          --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+      # Every gate a change must pass, in scripts/verify.sh: CI runs the
+      # same script as a merge does locally, so the two can't drift
+      - run: pnpm verify

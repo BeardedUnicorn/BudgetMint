@@ -5,8 +5,11 @@ import type { Capabilities } from '@budgetmint/client/shell';
 import { command, createTauriShell } from './tauriShell';
 import { desktopExtensions } from './extensions';
 import { desktopCloud, googleDesktopClient } from './firebaseConfig';
+import { forwardLogs } from './logging';
 
 async function start() {
+  // First, so the log has whatever goes wrong starting
+  forwardLogs();
   const capabilities = await command<Capabilities>('get_capabilities');
   await startClient(document.getElementById('root') as HTMLElement, {
     shell: createTauriShell(capabilities, googleDesktopClient(import.meta.env)),

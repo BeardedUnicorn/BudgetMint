@@ -1,15 +1,17 @@
 // Adapted from TaskMint apps/desktop/src-tauri/src/platform/os.rs @ 1623bee.
-//! The Platform the app runs on: Tauri's window, opener, notifications, tray
-//! and updater. It needs a real UI session, so the coverage policy leaves it
-//! to the manual QA checklist: keep it to calls, with any decision made in
-//! the code that uses it.
+//! The Platform the app runs on: Tauri's window, opener, notifications,
+//! menus, tray and updater. It needs a real UI session, so the coverage
+//! policy leaves it to the manual QA checklist: keep it to calls, with any
+//! decision made in the code that uses it (menu.rs, tray.rs, window.rs).
 //!
-//! The tray, the updater and opening at login exist only on a desktop. On Android and iOS
-//! `mobile::DesktopParts` stands in for them and reports each one missing
-//! (the webview leaves out what needs them: apps/desktop/src/tauriShell.ts).
+//! The tray, the menus, the window's saved place, the updater and opening at
+//! login exist only on a desktop. On Android and iOS `mobile::DesktopParts`
+//! stands in for them and reports each one missing (the webview leaves out
+//! what needs them: apps/desktop/src/tauriShell.ts).
 
 use super::{AvailableUpdate, DownloadEvent, Platform, ScheduledNotification};
 use crate::tray::TrayMenu;
+use crate::window::MAIN;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
@@ -17,6 +19,8 @@ use tauri_plugin_opener::OpenerExt;
 
 #[cfg(desktop)]
 use desktop::DesktopParts;
+#[cfg(desktop)]
+pub use desktop::{app_menu, window_state};
 #[cfg(mobile)]
 use mobile::DesktopParts;
 
@@ -45,17 +49,24 @@ impl TauriPlatform {
             desktop: DesktopParts,
         }
     }
-
-    /// Whether there's a tray icon to bring the window back from (closing
-    /// the window hides it only then).
-    pub fn has_tray(&self) -> bool {
-        self.desktop.has_tray()
-    }
 }
 
 fn text(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
+
+/// macOS: the Dock icon (and the app menu) shows while the window does; a
+/// window hidden to the menu bar leaves only the menu-bar icon.
+#[cfg(target_os = "macos")]
+fn show_dock_icon(app: &AppHandle, shown: bool) {
+    use tauri::ActivationPolicy::{Accessory, Regular};
+    if let Err(e) = app.set_activation_policy(if shown { Regular } else { Accessory }) {
+        log::warn!("Failed to change the Dock icon: {}", e);
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn show_dock_icon(_app: &AppHandle, _shown: bool) {}
 
 /// A phone's alarm: the system shows the notification at its time, with the
 /// app closed, and in Doze too.
@@ -115,20 +126,35 @@ fn cancel_all_os_notifications(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray, the updater and opening at login.
+/// The tray, the menus, the window's saved place, the updater and opening
+/// at login.
 #[cfg(desktop)]
 mod desktop {
     use super::text;
+    use crate::menu::{MenuItem, Submenu, SystemItem};
     use crate::platform::{AvailableUpdate, DownloadEvent};
-    use crate::tray::{TrayItem, TrayMenu};
+    use crate::state::AppState;
+    use crate::tray::{self, IconClick, TrayMenu};
     use std::future::Future;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tauri::image::Image;
-    use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
-    use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
+    use tauri::menu::{
+        AboutMetadata, IsMenuItem, Menu, MenuItem as Item, PredefinedMenuItem,
+        Submenu as TauriSubmenu, WINDOW_SUBMENU_ID,
+    };
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
     use tauri_plugin_autostart::ManagerExt;
     use tauri_plugin_updater::{Update, UpdaterExt};
+    use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+
+    /// What the window-state plugin keeps of the window: its size and
+    /// position. Not whether it was maximized (restoring that could show a
+    /// window started hidden at login), nor whether it was showing
+    /// (window.rs decides).
+    pub fn window_state() -> StateFlags {
+        StateFlags::SIZE | StateFlags::POSITION
+    }
 
     #[derive(Default)]
     pub struct DesktopParts {
@@ -149,31 +175,104 @@ mod desktop {
         })
     }
 
-    fn menu_item(app: &AppHandle, item: &TrayItem) -> tauri::Result<Box<dyn IsMenuItem<Wry>>> {
+    /// About BudgetMint's panel: the version, and the copyright and
+    /// publisher in tauri.conf.json's bundle.
+    fn about(app: &AppHandle) -> AboutMetadata<'static> {
+        let bundle = &app.config().bundle;
+        let package = app.package_info();
+        AboutMetadata {
+            name: Some(package.name.clone()),
+            version: Some(package.version.to_string()),
+            copyright: bundle.copyright.clone(),
+            authors: bundle.publisher.clone().map(|publisher| vec![publisher]),
+            website: bundle.homepage.clone(),
+            ..Default::default()
+        }
+    }
+
+    /// The system's own item, in the system's words (macOS adds the app's
+    /// name: Hide BudgetMint).
+    fn system_item(app: &AppHandle, item: SystemItem) -> tauri::Result<PredefinedMenuItem<Wry>> {
+        match item {
+            SystemItem::About => PredefinedMenuItem::about(app, None, Some(about(app))),
+            SystemItem::Services => PredefinedMenuItem::services(app, None),
+            SystemItem::Hide => PredefinedMenuItem::hide(app, None),
+            SystemItem::HideOthers => PredefinedMenuItem::hide_others(app, None),
+            SystemItem::ShowAll => PredefinedMenuItem::show_all(app, None),
+            // Windows would say Exit
+            SystemItem::Quit => PredefinedMenuItem::quit(app, Some("Quit BudgetMint")),
+            SystemItem::Undo => PredefinedMenuItem::undo(app, None),
+            SystemItem::Redo => PredefinedMenuItem::redo(app, None),
+            SystemItem::Cut => PredefinedMenuItem::cut(app, None),
+            SystemItem::Copy => PredefinedMenuItem::copy(app, None),
+            SystemItem::Paste => PredefinedMenuItem::paste(app, None),
+            SystemItem::SelectAll => PredefinedMenuItem::select_all(app, None),
+            SystemItem::Minimize => PredefinedMenuItem::minimize(app, None),
+            SystemItem::Maximize => PredefinedMenuItem::maximize(app, None),
+            SystemItem::Fullscreen => PredefinedMenuItem::fullscreen(app, None),
+            SystemItem::CloseWindow => PredefinedMenuItem::close_window(app, None),
+        }
+    }
+
+    fn menu_item(app: &AppHandle, item: &MenuItem) -> tauri::Result<Box<dyn IsMenuItem<Wry>>> {
         Ok(match item {
-            TrayItem::Label(label) => Box::new(MenuItem::new(app, label, false, None::<&str>)?),
-            // with_id: MenuItem::new's last argument is an accelerator, not an id
-            TrayItem::Action { id, label } => {
-                Box::new(MenuItem::with_id(app, *id, *label, true, None::<&str>)?)
-            }
-            TrayItem::Separator => Box::new(PredefinedMenuItem::separator(app)?),
+            MenuItem::Label(label) => Box::new(Item::new(app, label, false, None::<&str>)?),
+            // with_id: Item::new's last argument is an accelerator, not an id
+            MenuItem::Action {
+                id,
+                label,
+                shortcut,
+            } => Box::new(Item::with_id(app, *id, *label, true, *shortcut)?),
+            MenuItem::Separator => Box::new(PredefinedMenuItem::separator(app)?),
             // GTK doesn't support the system's Quit item (it shows greyed out):
-            // Linux gets an ordinary one, which app.rs's menu handler quits on
-            TrayItem::Quit if cfg!(target_os = "linux") => Box::new(MenuItem::with_id(
-                app,
-                crate::tray::QUIT,
-                "Quit BudgetMint",
-                true,
-                None::<&str>,
-            )?),
-            TrayItem::Quit => Box::new(PredefinedMenuItem::quit(app, Some("Quit BudgetMint"))?),
+            // Linux gets an ordinary one, which menu.rs quits on
+            MenuItem::System(SystemItem::Quit) if cfg!(target_os = "linux") => {
+                Box::new(Item::with_id(
+                    app,
+                    crate::menu::QUIT,
+                    "Quit BudgetMint",
+                    true,
+                    None::<&str>,
+                )?)
+            }
+            MenuItem::System(item) => Box::new(system_item(app, *item)?),
         })
+    }
+
+    fn menu_items(
+        app: &AppHandle,
+        items: &[MenuItem],
+    ) -> tauri::Result<Vec<Box<dyn IsMenuItem<Wry>>>> {
+        items.iter().map(|item| menu_item(app, item)).collect()
     }
 
     fn build_menu(app: &AppHandle, menu: &TrayMenu) -> tauri::Result<Menu<Wry>> {
         let built = Menu::new(app)?;
-        for item in &menu.0 {
-            built.append(menu_item(app, item)?.as_ref())?;
+        for item in menu_items(app, &menu.0)? {
+            built.append(item.as_ref())?;
+        }
+        Ok(built)
+    }
+
+    /// The menu bar's menus (menu.rs's app_menu); their clicks reach
+    /// menu::clicked through app.rs.
+    pub fn app_menu(app: &AppHandle, menus: &[Submenu]) -> tauri::Result<Menu<Wry>> {
+        let built = Menu::new(app)?;
+        for submenu in menus {
+            let items = menu_items(app, &submenu.items)?;
+            let items: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|item| item.as_ref()).collect();
+            let built_submenu = if submenu.windows {
+                TauriSubmenu::with_id_and_items(
+                    app,
+                    WINDOW_SUBMENU_ID,
+                    submenu.title,
+                    true,
+                    &items,
+                )?
+            } else {
+                TauriSubmenu::with_items(app, submenu.title, true, &items)?
+            };
+            built.append(&built_submenu)?;
         }
         Ok(built)
     }
@@ -204,23 +303,44 @@ mod desktop {
             self.tray().is_some()
         }
 
+        /// Saves the window's size and position now. The plugin saves them
+        /// when the app quits, but not when an update restarts it or a
+        /// logout ends it, so they're saved each time it hides too.
+        pub fn save_window_state(&self, app: &AppHandle) {
+            if let Err(e) = app.save_window_state(window_state()) {
+                log::warn!("Failed to save the window's size and position: {}", e);
+            }
+        }
+
         pub fn render_tray(&self, app: &AppHandle, menu: &TrayMenu) -> Result<(), String> {
             let built = build_menu(app, menu).map_err(text)?;
             if let Some(tray) = self.tray() {
                 return tray.set_menu(Some(built)).map_err(text);
             }
             let handle = app.clone();
+            let windows = cfg!(target_os = "windows");
             let (icon, template) = tray_icon().map_err(text)?;
             let icon = TrayIconBuilder::new()
                 .icon(icon)
                 .icon_as_template(template)
                 .menu(&built)
+                .show_menu_on_left_click(tray::menu_on_left_click(windows))
                 .tooltip("BudgetMint")
                 .on_tray_icon_event(move |_tray, event| {
-                    if let TrayIconEvent::DoubleClick { .. } = event {
-                        if let Some(window) = handle.get_webview_window("main") {
-                            let _ = window.show().and_then(|()| window.set_focus());
-                        }
+                    let click = match event {
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } => IconClick::Left,
+                        TrayIconEvent::DoubleClick {
+                            button: MouseButton::Left,
+                            ..
+                        } => IconClick::Double,
+                        _ => return,
+                    };
+                    if let Some(state) = handle.try_state::<Arc<AppState>>() {
+                        tray::icon_clicked(state.platform.as_ref(), click, windows);
                     }
                 })
                 .build(app)
@@ -313,6 +433,9 @@ mod mobile {
             Err(missing("The system tray"))
         }
 
+        /// A phone keeps no window place.
+        pub fn save_window_state(&self, _app: &AppHandle) {}
+
         pub fn autostart(&self, _app: &AppHandle) -> Result<bool, String> {
             Err(missing("Opening at login"))
         }
@@ -386,18 +509,54 @@ impl Platform for TauriPlatform {
             .map_err(text)
     }
 
+    fn open_logs_folder(&self) -> Result<(), String> {
+        // Where the log plugin writes (app.rs): ~/Library/Logs/<identifier>
+        // on macOS, %LOCALAPPDATA%\<identifier>\logs on Windows
+        let folder = self.app.path().app_log_dir().map_err(text)?;
+        std::fs::create_dir_all(&folder).map_err(text)?;
+        self.app
+            .opener()
+            .open_path(folder.to_string_lossy(), None::<String>)
+            .map_err(text)
+    }
+
     fn show_main_window(&self) {
-        let Some(window) = self.app.get_webview_window("main") else {
+        let Some(window) = self.app.get_webview_window(MAIN) else {
             log::error!("Main window not found");
             return;
         };
-        if let Err(e) = window.show().and_then(|()| window.set_focus()) {
+        show_dock_icon(&self.app, true);
+        let shown = window
+            .unminimize()
+            .and_then(|()| window.show())
+            .and_then(|()| window.set_focus());
+        if let Err(e) = shown {
             log::error!("Failed to bring the window forward: {}", e);
         }
     }
 
+    fn hide_main_window(&self) {
+        let Some(window) = self.app.get_webview_window(MAIN) else {
+            log::error!("Main window not found");
+            return;
+        };
+        self.desktop.save_window_state(&self.app);
+        if let Err(e) = window.hide() {
+            log::error!("Failed to hide the window: {}", e);
+        }
+        show_dock_icon(&self.app, false);
+    }
+
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String> {
         self.desktop.render_tray(&self.app, menu)
+    }
+
+    fn has_tray(&self) -> bool {
+        self.desktop.has_tray()
+    }
+
+    fn quit(&self) {
+        self.app.exit(0)
     }
 
     fn autostart(&self) -> Result<bool, String> {
@@ -409,6 +568,7 @@ impl Platform for TauriPlatform {
     }
 
     fn restart(&self) {
+        self.desktop.save_window_state(&self.app);
         self.app.restart()
     }
 

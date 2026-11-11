@@ -13,7 +13,15 @@ import {
   Typography,
 } from '@mui/material';
 import { ReleaseNotes, parseReleaseSection } from '@budgetmint/client/ui';
-import { automaticCheckDue, updates, useUpdates, type AvailableUpdate, type DownloadProgress } from './updates';
+import { APP_VERSION } from './appVersion';
+import {
+  automaticCheckDue,
+  updates,
+  useUpdates,
+  type AvailableUpdate,
+  type DownloadProgress,
+  type UpdateState,
+} from './updates';
 
 /** The launch check waits this long, so it doesn't compete with startup. */
 export const FIRST_CHECK_DELAY_MS = 10_000;
@@ -91,17 +99,52 @@ function Notes({ update }: { update: AvailableUpdate }) {
   );
 }
 
+/** A check's outcome, in words: the menus' Check for Updates… shows it. */
+function reportOf(state: UpdateState): { title: string; text: string | null } | null {
+  switch (state.status) {
+    case 'checking':
+      return { title: 'Checking for updates…', text: null };
+    case 'upToDate':
+      return { title: 'BudgetMint is up to date', text: `You have ${APP_VERSION}, the newest version.` };
+    case 'checkFailed':
+      return { title: "Couldn't check for updates", text: state.error };
+    default:
+      return null;
+  }
+}
+
+/** The outcome of a check the menus asked for (one that finds an update opens the update dialog instead). */
+function CheckReport({ state }: { state: UpdateState }) {
+  const report = reportOf(state);
+  if (!report) return null;
+  return (
+    <Dialog open onClose={updates.closeReport} maxWidth="xs" fullWidth aria-labelledby="update-check-title">
+      <DialogTitle id="update-check-title">{report.title}</DialogTitle>
+      <DialogContent>
+        {report.text === null ? (
+          <LinearProgress aria-label="Checking for updates" />
+        ) : (
+          <DialogContentText>{report.text}</DialogContentText>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={updates.closeReport}>{report.text === null ? 'Close' : 'OK'}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 /**
  * The desktop's update check (the client's Background extension): it runs
  * on its own at launch and daily, and asks before installing what it finds.
  */
 export function UpdatePrompt() {
   useAutomaticChecks();
-  const { update: state } = useUpdates();
+  const { update: state, reporting } = useUpdates();
 
   const open =
     (state.status === 'available' && state.open) || state.status === 'installing' || state.status === 'installFailed';
-  if (!open) return null;
+  if (!open) return reporting ? <CheckReport state={state} /> : null;
 
   const { update } = state;
   const installing = state.status === 'installing';
@@ -133,6 +176,10 @@ export function UpdatePrompt() {
         )}
       </DialogContent>
       <DialogActions>
+        {/* Apart from the others, on the left */}
+        <Button onClick={updates.skip} disabled={installing} sx={{ mr: 'auto' }}>
+          Skip this version
+        </Button>
         <Button onClick={updates.later} disabled={installing}>
           {state.status === 'installFailed' ? 'Close' : 'Later'}
         </Button>

@@ -43,6 +43,8 @@ tauri-plugin-single-instance = "2.5"
 tauri-plugin-updater = "2.14"
 # Open at login (Settings → Reminders), started hidden in the tray
 tauri-plugin-autostart = "2.7"
+# The window's size and position, kept between launches
+tauri-plugin-window-state = "2.5"
 
 # Only a phone or tablet sets notifications for the system to show later: the
 # time one fires at, as the notification plugin takes it (platform/os.rs)

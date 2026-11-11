@@ -2,8 +2,9 @@
 /**
  * Updates from BudgetMint's GitHub releases. The Rust side asks the release
  * feed and installs (apps/desktop/src-tauri/src/updates.rs); this holds what
- * the update dialog and Settings → Updates show, and whether checks run on
- * their own. One store for the window, read with useUpdates().
+ * the update dialog and Settings → Updates show, whether checks run on their
+ * own, when the last one did, and the version the user skipped. One store
+ * for the window, read with useUpdates().
  */
 
 import { useSyncExternalStore } from 'react';
@@ -54,6 +55,15 @@ export interface Updates {
   update: UpdateState;
   /** Checks run on their own (at launch, then daily). */
   autoCheck: boolean;
+  /** When the last check got an answer (ms since the epoch); null if never. */
+  lastCheckedAt: number | null;
+  /** The version "Skip this version" was clicked for: automatic checks don't ask about it again. */
+  skippedVersion: string | null;
+  /**
+   * The check under way, or what it found, shows in a dialog: the menus'
+   * Check for Updates… asked for it, with no Settings → Updates in sight.
+   */
+  reporting: boolean;
 }
 
 /** How long after the last check an automatic one is due. */
@@ -61,6 +71,7 @@ export const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 const AUTO_CHECK_KEY = 'updateAutoCheck';
 const LAST_CHECKED_KEY = 'updateLastCheckedAt';
+const SKIPPED_VERSION_KEY = 'updateSkippedVersion';
 
 /** localStorage can be unavailable; then nothing is remembered. */
 function stored(key: string): string | null {
@@ -80,7 +91,13 @@ function store(key: string, value: string): void {
 }
 
 function initial(): Updates {
-  return { update: { status: 'idle' }, autoCheck: stored(AUTO_CHECK_KEY) !== 'false' };
+  return {
+    update: { status: 'idle' },
+    autoCheck: stored(AUTO_CHECK_KEY) !== 'false',
+    lastCheckedAt: lastCheckedAt(),
+    skippedVersion: stored(SKIPPED_VERSION_KEY),
+    reporting: false,
+  };
 }
 
 let current: Updates = initial();
@@ -95,6 +112,12 @@ function set(next: Partial<Updates>): void {
 
 function setUpdate(update: UpdateState): void {
   set({ update });
+}
+
+/** The check under way is one the user asked for. */
+function askedFor(): boolean {
+  const { update } = current;
+  return update.status === 'checking' && update.manual;
 }
 
 /** When the last check succeeded, in ms; null if never. */
@@ -129,24 +152,35 @@ export const updates = {
 
   /**
    * Asks GitHub for a newer release; one it finds opens the dialog. A check
-   * the user asked for (`manual`) shows its failure; an automatic one only
-   * logs it. Nothing happens while a check or an install is under way.
+   * the user asked for (`manual`) shows its failure, and asks about a version
+   * they skipped too; an automatic one only logs a failure, and leaves the
+   * skipped version alone. `report`: what it finds shows in a dialog (the
+   * menus' Check for Updates…). Asked for while a check runs, the check
+   * becomes the user's; nothing happens while an install is under way.
    */
-  async check({ manual }: { manual: boolean }): Promise<void> {
+  async check({ manual, report = false }: { manual: boolean; report?: boolean }): Promise<void> {
     const before = current.update;
-    if (before.status === 'checking' || before.status === 'installing') return;
-    setUpdate({ status: 'checking', manual });
+    if (before.status === 'installing') return;
+    if (before.status === 'checking') {
+      if (manual) set({ update: { status: 'checking', manual: true }, reporting: current.reporting || report });
+      return;
+    }
+    set({ update: { status: 'checking', manual }, reporting: report });
     try {
       const found = await command<AvailableUpdate | null>('check_for_update');
-      store(LAST_CHECKED_KEY, String(Date.now()));
+      const checkedAt = Date.now();
+      store(LAST_CHECKED_KEY, String(checkedAt));
+      const asked = askedFor();
+      set({ lastCheckedAt: checkedAt });
       if (found === null) {
         setUpdate({ status: 'upToDate' });
         return;
       }
-      setUpdate({ status: 'available', update: found, open: true });
-      if (!manual) notifyAvailable(found);
+      const skipped = !asked && found.version === current.skippedVersion;
+      setUpdate({ status: 'available', update: found, open: !skipped });
+      if (!asked && !skipped) notifyAvailable(found);
     } catch (error) {
-      if (manual) {
+      if (askedFor()) {
         setUpdate({ status: 'checkFailed', error: sentence(error) });
       } else {
         console.warn('Automatic update check failed:', error);
@@ -155,12 +189,29 @@ export const updates = {
     }
   },
 
+  /** Closes the dialog with a check's outcome (`reporting`). */
+  closeReport(): void {
+    set({ reporting: false });
+  },
+
   /** Closes the dialog; the next check asks again. */
   later(): void {
     const { update } = current;
     if (update.status === 'available' || update.status === 'installFailed') {
       setUpdate({ status: 'available', update: update.update, open: false });
     }
+  },
+
+  /**
+   * Closes the dialog, and automatic checks stop asking about this version
+   * (a newer one asks again). Settings → Updates still offers it.
+   */
+  skip(): void {
+    const { update } = current;
+    if (update.status !== 'available' && update.status !== 'installFailed') return;
+    const { version } = update.update;
+    store(SKIPPED_VERSION_KEY, version);
+    set({ skippedVersion: version, update: { status: 'available', update: update.update, open: false } });
   },
 
   /** Opens the dialog again for the update a check found. */
