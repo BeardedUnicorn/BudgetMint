@@ -1,7 +1,7 @@
 //! A Platform for tests: it records what the shell asked of it, and fails
 //! the calls a test names.
 
-use super::{AvailableUpdate, DownloadEvent, Platform, ScheduledNotification};
+use super::{AvailableUpdate, DownloadEvent, Platform, SaveFile, ScheduledNotification};
 use crate::tray::TrayMenu;
 use serde_json::Value;
 use std::sync::Mutex;
@@ -17,6 +17,8 @@ pub struct Recorded {
     pub cancelled_all: usize,
     pub opened_urls: Vec<String>,
     pub logs_folders_opened: usize,
+    /// The files saved, in order.
+    pub saved: Vec<SaveFile>,
     pub windows_shown: usize,
     pub windows_hidden: usize,
     /// The tray's menus, in order: the first one created the icon.
@@ -35,6 +37,8 @@ pub struct FakePlatform {
     pub denied: Mutex<bool>,
     /// The app opens at login.
     pub autostart: Mutex<bool>,
+    /// The user cancels the save dialog.
+    pub cancels_saving: Mutex<bool>,
     /// What the update feed announces.
     update: Mutex<Option<AvailableUpdate>>,
     /// How an update's download goes, in order.
@@ -130,6 +134,15 @@ impl Platform for FakePlatform {
         self.check("open_logs_folder")?;
         self.record(|r| r.logs_folders_opened += 1);
         Ok(())
+    }
+
+    fn save_file(&self, file: &SaveFile) -> Result<bool, String> {
+        self.check("save_file")?;
+        if *self.cancels_saving.lock().unwrap() {
+            return Ok(false);
+        }
+        self.record(|r| r.saved.push(file.clone()));
+        Ok(true)
     }
 
     fn show_main_window(&self) {

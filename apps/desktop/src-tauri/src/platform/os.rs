@@ -9,7 +9,7 @@
 //! stands in for them and reports each one missing (the webview leaves out
 //! what needs them: apps/desktop/src/tauriShell.ts).
 
-use super::{AvailableUpdate, DownloadEvent, Platform, ScheduledNotification};
+use super::{AvailableUpdate, DownloadEvent, Platform, SaveFile, ScheduledNotification};
 use crate::tray::TrayMenu;
 use crate::window::MAIN;
 use serde_json::Value;
@@ -126,12 +126,13 @@ fn cancel_all_os_notifications(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray, the menus, the window's saved place, the updater and opening
-/// at login.
+/// The tray, the menus, the window's saved place, the updater, opening at
+/// login and the save dialog.
 #[cfg(desktop)]
 mod desktop {
     use super::text;
     use crate::menu::{MenuItem, Submenu, SystemItem};
+    use crate::platform::SaveFile;
     use crate::platform::{AvailableUpdate, DownloadEvent};
     use crate::state::AppState;
     use crate::tray::{self, IconClick, TrayMenu};
@@ -145,6 +146,7 @@ mod desktop {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
     use tauri_plugin_autostart::ManagerExt;
+    use tauri_plugin_dialog::DialogExt;
     use tauri_plugin_updater::{Update, UpdaterExt};
     use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
@@ -353,6 +355,26 @@ mod desktop {
             app.autolaunch().is_enabled().map_err(text)
         }
 
+        /// The system's save dialog (over the window, as a sheet on macOS),
+        /// then the file written where it says. It blocks: dispatch runs
+        /// commands off the main thread.
+        pub fn save_file(&self, app: &AppHandle, file: &SaveFile) -> Result<bool, String> {
+            let mut dialog = app.dialog().file().set_file_name(&file.name);
+            if !file.extension.is_empty() {
+                dialog = dialog.add_filter(&file.kind, &[file.extension.as_str()]);
+            }
+            if let Some(window) = app.get_webview_window(crate::window::MAIN) {
+                dialog = dialog.set_parent(&window);
+            }
+            let Some(path) = dialog.blocking_save_file() else {
+                return Ok(false);
+            };
+            let path = path.into_path().map_err(text)?;
+            std::fs::write(&path, &file.contents).map_err(text)?;
+            log::info!("Saved {}", path.display());
+            Ok(true)
+        }
+
         pub fn set_autostart(&self, app: &AppHandle, enabled: bool) -> Result<(), String> {
             let launcher = app.autolaunch();
             match enabled {
@@ -414,7 +436,7 @@ mod desktop {
 /// there.
 #[cfg(mobile)]
 mod mobile {
-    use crate::platform::{AvailableUpdate, DownloadEvent};
+    use crate::platform::{AvailableUpdate, DownloadEvent, SaveFile};
     use crate::tray::TrayMenu;
     use tauri::AppHandle;
 
@@ -438,6 +460,10 @@ mod mobile {
 
         pub fn autostart(&self, _app: &AppHandle) -> Result<bool, String> {
             Err(missing("Opening at login"))
+        }
+
+        pub fn save_file(&self, _app: &AppHandle, _file: &SaveFile) -> Result<bool, String> {
+            Err(missing("Saving a file"))
         }
 
         pub fn set_autostart(&self, _app: &AppHandle, _enabled: bool) -> Result<(), String> {
@@ -561,6 +587,10 @@ impl Platform for TauriPlatform {
 
     fn autostart(&self) -> Result<bool, String> {
         self.desktop.autostart(&self.app)
+    }
+
+    fn save_file(&self, file: &SaveFile) -> Result<bool, String> {
+        self.desktop.save_file(&self.app, file)
     }
 
     fn set_autostart(&self, enabled: bool) -> Result<(), String> {

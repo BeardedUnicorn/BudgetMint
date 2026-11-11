@@ -1,5 +1,5 @@
 //! What the shell needs from the OS and from Tauri, as one seam (TaskMint's
-//! Platform, without the files and dialogs BudgetMint doesn't use). `os.rs`
+//! Platform, with only the one dialog BudgetMint uses: saving a file). `os.rs`
 //! is the real thing (it needs a real UI session, so the coverage policy
 //! leaves it to the manual QA checklist); tests use `fake::FakePlatform`.
 
@@ -36,6 +36,18 @@ pub struct AvailableUpdate {
     pub date: Option<String>,
 }
 
+/// A file for the user to save where they choose (crate::files::to_save).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SaveFile {
+    /// The name the dialog suggests.
+    pub name: String,
+    pub contents: String,
+    /// What the dialog's filter calls this kind of file, and its extension
+    /// (empty for none).
+    pub kind: String,
+    pub extension: String,
+}
+
 /// How an update's download is going (Platform::install_update).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DownloadEvent {
@@ -64,6 +76,9 @@ pub trait Platform: Send + Sync {
     fn open_url(&self, url: &str) -> Result<(), String>;
     /// Opens the folder the log files are in (Finder, Explorer).
     fn open_logs_folder(&self) -> Result<(), String>;
+    /// Asks where to save `file` (the system's save dialog) and writes it
+    /// there; false when the user cancels. Only a desktop can.
+    fn save_file(&self, file: &SaveFile) -> Result<bool, String>;
     /// Shows and focuses the main window, unminimized; on macOS the Dock
     /// icon and the app menu come back with it.
     fn show_main_window(&self);

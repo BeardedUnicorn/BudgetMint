@@ -13,7 +13,7 @@ Tauri or plugin versions, or to the `Platform` trait they implement.
 | File | What it does | Section |
 |---|---|---|
 | `apps/desktop/src-tauri/src/app.rs` | the Tauri builder: plugins, setup, the window and its saved place, the macOS menu bar, the menus' clicks, the reminders' thread, the run loop | [Startup and wiring](#startup-and-wiring-apprs), [The menus](#the-menus-apprs-platformosrs) |
-| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the window and the Dock icon, the menus and the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs) |
+| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the save dialog, the window and the Dock icon, the menus and the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs) |
 | `apps/desktop/src-tauri/src/main.rs` | calls `budgetmint_lib::run`; no console window on Windows | [Windows](#windows) |
 | BudgetMint against the real Firebase project | the tested store and session, on Google's servers and in real webviews | [The cloud](#the-cloud) |
 
@@ -95,6 +95,16 @@ Note anything that fails with the build, the OS version and what you saw.
       Finder (Explorer on Windows) on the log folder: on macOS
       `~/Library/Logs/com.budgetmint.desktop`, on Windows
       `%LOCALAPPDATA%\com.budgetmint.desktop\logs`. It holds `BudgetMint.log`.
+- [ ] **Saving a backup.** Settings → Your data → Download backup opens
+      the system's save dialog over the window (a sheet on macOS), named
+      `budgetmint-<today>.json` and showing only BudgetMint backups. Save
+      it, and open the file: it's the backup's JSON (`"format":
+      "budgetmint-backup"`). Restore from a backup… takes it back.
+- [ ] **Saving a spreadsheet, cancelling, overwriting.** Download
+      spreadsheet suggests `budgetmint-<today>.csv`; it opens in a
+      spreadsheet app with a row per bill and income. Cancel the dialog:
+      nothing is saved and no error shows. Save over an existing file: the
+      system asks to replace it, and the file is the new one.
 - [ ] **The webview's errors in the log.** In a dev build, open the
       webview's inspector (right-click → Inspect Element), and in its
       console run `console.error('QA check')` and
