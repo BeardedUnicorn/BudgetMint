@@ -13,6 +13,7 @@ import { AuthLayout } from './components/auth/AuthLayout';
 import { SignInForm } from './components/auth/SignInForm';
 import { BalanceFooter } from './components/layout/BalanceFooter';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
+import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
 import { CompactTopBar } from './components/layout/CompactTopBar';
 import { Sidebar } from './components/layout/Sidebar';
 import { StatusNotices } from './components/layout/StatusNotices';
@@ -131,11 +132,12 @@ function Ready() {
 
 /** What runs behind the pages once signed in: reminders, the tray, the system bars and shortcuts. */
 function BackgroundJobs() {
+  const [listing, setListing] = useState(false);
   useReminders();
   useTrayStatus();
   useSystemBarsTheme();
-  useKeyboardShortcuts(getShell().capabilities.runtime === 'web');
-  return null;
+  useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => setListing(true));
+  return <ShortcutsDialog open={listing} onClose={() => setListing(false)} />;
 }
 
 function AppShell() {

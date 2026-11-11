@@ -21,8 +21,9 @@ import {
 } from '@mui/material';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
-import { formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
+import { formatCents, formatMaybeCents, parseDollars, currencySymbol } from '../../utils/money';
 import { Wordmark } from '../ui/display/Wordmark';
+import { DELAYS, delayLabel } from '../pages/settings/TaskMintSection';
 
 export function Onboarding() {
   const { session, view } = useBudget();
@@ -79,12 +80,21 @@ export function Onboarding() {
             {problem}
           </Alert>
         )}
-        <Stack spacing={3}>
+        {/* Enter starts it, with the balance */}
+        <Stack
+          spacing={3}
+          component="form"
+          noValidate
+          onSubmit={event => {
+            event.preventDefault();
+            start(true);
+          }}
+        >
           <Box component="section" aria-labelledby="balance-title">
             <Typography id="balance-title" variant="h6" component="h2" sx={{ mb: 1 }}>
               Your balance
             </Typography>
-            <Stack direction="row" spacing={2}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 label="Balance"
                 value={amount}
@@ -94,7 +104,7 @@ export function Onboarding() {
                 helperText={wrong ? 'Enter your balance, or start without one' : undefined}
                 sx={{ flex: 1 }}
                 slotProps={{
-                  input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+                  input: { startAdornment: <InputAdornment position="start">{currencySymbol()}</InputAdornment> },
                   htmlInput: { inputMode: 'decimal' },
                 }}
               />
@@ -138,16 +148,19 @@ export function Onboarding() {
                 onChange={event => setDelay(Number(event.target.value))}
                 sx={{ mt: 1, minWidth: 220 }}
               >
-                <MenuItem value={0}>At once</MenuItem>
-                <MenuItem value={24}>A day later</MenuItem>
-                <MenuItem value={48}>Two days later</MenuItem>
-                <MenuItem value={72}>Three days later</MenuItem>
+                {DELAYS.map(hours => (
+                  <MenuItem key={hours} value={hours}>
+                    {delayLabel(hours)}
+                  </MenuItem>
+                ))}
               </TextField>
             )}
           </Box>
           <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-            <Button onClick={() => start(false)}>Start without a balance</Button>
-            <Button variant="contained" onClick={() => start(true)}>
+            <Button type="button" onClick={() => start(false)}>
+              Start without a balance
+            </Button>
+            <Button type="submit" variant="contained">
               Start
             </Button>
           </Stack>

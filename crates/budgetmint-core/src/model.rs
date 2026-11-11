@@ -236,7 +236,15 @@ pub struct Settings {
     pub horizon_days: u16,
     pub taskmint: TaskMintPlan,
     pub reminders: ReminderSettings,
+    /// The currency amounts are in (ISO 4217): only how they're written,
+    /// since core keeps cents of whichever it is and converts nothing.
+    pub currency: String,
+    /// The calendar's weeks start on Monday (else Sunday).
+    pub week_starts_monday: bool,
 }
+
+/// The currency amounts are in until the user chooses another.
+pub const DEFAULT_CURRENCY: &str = "USD";
 
 pub const DEFAULT_HORIZON_DAYS: u16 = 60;
 pub const MIN_HORIZON_DAYS: u16 = 14;
@@ -250,6 +258,8 @@ impl Default for Settings {
             horizon_days: DEFAULT_HORIZON_DAYS,
             taskmint: TaskMintPlan::default(),
             reminders: ReminderSettings::default(),
+            currency: DEFAULT_CURRENCY.into(),
+            week_starts_monday: false,
         }
     }
 }

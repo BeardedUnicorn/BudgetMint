@@ -3,6 +3,7 @@
 import type { ApplyDocsArgs } from "./ApplyDocsArgs";
 import type { ApplyForecastArgs } from "./ApplyForecastArgs";
 import type { ArchiveItemArgs } from "./ArchiveItemArgs";
+import type { BudgetExport } from "./BudgetExport";
 import type { ChangeScheduleArgs } from "./ChangeScheduleArgs";
 import type { DocWrite } from "./DocWrite";
 import type { DocsApplied } from "./DocsApplied";
@@ -18,6 +19,7 @@ import type { Overview } from "./Overview";
 import type { Planned } from "./Planned";
 import type { Reminder } from "./Reminder";
 import type { RemindersArgs } from "./RemindersArgs";
+import type { RestoreBudgetArgs } from "./RestoreBudgetArgs";
 import type { SaveItemArgs } from "./SaveItemArgs";
 import type { SaveSettingsArgs } from "./SaveSettingsArgs";
 import type { SetBalanceArgs } from "./SetBalanceArgs";
@@ -45,6 +47,8 @@ export interface CommandMap {
   set_balance: { args: SetBalanceArgs; reply: Planned };
   save_settings: { args: SaveSettingsArgs; reply: Planned };
   undo: { args: UndoArgs; reply: Array<DocWrite> };
+  export_budget: { args: void; reply: BudgetExport };
+  restore_budget: { args: RestoreBudgetArgs; reply: Planned };
 }
 
 export type CommandName = keyof CommandMap;

@@ -211,6 +211,10 @@ pub struct ScheduleChange {
     pub from: NaiveDate,
     pub repeat: Repeat,
     pub amount_cents: Cents,
+    /// Its last date (inclusive); none: it goes on.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub until: Option<NaiveDate>,
 }
 
 /// `schedule` with `change` from its date on: what comes before stays as it was.
@@ -218,7 +222,7 @@ fn rescheduled(mut schedule: Vec<Segment>, change: ScheduleChange) -> Vec<Segmen
     schedule.retain(|segment| segment.from < change.from);
     schedule.push(Segment {
         from: change.from,
-        until: None,
+        until: change.until,
         repeat: change.repeat,
         amount_cents: change.amount_cents,
     });
@@ -300,11 +304,55 @@ pub fn change_schedule(
         from,
         repeat,
         amount_cents,
+        until: None,
     };
     changed.schedule = rescheduled(changed.schedule, change);
     check_schedule(&changed.schedule)?;
     changed.updated_at = ctx.now;
     Ok(write_item(snapshot, &changed))
+}
+
+/// Replaces the budget with a backup's (crate::backup): each document it
+/// has, written as it has it, and every other one deleted. All of it or
+/// none, with the writes that undo it.
+pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, CoreError> {
+    let restored = crate::backup::read_backup(json)?;
+    let items: Vec<String> = snapshot.items.keys().cloned().collect();
+    let overrides: Vec<(String, NaiveDate)> = snapshot.overrides.keys().cloned().collect();
+    let occ = |(item_id, date): &(String, NaiveDate)| DocKey::Occ {
+        date: *date,
+        item_id: item_id.clone(),
+    };
+    // A document a newer BudgetMint wrote isn't this one's to replace: checked first
+    let mut keys = vec![DocKey::Settings];
+    keys.extend(
+        items
+            .iter()
+            .chain(restored.items.keys())
+            .map(|id| DocKey::Item(id.clone())),
+    );
+    keys.extend(overrides.iter().chain(restored.overrides.keys()).map(occ));
+    for key in &keys {
+        ours(snapshot, key)?;
+    }
+    let mut planned = Planned::default();
+    for at in overrides
+        .iter()
+        .filter(|at| !restored.overrides.contains_key(at))
+    {
+        planned.add(snapshot.write::<Override>(occ(at), None));
+    }
+    for id in items.iter().filter(|id| !restored.items.contains_key(*id)) {
+        planned.add(snapshot.write::<Item>(DocKey::Item(id.clone()), None));
+    }
+    planned.add(snapshot.write(DocKey::Settings, restored.settings.as_ref()));
+    for (id, item) in &restored.items {
+        planned.add(snapshot.write(DocKey::Item(id.clone()), Some(item)));
+    }
+    for (at, over) in &restored.overrides {
+        planned.add(snapshot.write(occ(at), Some(over)));
+    }
+    Ok(planned)
 }
 
 /// Archives an item (it stops; its history stays), or brings it back.
@@ -472,6 +520,11 @@ pub fn set_balance(
 /// Saves the settings (the balance is set_balance's, and stays as it is).
 pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Planned, CoreError> {
     ours(snapshot, &DocKey::Settings)?;
+    if settings.currency.len() != 3 || !settings.currency.bytes().all(|b| b.is_ascii_uppercase()) {
+        return Err(invalid(
+            "Choose a currency by its three-letter code (USD, EUR)",
+        ));
+    }
     if !(MIN_HORIZON_DAYS..=MAX_HORIZON_DAYS).contains(&settings.horizon_days) {
         return Err(invalid(format!(
             "Look {} to {} days ahead",
@@ -948,6 +1001,14 @@ mod tests {
                 "Look 14 to 366 days ahead",
             ),
             (
+                refused(|s| s.currency = "usd".into()),
+                "Choose a currency by its three-letter code (USD, EUR)",
+            ),
+            (
+                refused(|s| s.currency = "EURO".into()),
+                "Choose a currency by its three-letter code (USD, EUR)",
+            ),
+            (
                 refused(|s| s.low_balance_cents = -1),
                 "The low balance must be between $0 and $10,000,000,000",
             ),
@@ -1101,6 +1162,7 @@ mod tests {
             from: d(2027, 1, 1),
             repeat: Repeat::Months { n: 1, day: 1 },
             amount_cents,
+            until: None,
         };
         // The change refused: the name isn't saved either
         assert!(save_item_from(&mut s, edit.clone(), Some(change(-1)), true, &ctx()).is_err());
@@ -1113,6 +1175,30 @@ mod tests {
         assert_eq!(saved.name, "Flat");
         assert_eq!(saved.schedule.len(), 2);
         assert_eq!(saved.schedule[1].amount_cents, 130_000);
+        // A change that ends: on a date after it starts
+        let ending = |until| ScheduleChange {
+            until: Some(until),
+            ..change(130_000)
+        };
+        assert_eq!(
+            message(save_item_from(
+                &mut s,
+                edit.clone(),
+                Some(ending(d(2026, 12, 31))),
+                true,
+                &ctx()
+            )),
+            "It can't end before it starts"
+        );
+        save_item_from(
+            &mut s,
+            edit.clone(),
+            Some(ending(d(2027, 6, 30))),
+            true,
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(s.items["rent"].schedule[1].until, Some(d(2027, 6, 30)));
 
         // Deleted on another device meanwhile: the edit would bring it back
         s.apply(vec![crate::docs::IncomingDoc {
@@ -1127,6 +1213,26 @@ mod tests {
         assert!(s.items.is_empty());
         // Added (not an edit): it's made
         assert!(save_item_from(&mut s, edit, None, false, &ctx()).is_ok());
+    }
+
+    #[test]
+    fn restores_a_backup_whole_and_undoes_it_whole() {
+        let mut s = Snapshot::default();
+        save_item(&mut s, input("rent"), &ctx()).unwrap();
+        let backup = crate::backup::export(&s, &ctx()).backup;
+        save_item(&mut s, input("gym"), &ctx()).unwrap();
+        let planned = restore_budget(&mut s, &backup).unwrap();
+        assert_eq!(s.items.keys().collect::<Vec<_>>(), vec!["rent"]);
+        // Once more: nothing changes
+        assert_eq!(restore_budget(&mut s, &backup).unwrap(), Planned::default());
+        assert_eq!(undo(&s, planned).unwrap()[0].doc_id, "item~gym");
+        // A newer BudgetMint's document isn't replaced: nothing is
+        s.apply(vec![crate::docs::IncomingDoc {
+            doc_id: "item~rent".into(),
+            json: Some("{}".into()),
+            schema: 9,
+        }]);
+        assert_eq!(message(restore_budget(&mut s, &backup)), NEWER);
     }
 
     #[test]

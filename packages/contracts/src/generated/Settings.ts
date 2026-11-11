@@ -14,4 +14,13 @@ lowBalanceCents: number,
 /**
  * How far ahead the forecast looks.
  */
-horizonDays: number, taskmint: TaskMintPlan, reminders: ReminderSettings, };
+horizonDays: number, taskmint: TaskMintPlan, reminders: ReminderSettings, 
+/**
+ * The currency amounts are in (ISO 4217): only how they're written,
+ * since core keeps cents of whichever it is and converts nothing.
+ */
+currency: string, 
+/**
+ * The calendar's weeks start on Monday (else Sunday).
+ */
+weekStartsMonday: boolean, };

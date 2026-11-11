@@ -48,6 +48,11 @@ export interface Platform {
   systemBars?: { setDark(dark: boolean): void };
   /** Android's launch screen, held until the app has drawn. */
   splashScreen?: { hide(): void };
+  /**
+   * Saves a file where the user picks (a save dialog); false if they didn't.
+   * Without it a browser downloads the file, and an app's webview can't save one.
+   */
+  saveFile?: (name: string, text: string, type: string) => Promise<boolean>;
 }
 
 export interface Shell {

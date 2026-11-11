@@ -1,15 +1,20 @@
 /**
  * Bills (or income): each with its amount, how often, when it's next due
  * and what it comes to a month; add, edit, see its history, archive or
- * delete it. Archived ones are listed apart.
+ * delete it. Archived ones are listed apart. A long list can be searched,
+ * narrowed to a category and put in another order; on a phone, each row's
+ * actions are in a menu by its name (the column that stays in view).
  */
 
-import { useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Chip,
   IconButton,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -27,6 +32,7 @@ import {
   DeleteOutlined as DeleteIcon,
   Edit as EditIcon,
   History as HistoryIcon,
+  MoreVert as MoreIcon,
   ReceiptLong as BillsIcon,
   Payments as IncomeIcon,
   Unarchive as UnarchiveIcon,
@@ -34,8 +40,10 @@ import {
 import type { ItemKind, ItemView } from '@budgetmint/contracts';
 import { useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { useNotification } from '../../../contexts/NotificationContext';
+import { useCompactLayout } from '../../../hooks/useCompactLayout';
+import { useNavigation } from '../../../contexts/NavigationContext';
 import { formatRelativeDay } from '../../../utils/dates';
-import { describeRepeat, occurrenceLabel } from '../../../utils/describe';
+import { describeEnd, describeRepeat, occurrenceLabel } from '../../../utils/describe';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
@@ -45,6 +53,7 @@ import { PHONE_TABLE } from '../../ui/tables/tableStyles';
 import { VISUALLY_HIDDEN } from '../../ui/visuallyHidden';
 import { SECTION } from '../overview/OverviewPage';
 import { HistoryDialog } from './HistoryDialog';
+import { ALL_ITEMS, CategoryTotals, categoriesOf, findItems, ItemFilters, type ItemQuery } from './ItemFilters';
 
 const MONO = '"Roboto Mono", monospace';
 
@@ -65,15 +74,105 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
 
 type Dialog = { type: 'edit'; view: ItemView | null } | { type: 'history' | 'delete'; view: ItemView };
 
+interface Action {
+  /** Its tooltip (and, without `short`, its menu item). */
+  title: string;
+  short?: string;
+  /** What a screen reader says: the item's name in it. */
+  name: string;
+  icon: ReactNode;
+  run: () => void;
+}
+
+/** A row's actions: buttons, or on a phone a menu. */
+function ItemActions({ actions, label, compact }: { actions: Action[]; label: string; compact: boolean }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  if (!compact) {
+    return actions.map(action => (
+      <Tooltip key={action.name} title={action.title}>
+        <IconButton size="small" aria-label={action.name} onClick={action.run}>
+          {action.icon}
+        </IconButton>
+      </Tooltip>
+    ));
+  }
+  return (
+    <>
+      <IconButton size="small" aria-label={label} onClick={event => setAnchor(event.currentTarget)}>
+        <MoreIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        {actions.map(action => (
+          <MenuItem
+            key={action.name}
+            aria-label={action.name}
+            onClick={() => {
+              setAnchor(null);
+              action.run();
+            }}
+          >
+            <ListItemIcon>{action.icon}</ListItemIcon>
+            {action.short ?? action.title}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
 function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string; onOpen: (dialog: Dialog) => void }) {
   const change = useBudgetChange();
   const { showError } = useNotification();
+  const compact = useCompactLayout();
   const archive = (view: ItemView, archived: boolean) => {
     try {
       change('archive_item', { itemId: view.item.id, archived }, `${view.item.name} ${archived ? 'archived' : 'back'}`);
     } catch (error) {
       showError((error as Error).message);
     }
+  };
+  const actionsOf = (view: ItemView): Action[] => {
+    const { item } = view;
+    const edit: Action[] = [
+      {
+        title: 'Edit',
+        name: `Edit ${item.name}`,
+        icon: <EditIcon fontSize="small" />,
+        run: () => onOpen({ type: 'edit', view }),
+      },
+      {
+        title: 'History',
+        name: `${item.name}'s history`,
+        icon: <HistoryIcon fontSize="small" />,
+        run: () => onOpen({ type: 'history', view }),
+      },
+    ];
+    return item.archived
+      ? [
+          ...edit,
+          {
+            title: 'Bring back',
+            name: `Bring back ${item.name}`,
+            icon: <UnarchiveIcon fontSize="small" />,
+            run: () => archive(view, false),
+          },
+          {
+            title: 'Delete',
+            name: `Delete ${item.name}`,
+            icon: <DeleteIcon fontSize="small" />,
+            run: () => onOpen({ type: 'delete', view }),
+          },
+        ]
+      : [
+          ...edit,
+          {
+            title: 'Archive (stop it, keep its history)',
+            short: 'Archive',
+            name: `Archive ${item.name}`,
+            icon: <ArchiveIcon fontSize="small" />,
+            run: () => archive(view, true),
+          },
+        ];
   };
 
   return (
@@ -86,11 +185,13 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
             <TableCell>How often</TableCell>
             <TableCell>Next</TableCell>
             <TableCell align="right">A month</TableCell>
-            <TableCell>
-              <Box component="span" sx={VISUALLY_HIDDEN}>
-                Actions
-              </Box>
-            </TableCell>
+            {!compact && (
+              <TableCell>
+                <Box component="span" sx={VISUALLY_HIDDEN}>
+                  Actions
+                </Box>
+              </TableCell>
+            )}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -107,12 +208,25 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     </Typography>
                     {item.category && <Chip size="small" label={item.category} />}
                     {item.autopay && <Chip size="small" label="Autopay" variant="outlined" color="info" />}
+                    {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
                   </Stack>
+                  {item.note && (
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: 'block', overflowWrap: 'anywhere' }}
+                    >
+                      {item.note}
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
                   {formatCents(segment.amountCents)}
                 </TableCell>
-                <TableCell>{describeRepeat(segment.repeat, segment.from)}</TableCell>
+                <TableCell>
+                  {describeRepeat(segment.repeat, segment.from)}
+                  {segment.repeat.every !== 'once' && describeEnd(view.item.schedule.at(-1)!.until)}
+                </TableCell>
                 <TableCell sx={{ color: view.next?.late ? 'error.main' : undefined }}>
                   {/* Said in words too, not only in red */}
                   {view.next?.late && `${occurrenceLabel(view.next)}: `}
@@ -121,54 +235,11 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
                   {view.monthlyCents > 0 ? formatCents(view.monthlyCents) : '—'}
                 </TableCell>
-                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                  <Tooltip title="Edit">
-                    <IconButton
-                      size="small"
-                      aria-label={`Edit ${item.name}`}
-                      onClick={() => onOpen({ type: 'edit', view })}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="History">
-                    <IconButton
-                      size="small"
-                      aria-label={`${item.name}'s history`}
-                      onClick={() => onOpen({ type: 'history', view })}
-                    >
-                      <HistoryIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  {item.archived ? (
-                    <>
-                      <Tooltip title="Bring back">
-                        <IconButton
-                          size="small"
-                          aria-label={`Bring back ${item.name}`}
-                          onClick={() => archive(view, false)}
-                        >
-                          <UnarchiveIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete">
-                        <IconButton
-                          size="small"
-                          aria-label={`Delete ${item.name}`}
-                          onClick={() => onOpen({ type: 'delete', view })}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </>
-                  ) : (
-                    <Tooltip title="Archive (stop it, keep its history)">
-                      <IconButton size="small" aria-label={`Archive ${item.name}`} onClick={() => archive(view, true)}>
-                        <ArchiveIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  )}
-                </TableCell>
+                {!compact && (
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <ItemActions actions={actionsOf(view)} label="" compact={false} />
+                  </TableCell>
+                )}
               </TableRow>
             );
           })}
@@ -185,21 +256,35 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   const change = useBudgetChange();
   const { showError } = useNotification();
   const [opened, setDialog] = useState<Dialog | null>(null);
+  const [query, setQuery] = useState<ItemQuery>(ALL_ITEMS);
   // An item deleted (here or on another device) takes its dialog with it
   const dialog = opened?.view && !all.some(view => view.item.id === opened.view?.item.id) ? null : opened;
   const words = WORDS[kind];
   const views = all.filter(view => view.item.kind === kind);
-  const active = views.filter(view => !view.item.archived);
-  const archived = views.filter(view => view.item.archived);
-  const monthly = active.reduce((sum, view) => sum + view.monthlyCents, 0);
+  const unarchived = views.filter(view => !view.item.archived);
+  const monthly = unarchived.reduce((sum, view) => sum + view.monthlyCents, 0);
+  const categories = categoriesOf(views);
+  // A category no longer used by any (renamed, deleted) filters nothing out
+  const asked = categories.includes(query.category) ? query : { ...query, category: '' };
+  const found = findItems(views, asked);
+  const active = found.filter(view => !view.item.archived);
+  const archived = found.filter(view => view.item.archived);
+  const narrowed = found.length < views.length;
   const Icon = kind === 'bill' ? BillsIcon : IncomeIcon;
   const add = () => setDialog({ type: 'edit', view: null });
+  // Opened to add one (⌘N)
+  const { params, clearParams } = useNavigation();
+  useEffect(() => {
+    if (!params.add) return;
+    setDialog({ type: 'edit', view: null });
+    clearParams();
+  }, [params.add, clearParams]);
 
   return (
     <PageContainer>
       <PageHeader
         title={words.title}
-        subtitle={active.length > 0 ? `${words.subtitle} About ${formatCents(monthly)} a month.` : words.subtitle}
+        subtitle={unarchived.length > 0 ? `${words.subtitle} About ${formatCents(monthly)} a month.` : words.subtitle}
         actions={
           <Button variant="contained" startIcon={<AddIcon />} onClick={add}>
             Add {words.one}
@@ -220,11 +305,15 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
       ) : (
         <>
           <Paper sx={SECTION}>
+            {views.length > 1 && <ItemFilters query={asked} categories={categories} onChange={setQuery} />}
             {active.length > 0 ? (
-              <ItemsTable views={active} today={today} onOpen={setDialog} />
+              <>
+                <ItemsTable views={active} today={today} onOpen={setDialog} />
+                {!narrowed && <CategoryTotals views={active} />}
+              </>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                All archived.
+                {narrowed ? `No ${words.title.toLowerCase()} match.` : 'All archived.'}
               </Typography>
             )}
           </Paper>

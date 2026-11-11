@@ -1,14 +1,17 @@
 /**
- * Adding or editing a bill (or income): what it is, how much, and how often.
- * Editing the amount or the schedule asks from when: what's before keeps
- * its occurrences (core's save_item with a change), unless it hasn't started yet.
+ * Adding or editing a bill (or income): what it is, how much, how often,
+ * and (if it does) when it ends. Editing the amount or the schedule asks
+ * from when: what's before keeps its occurrences (core's save_item with a
+ * change), unless it hasn't started yet. The end is the schedule's last
+ * part's: what comes after it doesn't happen.
  */
 
 import { useRef, useState } from 'react';
-import { Alert, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
-import type { ItemKind, ItemView, Repeat } from '@budgetmint/contracts';
+import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
+import type { ItemKind, ItemView, Repeat, Segment } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
-import { useBudgetChange } from '../../data/BudgetContext';
+import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { categoriesOf } from '../pages/items/ItemFilters';
 import { ordinal } from '../../utils/describe';
 import { centsToInput, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
@@ -27,8 +30,8 @@ const EVERY_LABELS: Record<Every, string> = {
 /** The reminder choices: days before it's due. */
 const LEAD_CHOICES = [0, 1, 2, 3, 5, 7, 14];
 
-/** The choices, with the one set now when it isn't among them (core allows any up to 30). */
-export const leadChoices = (current: number) => [...new Set([...LEAD_CHOICES, current])].sort((a, b) => a - b);
+/** The choices, with the ones set now when they aren't among them (core allows any up to 30). */
+export const leadChoices = (...current: number[]) => [...new Set([...LEAD_CHOICES, ...current])].sort((a, b) => a - b);
 
 export const leadLabel = (days: number) =>
   days === 0 ? 'On the day' : days === 1 ? '1 day before' : `${days} days before`;
@@ -53,6 +56,12 @@ export function sameRepeat(a: Repeat, b: Repeat): boolean {
   return a.every === b.every && n(a) === n(b) && day(a) === day(b);
 }
 
+/** `schedule` ending on `until` (none: going on), from its last part. */
+const endingOn = (schedule: Segment[], until: string | null): Segment[] =>
+  schedule.map((segment, index) => (index === schedule.length - 1 ? { ...segment, until } : segment));
+
+type Field = 'amount' | 'changeFrom' | 'endsOn';
+
 export interface ItemDialogProps {
   kind: ItemKind;
   /** The one being edited, as core lists it; none to add one. */
@@ -65,6 +74,8 @@ export interface ItemDialogProps {
 
 export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: ItemDialogProps) {
   const change = useBudgetChange();
+  // The categories already in use, offered as it's typed
+  const categories = categoriesOf(useCoreQuery('get_items'));
   const item = view?.item;
   // The part of its schedule in force today (core's)
   const segment = view?.current ?? null;
@@ -75,22 +86,28 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
   const [from, setFrom] = useState(segment?.from ?? today);
   const [day, setDay] = useState(segment?.repeat.every === 'months' ? segment.repeat.day : Number(today.slice(8, 10)));
   const [changeFrom, setChangeFrom] = useState(today);
+  const lastUntil = item?.schedule.at(-1)?.until ?? null;
+  const [ends, setEnds] = useState(lastUntil !== null);
+  const [endsOn, setEndsOn] = useState(lastUntil ?? '');
   const [category, setCategory] = useState(item?.category ?? '');
   const [autopay, setAutopay] = useState(item?.autopay ?? false);
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
-  const firstLead = item?.reminder?.leadDays[0] ?? defaultLeadDays;
-  const [lead, setLead] = useState(firstLead);
+  const [leads, setLeads] = useState<number[]>(item?.reminder?.leadDays ?? [defaultLeadDays]);
   const [note, setNote] = useState(item?.note ?? '');
   const [problem, setProblem] = useState<string | null>(null);
   /** A field left wrong: said under it, and focus goes to it. */
-  const [wrong, setWrong] = useState<{ field: 'amount' | 'changeFrom'; message: string } | null>(null);
-  const amountInput = useRef<HTMLInputElement>(null);
-  const changeFromInput = useRef<HTMLInputElement>(null);
-  const refuse = (field: 'amount' | 'changeFrom', message: string) => {
+  const [wrong, setWrong] = useState<{ field: Field; message: string } | null>(null);
+  const inputs = {
+    amount: useRef<HTMLInputElement>(null),
+    changeFrom: useRef<HTMLInputElement>(null),
+    endsOn: useRef<HTMLInputElement>(null),
+  };
+  const refuse = (field: Field, message: string) => {
     setProblem(null);
     setWrong({ field, message });
-    (field === 'amount' ? amountInput : changeFromInput).current?.focus();
+    inputs[field].current?.focus();
   };
+  const wrongAt = (field: Field) => (wrong?.field === field ? wrong.message : undefined);
 
   const cents = parseDollars(amount);
   const repeat = repeatOf(every, Number(n), day);
@@ -105,6 +122,13 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
       refuse('amount', 'Enter the amount');
       return;
     }
+    // Something that happens once has no end
+    const ending = every !== 'once' && ends;
+    if (ending && !endsOn) {
+      refuse('endsOn', 'Choose the date it ends on');
+      return;
+    }
+    const until = ending ? endsOn : null;
     setWrong(null);
     const base = {
       id: item?.id ?? crypto.randomUUID(),
@@ -112,12 +136,12 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
       name,
       category: category || null,
       autopay,
-      // Left as it was, the reminder keeps every day it had (another device may have set several)
-      reminder: reminded ? { leadDays: item?.reminder && lead === firstLead ? item.reminder.leadDays : [lead] } : null,
+      // None chosen: no reminder (core's)
+      reminder: reminded ? { leadDays: leads } : null,
       archived: item?.archived ?? false,
       note: note || null,
     };
-    const newSchedule = [{ from, until: null, repeat, amountCents: cents }];
+    const newSchedule = [{ from, until, repeat, amountCents: cents }];
     const saved = `${name.trim()} ${item ? 'saved' : 'added'}`;
     try {
       if (item && scheduleChanged && started) {
@@ -130,7 +154,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
           'save_item',
           {
             item: { ...base, schedule: item.schedule },
-            change: { from: changeFrom, repeat, amountCents: cents },
+            change: { from: changeFrom, repeat, amountCents: cents, until: until ?? undefined },
             edit: true,
           },
           saved
@@ -140,7 +164,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
           'save_item',
           // An edit is refused if the item was deleted (on another device) meanwhile
           {
-            item: { ...base, schedule: scheduleChanged || !item ? newSchedule : item.schedule },
+            item: { ...base, schedule: scheduleChanged || !item ? newSchedule : endingOn(item.schedule, until) },
             edit: item !== undefined,
           },
           saved
@@ -169,8 +193,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
           value={amount}
           onChange={setAmount}
           error={wrong?.field === 'amount'}
-          helperText={wrong?.field === 'amount' ? wrong.message : undefined}
-          inputRef={amountInput}
+          helperText={wrongAt('amount')}
+          inputRef={inputs.amount}
         />
         {/* One under the other on a phone, where "Every how many months" doesn't fit beside it */}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
@@ -222,27 +246,58 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
             type="date"
             value={changeFrom}
             onChange={event => setChangeFrom(event.target.value)}
-            inputRef={changeFromInput}
+            inputRef={inputs.changeFrom}
             error={wrong?.field === 'changeFrom'}
             helperText={
-              wrong?.field === 'changeFrom'
-                ? wrong.message
-                : `Before then, it stays as it was.${every === 'weeks' ? ' It repeats on that day of the week.' : ''}`
+              wrongAt('changeFrom') ??
+              `Before then, it stays as it was.${every === 'weeks' ? ' It repeats on that day of the week.' : ''}`
             }
             slotProps={{ inputLabel: { shrink: true } }}
           />
         )}
-        <TextField
-          label="Category (optional)"
-          value={category}
-          onChange={event => setCategory(event.target.value)}
-          slotProps={{ htmlInput: { maxLength: LIMITS.MAX_CATEGORY } }}
+        {every !== 'once' && (
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
+            <FormControlLabel
+              control={<Switch checked={ends} onChange={event => setEnds(event.target.checked)} />}
+              label="Ends"
+            />
+            {ends && (
+              <TextField
+                label="Last on or before"
+                type="date"
+                value={endsOn}
+                onChange={event => setEndsOn(event.target.value)}
+                inputRef={inputs.endsOn}
+                error={wrong?.field === 'endsOn'}
+                helperText={wrongAt('endsOn') ?? 'Nothing after this date'}
+                sx={{ flex: 1 }}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            )}
+          </Stack>
+        )}
+        <Autocomplete
+          freeSolo
+          options={categories}
+          inputValue={category}
+          onInputChange={(_event, value) => setCategory(value)}
+          renderInput={params => (
+            <TextField
+              {...params}
+              label="Category (optional)"
+              slotProps={{
+                ...params.slotProps,
+                htmlInput: { ...params.slotProps.htmlInput, maxLength: LIMITS.MAX_CATEGORY },
+              }}
+            />
+          )}
         />
         <FormControlLabel
           control={<Switch checked={autopay} onChange={event => setAutopay(event.target.checked)} />}
           label={kind === 'bill' ? 'Paid automatically (autopay)' : 'Comes in automatically'}
         />
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+        {/* One under the other on a phone */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
           <FormControlLabel
             control={<Switch checked={reminded} onChange={event => setReminded(event.target.checked)} />}
             label="Remind me"
@@ -252,12 +307,25 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
               select
               size="small"
               label="When"
-              value={lead}
-              onChange={event => setLead(Number(event.target.value))}
-              sx={{ minWidth: 180 }}
+              value={leads}
+              onChange={event => setLeads((event.target.value as unknown as number[]).sort((a, b) => a - b))}
+              helperText={`Up to ${LIMITS.MAX_LEADS} times`}
+              sx={{ flex: 1, minWidth: 0 }}
+              slotProps={{
+                select: {
+                  multiple: true,
+                  displayEmpty: true,
+                  renderValue: selected => (selected as number[]).map(leadLabel).join(', ') || 'Choose when',
+                },
+              }}
             >
-              {leadChoices(lead).map(value => (
-                <MenuItem key={value} value={value}>
+              {leadChoices(...leads).map(value => (
+                <MenuItem
+                  key={value}
+                  value={value}
+                  disabled={!leads.includes(value) && leads.length >= LIMITS.MAX_LEADS}
+                >
+                  <Checkbox size="small" checked={leads.includes(value)} sx={{ p: 0, mr: 1 }} />
                   {leadLabel(value)}
                 </MenuItem>
               ))}

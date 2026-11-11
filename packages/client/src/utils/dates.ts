@@ -36,6 +36,9 @@ const format = (day: string, options: Intl.DateTimeFormatOptions) =>
 /** "Nov 30" */
 export const formatDay = (day: string) => format(day, { month: 'short', day: 'numeric' });
 
+/** "Nov 30, 2026": for a date that may be in another year. */
+export const formatDayInYear = (day: string) => format(day, { month: 'short', day: 'numeric', year: 'numeric' });
+
 /** "Mon, Nov 30" */
 export const formatWeekday = (day: string) => format(day, { weekday: 'short', month: 'short', day: 'numeric' });
 

@@ -13,16 +13,7 @@ import { VISUALLY_HIDDEN } from '../ui/visuallyHidden';
 /** Widest a page's content gets. */
 export const PAGE_MAX_WIDTH = 1200;
 
-interface PageContainerProps {
-  children: ReactNode;
-  /**
-   * The page fills the window's height and scrolls inside its own panes
-   * (Tasks, Notes), instead of scrolling as a whole.
-   */
-  fill?: boolean;
-}
-
-export function PageContainer({ children, fill = false }: PageContainerProps) {
+export function PageContainer({ children }: { children: ReactNode }) {
   return (
     <Box
       sx={{
@@ -30,7 +21,6 @@ export function PageContainer({ children, fill = false }: PageContainerProps) {
         width: '100%',
         maxWidth: PAGE_MAX_WIDTH,
         mx: 'auto',
-        ...(fill && { height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }),
       }}
     >
       {children}
@@ -40,8 +30,6 @@ export function PageContainer({ children, fill = false }: PageContainerProps) {
 
 interface PageHeaderProps {
   title: string;
-  /** Beside the title, outside the heading (a count chip). */
-  titleAdornment?: ReactNode;
   subtitle?: ReactNode;
   /** The page's main buttons, on the right. */
   actions?: ReactNode;
@@ -49,10 +37,10 @@ interface PageHeaderProps {
   children?: ReactNode;
 }
 
-export function PageHeader({ title, titleAdornment, subtitle, actions, children }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, actions, children }: PageHeaderProps) {
   // On a phone the top bar names the page: the title is for screen readers
   // there, and a header with nothing else to show takes no room
-  const phoneShowsRow = Boolean(titleAdornment || actions);
+  const phoneShowsRow = Boolean(actions);
   return (
     <Box component="header" sx={{ mb: 3, flexShrink: 0, [PHONE]: { mb: phoneShowsRow || children ? 2 : 0 } }}>
       <Box
@@ -70,7 +58,6 @@ export function PageHeader({ title, titleAdornment, subtitle, actions, children 
             <Typography variant="h4" component="h1" sx={{ fontWeight: 600, [PHONE]: VISUALLY_HIDDEN }}>
               {title}
             </Typography>
-            {titleAdornment}
           </Box>
           {subtitle && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, [PHONE]: { display: 'none' } }}>

@@ -23,6 +23,16 @@ describe('signing in', () => {
     await user.click(screen.getByRole('button', { name: 'Create an account' }));
     await user.type(screen.getByLabelText('Email'), ' new@example.com ');
     await user.type(screen.getByLabelText('Password'), 'secret1');
+    // Typed again, differently: said, and nothing made
+    await user.type(screen.getByLabelText('The password again'), 'secret2');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    expect(screen.getByText(/The two passwords aren’t the same/)).toBeInTheDocument();
+    expect(engine.signUp).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Show the password' }));
+    expect(screen.getByLabelText('The password again')).toHaveAttribute('type', 'text');
+    await user.click(screen.getByRole('button', { name: 'Hide the password' }));
+    await user.clear(screen.getByLabelText('The password again'));
+    await user.type(screen.getByLabelText('The password again'), 'secret1');
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     expect(engine.signUp).toHaveBeenCalledWith('new@example.com', 'secret1');
     await user.click(screen.getByRole('button', { name: 'I have an account' }));

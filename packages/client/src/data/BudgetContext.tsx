@@ -16,6 +16,7 @@ import {
 import type { CommandArgs, CommandName, CommandReply, Planned } from '@budgetmint/contracts';
 import type { CoreArgs, CoreClient } from '../core';
 import type { BudgetSession, SessionView } from '../cloud/session';
+import { setCurrency } from '../utils/money';
 import { useNotification } from '../contexts/NotificationContext';
 
 interface BudgetValue {
@@ -36,6 +37,8 @@ export function BudgetProvider({
   children: ReactNode;
 }) {
   const view = useSyncExternalStore(session.subscribe, session.getView);
+  // Amounts are written in the settings' currency: set before anything in here writes one
+  setCurrency(core.call('get_settings').settings.currency);
   return <BudgetContext.Provider value={{ session, core, view }}>{children}</BudgetContext.Provider>;
 }
 
@@ -73,7 +76,8 @@ export type ChangeCommand =
   | 'delete_item'
   | 'set_occurrence'
   | 'set_balance'
-  | 'save_settings';
+  | 'save_settings'
+  | 'restore_budget';
 
 /**
  * Makes a change: core checks and plans it (a refusal throws, with the

@@ -549,7 +549,7 @@ describe('the pieces', () => {
     expect(cloudErrorMessage({ code: 'nope' }, { reading: true })).toBe('[object Object]');
     expect(formatDateTime(new Date(2026, 10, 30, 9, 5))).toMatch(/2026/);
     render(
-      <PageContainer fill>
+      <PageContainer>
         <EmptyState plain icon={<span />} title="Nothing" description="Here" />
       </PageContainer>
     );

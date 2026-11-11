@@ -4,4 +4,8 @@ import type { Repeat } from "./Repeat";
 /**
  * A change to an item's schedule from a date on.
  */
-export type ScheduleChange = { from: string, repeat: Repeat, amountCents: number, };
+export type ScheduleChange = { from: string, repeat: Repeat, amountCents: number, 
+/**
+ * Its last date (inclusive); none: it goes on.
+ */
+until?: string, };

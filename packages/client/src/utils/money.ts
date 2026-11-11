@@ -1,21 +1,36 @@
 /**
- * Money: cents everywhere, written in dollars in the user's locale.
+ * Money: cents everywhere, written in the settings' currency (dollars until
+ * another is chosen) in the user's locale.
  */
 
 import { formattingLocale } from './locale';
 
-/** "$1,234.50"; "-$12.00" below zero. */
-export function formatCents(cents: number): string {
-  return new Intl.NumberFormat(formattingLocale(), { style: 'currency', currency: 'USD' }).format(cents / 100);
+let currency = 'USD';
+
+/** The currency amounts are written in (the settings', set as they're read). */
+export function setCurrency(code: string): void {
+  currency = code;
 }
 
-/** Whole dollars, for tight spaces ("$1,235"). */
+/** "$1,234.50"; "-$12.00" below zero. */
+export function formatCents(cents: number): string {
+  return new Intl.NumberFormat(formattingLocale(), { style: 'currency', currency }).format(cents / 100);
+}
+
+/** Whole units, for tight spaces ("$1,235"). */
 export function formatWholeCents(cents: number): string {
   return new Intl.NumberFormat(formattingLocale(), {
     style: 'currency',
-    currency: 'USD',
+    currency,
     maximumFractionDigits: 0,
   }).format(Math.round(cents / 100));
+}
+
+/** The currency's sign ("$", "€"), as an amount field starts with it. */
+export function currencySymbol(): string {
+  return new Intl.NumberFormat(formattingLocale(), { style: 'currency', currency })
+    .formatToParts(0)
+    .find(part => part.type === 'currency')!.value;
 }
 
 /** An amount with a ~ when some of it is estimated or assumed. */
@@ -31,7 +46,8 @@ export function formatMaybeCents(cents: number, uncertain: boolean): string {
  * points do). Anything that reads neither way is refused rather than guessed.
  */
 export function parseDollars(text: string): number | null {
-  const typed = text.replace(/[$\s]/g, '');
+  // Without any currency's sign ("$40", "€40")
+  const typed = text.replace(/[\s\p{Sc}]/gu, '');
   const point = typed.lastIndexOf('.');
   const comma = typed.lastIndexOf(',');
   let decimal: '' | '.' | ',' = '';

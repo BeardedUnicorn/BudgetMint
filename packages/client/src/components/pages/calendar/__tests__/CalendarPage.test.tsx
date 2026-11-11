@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { CalendarDay } from '@budgetmint/contracts';
-import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
+import {
+  forecastDoc,
+  item,
+  monthly,
+  override,
+  SETTLED,
+  startBudget,
+  TEST_NOW,
+} from '../../../../__tests__/setup/budget';
 import { describeDay } from '../DayCell';
 import { keyTarget, weeksOf } from '../MonthGrid';
 
@@ -142,6 +150,21 @@ describe('the calendar', () => {
     );
     expect(weeks).toHaveLength(5);
     expect(weeks[4].filter(Boolean)).toHaveLength(2);
+    // From Monday: Nov 1 (a Sunday) ends the first week
+    const fromMonday = weeksOf(
+      Array.from({ length: 30 }, (_, i) => day({ date: `2026-11-${String(i + 1).padStart(2, '0')}` })),
+      true
+    );
+    expect(fromMonday[0].filter(Boolean)).toHaveLength(1);
+    expect(fromMonday).toHaveLength(6);
+    expect(keyTarget('Home', '2026-11-10', true)).toBe('2026-11-09');
+    expect(keyTarget('End', '2026-11-10', true)).toBe('2026-11-15');
+  });
+
+  it('starts its weeks on Monday when the settings say', async () => {
+    const { user } = await startBudget({ settings: { ...SETTLED, weekStartsMonday: true } });
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    expect(screen.getAllByRole('columnheader')[0]).toHaveTextContent('Mon');
   });
 
   it('puts a day in words, its skipped and paid ones counted rightly', () => {

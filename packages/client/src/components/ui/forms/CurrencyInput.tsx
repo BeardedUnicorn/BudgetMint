@@ -1,10 +1,12 @@
 // Adapted from TaskMint packages/client/src/components/ui/forms/CurrencyInput.tsx @ 1623bee: it takes a ref to its input.
 import React from 'react';
 import { TextField, InputAdornment } from '@mui/material';
+import { LIMITS } from '@budgetmint/contracts';
 import { CurrencyInputProps } from '../../../types/ui';
+import { currencySymbol } from '../../../utils/money';
 
-/** The largest amount the field takes. */
-export const MAX_AMOUNT = 999999;
+/** The largest amount the field takes: core's. */
+export const MAX_AMOUNT = LIMITS.MAX_CENTS / 100;
 
 /**
  * An amount as typed, kept to what's valid: digits and one decimal point, at
@@ -24,7 +26,7 @@ export function cleanAmount(text: string): string {
   return parseFloat(amount) > MAX_AMOUNT ? String(MAX_AMOUNT) : amount;
 }
 
-/** A dollar amount field. */
+/** An amount field, in the settings' currency. */
 export function CurrencyInput({
   value,
   onChange,
@@ -54,7 +56,7 @@ export function CurrencyInput({
       sx={sx}
       slotProps={{
         input: {
-          startAdornment: <InputAdornment position="start">$</InputAdornment>,
+          startAdornment: <InputAdornment position="start">{currencySymbol()}</InputAdornment>,
         },
         htmlInput: {
           inputMode: 'decimal',

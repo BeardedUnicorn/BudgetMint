@@ -15,7 +15,11 @@ import { importIsStale } from '../../../utils/taskmint';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
 
-const DELAYS = [0, 12, 24, 48, 72, 120];
+/** How long a withdrawal may take to reach the bank (Settings and onboarding offer the same). */
+export const DELAYS = [0, 12, 24, 48, 72, 120];
+
+export const delayLabel = (hours: number) =>
+  hours === 0 ? 'At once' : hours < 48 ? `${hours} hours later` : `${hours / 24} days later`;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -144,7 +148,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
             >
               {DELAYS.map(hours => (
                 <MenuItem key={hours} value={hours}>
-                  {hours === 0 ? 'At once' : hours < 48 ? `${hours} hours later` : `${hours / 24} days later`}
+                  {delayLabel(hours)}
                 </MenuItem>
               ))}
             </TextField>

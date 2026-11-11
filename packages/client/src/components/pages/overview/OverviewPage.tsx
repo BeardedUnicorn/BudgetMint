@@ -18,7 +18,7 @@ import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { PHONE } from '../../../theme/media';
 import { formatDay, formatMoment, formatRelativeDay, formatWeekday } from '../../../utils/dates';
-import { formatCents, formatMaybeCents } from '../../../utils/money';
+import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
 import { importIsStale, WITHDRAWALS_NOTE } from '../../../utils/taskmint';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
@@ -125,7 +125,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             </Button>
           }
         >
-          Until you set your balance, the forecast starts from $0.
+          Until you set your balance, the forecast starts from {formatWholeCents(0)}.
         </Alert>
       )}
       {firstShort ? (

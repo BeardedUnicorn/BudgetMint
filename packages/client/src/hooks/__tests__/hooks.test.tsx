@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
 import type { Reminder } from '@budgetmint/contracts';
 import { item, monthly, startBudget } from '../../__tests__/setup/budget';
 import { createFakeShell, TEST_NOW } from '../../testing';
-import { shortcutView, viewShortcut, modifierLabel, isMacPlatform } from '../useKeyboardShortcuts';
+import { shortcutAction, shortcutView, viewShortcut, modifierLabel, isMacPlatform } from '../useKeyboardShortcuts';
 import { LAST_RAN_INTERVAL_MS, LAST_RAN_KEY, reminderText, scheduled } from '../useReminders';
 import { readLocal, writeLocal } from '../../utils/localStore';
 import { useSettings } from '../useSettingsChange';
@@ -56,6 +56,37 @@ describe('keyboard shortcuts', () => {
     expect(viewShortcut('calendar', false)).toBe('Ctrl+4');
     expect(modifierLabel(false)).toBe('Ctrl+');
     expect(typeof isMacPlatform()).toBe('boolean');
+  });
+
+  it('add with ⌘N and list them with ⌘/, outside a browser only', () => {
+    expect(shortcutAction(press('n'), true, false)).toBe('add');
+    expect(shortcutAction(press('N'), true, false)).toBe('add');
+    expect(shortcutAction(press('/'), true, false)).toBe('list');
+    expect(shortcutAction(press('/'), true, true)).toBeNull();
+    expect(shortcutAction(press('x'), true, false)).toBeNull();
+    expect(shortcutAction(press('n', { altKey: true }), true, false)).toBeNull();
+    expect(shortcutAction(press('n', { metaKey: false, ctrlKey: true }), false, false)).toBe('add');
+  });
+
+  it('add a bill from any page, income from its own, and list them all', async () => {
+    const mac = isMacPlatform();
+    const { user } = await startBudget();
+    const key = (k: string) => fireEvent.keyDown(window, { key: k, metaKey: mac, ctrlKey: !mac });
+    key('n');
+    expect(await screen.findByRole('dialog', { name: 'Add bill' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bills', level: 1, hidden: true })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    key('3');
+    key('n');
+    expect(await screen.findByRole('dialog', { name: 'Add income' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    key('/');
+    const list = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(within(list).getByText('Open Calendar')).toBeInTheDocument();
+    await user.click(within(list).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('move between pages, but not behind a dialog', async () => {

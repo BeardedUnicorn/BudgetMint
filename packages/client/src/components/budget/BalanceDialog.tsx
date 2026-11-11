@@ -8,7 +8,7 @@ import { useRef, useState } from 'react';
 import { Alert, InputAdornment, Stack, TextField, Typography } from '@mui/material';
 import type { Balance } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
-import { centsToInput, parseDollars } from '../../utils/money';
+import { centsToInput, parseDollars, currencySymbol } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 
 export function BalanceDialog({
@@ -61,7 +61,7 @@ export function BalanceDialog({
           error={wrong}
           helperText={wrong ? 'Enter what the account holds (a minus sign if it’s overdrawn)' : undefined}
           slotProps={{
-            input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
+            input: { startAdornment: <InputAdornment position="start">{currencySymbol()}</InputAdornment> },
             htmlInput: { inputMode: 'decimal' },
           }}
         />

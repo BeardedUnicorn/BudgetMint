@@ -72,8 +72,9 @@ describe('the app', () => {
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByLabelText('They reach the bank'));
-    await user.click(screen.getByRole('option', { name: 'Two days later' }));
-    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await user.click(screen.getByRole('option', { name: '2 days later' }));
+    // Enter in the balance starts it, as Start does
+    await user.type(screen.getByLabelText('Balance'), '{Enter}');
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     const saved = JSON.parse(store.docs.get('settings~account')!.json);
     expect(saved).toMatchObject({

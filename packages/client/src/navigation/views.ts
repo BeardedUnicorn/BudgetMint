@@ -15,21 +15,11 @@ export const VIEW_LABELS: Record<SidebarView, string> = {
   settings: 'Settings',
 };
 
-export type SettingsSectionId = 'account' | 'balance' | 'taskmint' | 'forecast' | 'reminders' | 'appearance' | 'about';
+/** Settings' sections, as the page anchors them (a shell's own are its ids). */
+export type SettingsSectionId = 'account' | 'data' | 'forecast' | 'taskmint' | 'reminders' | 'appearance' | 'about';
 
-/** Settings' sections, in page order. */
-export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
-  account: 'Account',
-  balance: 'Balance',
-  taskmint: 'TaskMint',
-  forecast: 'Forecast',
-  reminders: 'Reminders',
-  appearance: 'Appearance',
-  about: 'About',
-};
-
-/** What a page is opened for: a settings section, or a bill to show. */
+/** What a page is opened for: a settings section, or (Bills, Income, Overview) adding one. */
 export interface NavigationParams {
   section?: SettingsSectionId;
-  itemId?: string;
+  add?: boolean;
 }

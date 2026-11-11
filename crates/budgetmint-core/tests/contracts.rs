@@ -7,6 +7,7 @@
 // Writing files is this test's job; core's own code stays free of I/O.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
+use budgetmint_core::backup::BudgetExport;
 use budgetmint_core::command::*;
 use budgetmint_core::docs::{DocWrite, DocsApplied, IncomingDoc, BUDGET_SCHEMA, MAX_ID_LEN};
 use budgetmint_core::forecast::contract::FORECAST_SCHEMA;
@@ -54,6 +55,7 @@ fn export_types(cfg: &Config) {
         SetBalanceArgs,
         SaveSettingsArgs,
         UndoArgs,
+        RestoreBudgetArgs,
         IncomingDoc,
         ForecastDoc,
         ItemInput,
@@ -72,6 +74,7 @@ fn export_types(cfg: &Config) {
         SettingsView,
         Planned,
         DocWrite,
+        BudgetExport,
         // The documents' own types
         Item,
         ItemKind,
