@@ -8,6 +8,32 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.3.0 – 2026-11-11
+
+### Added
+
+- A bill or income can end on a date, shown in its list ("until Jun 30, 2027").
+- Bills and Income can be searched by name or category, narrowed to one category, and put in order by name, amount or what each comes to a month. Each category's monthly total shows under the list, and an item's note shows under its name and at the top of its history.
+- Categories already in use are offered as you type one.
+- Settings → Your data downloads a backup of your budget and a spreadsheet of a year's bills and income (in a browser for now), and restores a backup, with Undo.
+- Up to three reminders before each bill.
+- ⌘N (Ctrl+N) adds a bill, or income on its page, and ⌘/ lists every shortcut, on the desktop.
+- Amounts can be written in another currency, and the calendar's weeks can start on Monday (Settings → Appearance).
+- Creating an account asks for the password twice and can show it; onboarding starts on Enter and offers the same arrival times as Settings; amount fields take up to the largest amount BudgetMint does.
+- On a phone, each bill's actions are in a menu by its name.
+
+### Fixed
+
+- Saving an edit to a bill that was deleted on another device meanwhile says it's gone, instead of bringing it back.
+- If deleting your data is cut short (the connection drops, the app closes), what was left reads as deleted on every device and is deleted the next time BudgetMint opens.
+- A large change made offline (more than 400 records) is kept whole until it can be sent, not just its first part.
+- Clearer messages when the cloud's limit for the day is used up, a sign-in has run out, or the cloud is too slow to answer, and when your data can't be read rather than saved.
+- The overview and the forecast say why TaskMint's withdrawals aren't there: still checking, an update needed, or a forecast that can't be read (not just "isn't connected"). The overview also warns when TaskMint's work logs haven't been imported for three days.
+- Records that can't be read are counted in a notice instead of left out without a word.
+- A date with a mistyped year (outside 1900–2199) is refused, and a TaskMint forecast with numbers TaskMint couldn't have written reads as unreadable, instead of stopping BudgetMint.
+- If BudgetMint itself stops on a problem, the page says so and offers to reload, rather than failing at every click.
+- The pages follow a change of time zone as soon as BudgetMint is back in front.
+
 ## 1.2.0 – 2026-11-11
 
 ### Added
