@@ -8,6 +8,12 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.4.0 – 2026-11-11
+
+### Added
+
+- The desktop app saves backups and spreadsheets (Settings → Your data), in the system's save dialog.
+
 ## 1.3.0 – 2026-11-11
 
 ### Added
