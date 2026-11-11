@@ -1,10 +1,23 @@
 /**
- * TaskMint: whether its forecast is here and how fresh it is, and how the
- * forecast counts its withdrawals: when you withdraw, how long the money
- * takes, what's counted, and any earnings assumed ahead.
+ * TaskMint: who's signed in to it (signing in to BudgetMint signs in to
+ * TaskMint too when the accounts match; here when they don't), whether its
+ * forecast is here and how fresh it is, and how the forecast counts its
+ * withdrawals: when you withdraw, how long the money takes, what's counted,
+ * and any earnings assumed ahead.
  */
 
-import { FormControlLabel, MenuItem, Stack, Switch, TextField, Typography, Alert, Chip } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  FormControlLabel,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { Savings as TaskMintIcon } from '@mui/icons-material';
 import type { FutureEarnings, WithdrawPolicy } from '@budgetmint/contracts';
 import { useBudget } from '../../../data/BudgetContext';
@@ -12,6 +25,7 @@ import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
 import { importIsStale } from '../../../utils/taskmint';
+import { SignInForm } from '../../auth/SignInForm';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
 
@@ -28,11 +42,17 @@ const weekdayName = (weekday: number) =>
 const hourName = (hour: number) =>
   new Intl.DateTimeFormat(formattingLocale(), { hour: 'numeric' }).format(new Date(2026, 10, 2, hour));
 
+/** What Settings says to sign in to TaskMint alone: TaskMint's accounts are TaskMint's to make. */
+const SIGN_IN_INTRO =
+  'Not signed in to TaskMint. Sign in with your TaskMint account to see its withdrawals here: BudgetMint only reads its forecast.';
+
 export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
-  const { view } = useBudget();
+  const { session, view } = useBudget();
   const [settings, save] = useSettings();
   const plan = settings.taskmint;
   const status = view.taskmint;
+  const user = view.taskmintUser;
+  const signedOut = !user && status.state === 'missing';
   const setPlan = (patch: Partial<typeof plan>) =>
     save(current => ({ ...current, taskmint: { ...current.taskmint, ...patch } }));
   const stale = importIsStale(status, nowMs);
@@ -50,21 +70,46 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
           sx={{ ml: 1 }}
           color={status.state === 'ready' ? 'success' : 'default'}
           label={
-            {
-              checking: 'Checking…',
-              ready: 'Connected',
-              missing: 'Not connected',
-              newer: 'Update BudgetMint',
-              unreadable: 'Can’t read it',
-            }[status.state]
+            signedOut
+              ? 'Not signed in'
+              : {
+                  checking: 'Checking…',
+                  ready: 'Connected',
+                  missing: 'Not connected',
+                  newer: 'Update BudgetMint',
+                  unreadable: 'Can’t read it',
+                }[status.state]
           }
         />
       }
     >
-      {status.state === 'missing' && (
+      {user && (
+        <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+          <Typography variant="body2">
+            Signed in to TaskMint as <strong>{user.email ?? 'you'}</strong>
+            {user.providers.includes('google.com') ? ' with Google' : ''}.
+          </Typography>
+          <Button size="small" onClick={() => void session.signOutOfTaskMint()}>
+            Sign out of TaskMint
+          </Button>
+        </Stack>
+      )}
+      {signedOut && (
+        <Box sx={{ mb: 3 }}>
+          <SignInForm
+            engine={{
+              signIn: session.signInToTaskMint,
+              signInWithGoogle: session.signInToTaskMintWithGoogle,
+              canUseGoogle: session.canUseGoogle,
+            }}
+            intro={SIGN_IN_INTRO}
+          />
+        </Box>
+      )}
+      {user && status.state === 'missing' && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          No TaskMint forecast yet. In TaskMint, turn on cloud sync with this account (TaskMint 4.2 or later), and its
-          withdrawals show up here.
+          No TaskMint forecast yet. In TaskMint, turn on cloud sync (TaskMint 4.2 or later), and its withdrawals show up
+          here.
         </Alert>
       )}
       {status.state === 'newer' && (

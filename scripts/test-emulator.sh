@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# BudgetMint's real Firestore writes against TaskMint's rules (the pinned
-# copy in firebase/), on the Auth and Firestore emulators: the client's
-# *.emulator.test.ts, in a fresh emulator. The emulator needs Java 21 or
-# later: the java on PATH, or Homebrew's openjdk when that one is older.
-# Core's wasm must be built first (pnpm build:wasm).
+# On the Auth and Firestore emulators, in a fresh emulator: BudgetMint's rules'
+# own tests (rules/firestore.rules.test.mjs), then the client's
+# *.emulator.test.ts, BudgetMint's real store against its rules and against
+# TaskMint's (the pinned copy in firebase/, which the test loads for TaskMint's
+# project). The emulator needs Java 21 or later: the java on PATH, or
+# Homebrew's openjdk when that one is older. Core's wasm must be built first
+# (pnpm build:wasm).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -20,4 +22,4 @@ if [ "$(java_major java || echo 0)" -lt 21 ]; then
 fi
 
 exec pnpm firebase --config firebase.emulators.json emulators:exec --project demo-budgetmint --only auth,firestore \
-  "BUDGETMINT_EMULATOR=1 pnpm --filter @budgetmint/client exec vitest run"
+  "node --test rules/firestore.rules.test.mjs && BUDGETMINT_EMULATOR=1 pnpm --filter @budgetmint/client exec vitest run"

@@ -1,7 +1,8 @@
 /**
  * The signed-in account, on this device: it reads BudgetMint's documents
  * into core as they change (this device's writes at once, from Firestore's
- * cache) and TaskMint's payout forecast, and writes what core plans.
+ * cache) and, from whoever is signed in to TaskMint alongside, TaskMint's
+ * payout forecast, and writes what core plans.
  *
  * - Signing in starts BudgetMint's data for the account if it has none.
  * - Deleting the data (from any device) moves it to a new epoch: the rules
@@ -40,6 +41,8 @@ export interface SessionView {
   /** The data was deleted on another device, so this one started over. */
   resetElsewhere: boolean;
   taskmint: ForecastStatus;
+  /** Who's signed in to TaskMint, for its forecast (null: nobody, or not known yet). */
+  taskmintUser: CloudUser | null;
 }
 
 export interface SessionOptions {
@@ -82,10 +85,15 @@ export class BudgetSession {
     unreadable: 0,
     resetElsewhere: false,
     taskmint: NO_FORECAST,
+    taskmintUser: null,
   };
   private readonly listeners = new Set<() => void>();
   private unsubscribeUser: Unsubscribe | null = null;
+  private unsubscribeTaskMint: Unsubscribe | null = null;
+  /** Whether TaskMint's sign-in has said who's signed in yet (until then, the forecast is being checked). */
+  private taskmintKnown = false;
   private watching: Unsubscribe[] = [];
+  private forecast: Unsubscribe | null = null;
   private linked: { uid: string; epoch: number } | null = null;
   /** Each source's last word: whether from the cache, whether with writes pending. */
   private sources = new Map<DocsSource, DocsSnapshot>();
@@ -111,12 +119,14 @@ export class BudgetSession {
   }
 
   start(): void {
+    this.unsubscribeTaskMint = this.store.onTaskMint(user => this.taskmintChanged(user));
     this.unsubscribeUser = this.store.onUser(user => void this.userChanged(user, false));
   }
 
   stop(): void {
     this.detach();
     this.unsubscribeUser?.();
+    this.unsubscribeTaskMint?.();
   }
 
   getView = (): SessionView => this.view;
@@ -133,6 +143,11 @@ export class BudgetSession {
   resetPassword = (email: string) => this.store.resetPassword(email);
   signInWithGoogle = async () => this.store.signInWithGoogle(await this.google!());
   signOut = () => this.store.signOut();
+
+  /** TaskMint alone, when signing in to BudgetMint didn't (another password, or TaskMint set up since). */
+  signInToTaskMint = (email: string, password: string) => this.store.signInToTaskMint(email, password);
+  signInToTaskMintWithGoogle = async () => this.store.signInToTaskMintWithGoogle(await this.google!());
+  signOutOfTaskMint = () => this.store.signOutOfTaskMint();
 
   /** After an error: starts over with the signed-in user. */
   retry = () => this.userChanged(this.view.user, false);
@@ -181,25 +196,13 @@ export class BudgetSession {
     }
   }
 
-  /**
-   * Deletes the account, when it's BudgetMint's alone: an account TaskMint
-   * uses too is TaskMint's to delete (its Delete account takes BudgetMint's
-   * data with it).
-   */
+  /** Deletes the BudgetMint account and its data. TaskMint's account is TaskMint's: it's only signed out of. */
   async deleteAccount(): Promise<void> {
-    const { uid } = this.view.user!;
     this.needsCloud();
-    // Everything that can refuse comes first: once the data is deleted there's no going back
-    const [shared, recent] = await Promise.all([this.store.hasTaskMintData(uid), this.store.signedInRecently()]).catch(
-      error => {
-        throw new Error(cloudErrorMessage(error));
-      }
-    );
-    if (shared) {
-      throw new Error(
-        'This is also your TaskMint account. Delete the account from TaskMint, or delete BudgetMint’s data here.'
-      );
-    }
+    // What can refuse comes first: once the data is deleted there's no going back
+    const recent = await this.store.signedInRecently().catch(error => {
+      throw new Error(cloudErrorMessage(error));
+    });
     if (!recent) {
       throw new Error('Sign out and in again, then delete the account. Nothing was deleted.');
     }
@@ -229,6 +232,8 @@ export class BudgetSession {
 
   private detach(): void {
     for (const unsubscribe of this.watching.splice(0)) unsubscribe();
+    this.forecast?.();
+    this.forecast = null;
     this.linked = null;
     this.sources.clear();
   }
@@ -281,13 +286,33 @@ export class BudgetSession {
         from,
         snapshot => this.received(snapshot),
         error => this.fail(error, generation)
-      ),
-      this.store.watchForecast(
-        uid,
-        doc => this.changed({ taskmint: this.core.call('apply_forecast', { doc }) }),
-        // No forecast to read (TaskMint's rules not deployed yet): as if there were none
-        () => this.changed({ taskmint: this.core.call('apply_forecast', { doc: null }) })
       )
+    );
+    this.watchForecast();
+  }
+
+  private taskmintChanged(user: CloudUser | null): void {
+    this.taskmintKnown = true;
+    this.set({ taskmintUser: user });
+    if (this.linked) this.watchForecast();
+  }
+
+  /** TaskMint's forecast, for whoever is signed in to TaskMint: none when nobody is. */
+  private watchForecast(): void {
+    this.forecast?.();
+    this.forecast = null;
+    if (!this.taskmintKnown) return;
+    const none = () => this.changed({ taskmint: this.core.call('apply_forecast', { doc: null }) });
+    const user = this.view.taskmintUser;
+    if (!user) {
+      none();
+      return;
+    }
+    this.forecast = this.store.watchForecast(
+      user.uid,
+      doc => this.changed({ taskmint: this.core.call('apply_forecast', { doc }) }),
+      // No forecast to read (TaskMint's rules refuse it): as if there were none
+      none
     );
   }
 

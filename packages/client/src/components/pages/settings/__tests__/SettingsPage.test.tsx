@@ -128,19 +128,19 @@ describe('settings', () => {
   it('signs out, and deletes the data or the account', async () => {
     const { user, store, session } = await settings();
     const account = section('Account');
-    expect(within(account).getByText(/Signed in as/)).toHaveTextContent(
-      'Signed in as cal@example.com. It’s the same account as TaskMint’s.'
-    );
+    expect(within(account).getByText(/Signed in as/)).toHaveTextContent('Signed in as cal@example.com.');
 
+    // Refused: what Firebase says, and nothing deleted
     await user.click(within(account).getByRole('button', { name: 'Delete account' }));
-    store.setTaskMintData('cal', true);
+    vi.mocked(store.signedInRecently).mockResolvedValueOnce(false);
     await user.click(
       within(screen.getByRole('dialog', { name: 'Delete your account?' })).getByRole('button', {
         name: 'Delete account',
       })
     );
-    expect(await within(account).findByText(/This is also your TaskMint account/)).toBeInTheDocument();
+    expect(await within(account).findByText(/Sign out and in again, then delete the account/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(store.deleteUser).not.toHaveBeenCalled();
 
     await user.click(within(account).getByRole('button', { name: 'Delete BudgetMint data' }));
     await user.click(
@@ -236,6 +236,34 @@ describe('settings', () => {
     expect(within(taskmint()).getByText('Connected')).toBeInTheDocument();
     store.publishForecast({ ...forecastDoc({ asOfMs: TEST_NOW }), appVersion: null });
     expect(await within(taskmint()).findByText(/No work logs imported yet: only tracked time\./)).toBeInTheDocument();
+  });
+
+  it('signs in to TaskMint alone when signing in to BudgetMint didn’t, and out of it', async () => {
+    const { user, store } = await settings();
+    const taskmint = () => section('TaskMint');
+    expect(within(taskmint()).getByText(/Signed in to TaskMint as/)).toHaveTextContent(
+      'Signed in to TaskMint as cal@example.com.'
+    );
+    await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));
+    expect(store.signOutOfTaskMint).toHaveBeenCalled();
+    expect(await within(taskmint()).findByText('Not signed in')).toBeInTheDocument();
+    expect(within(taskmint()).getByText(/Not signed in to TaskMint\./)).toBeInTheDocument();
+    expect(within(taskmint()).queryByText(/No TaskMint forecast yet/)).not.toBeInTheDocument();
+    // TaskMint's accounts are TaskMint's to make, and its passwords to reset
+    expect(within(taskmint()).queryByRole('button', { name: 'Create an account' })).not.toBeInTheDocument();
+    expect(within(taskmint()).queryByRole('button', { name: 'Forgot password?' })).not.toBeInTheDocument();
+
+    await user.type(within(taskmint()).getByLabelText('Email'), 'dee@example.com');
+    await user.type(within(taskmint()).getByLabelText('Password'), 'pw');
+    await user.click(within(taskmint()).getByRole('button', { name: 'Sign in' }));
+    expect(store.signInToTaskMint).toHaveBeenCalledWith('dee@example.com', 'pw');
+    expect(await within(taskmint()).findByText(/Signed in to TaskMint as/)).toHaveTextContent(
+      'Signed in to TaskMint as dee@example.com.'
+    );
+    store.setTaskMintUser({ uid: 'g', email: null, providers: ['google.com'] });
+    expect(await within(taskmint()).findByText(/Signed in to TaskMint as/)).toHaveTextContent(
+      'Signed in to TaskMint as you with Google.'
+    );
   });
 
   it('changes how TaskMint’s withdrawals count', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 import { BudgetSession, SESSION_OPTIONS } from '../session';
 import { cal, createFakeStore, TEST_NOW, testCore, type FakeStore } from '../../testing';
+import type { CloudUser } from '../types';
 import { forecastDoc, item, TODAY } from '../../__tests__/setup/budget';
 
 const RENT = item({
@@ -50,6 +51,8 @@ describe('the session', () => {
     expect(google.session.canUseGoogle).toBe(true);
     await google.session.signInWithGoogle();
     expect(google.store.signInWithGoogle).toHaveBeenCalledWith('token');
+    await google.session.signInToTaskMintWithGoogle();
+    expect(google.store.signInToTaskMintWithGoogle).toHaveBeenCalledWith('token');
     expect(SESSION_OPTIONS.historyDays).toBe(400);
   });
 
@@ -129,6 +132,37 @@ describe('the session', () => {
     expect(session.getView().taskmint.state).toBe('missing');
   });
 
+  it('reads the forecast of whoever is signed in to TaskMint, and none while nobody is', async () => {
+    const store = createFakeStore();
+    store.publishForecast(forecastDoc({ asOfMs: TEST_NOW }));
+    const { session } = await signedIn(store);
+    expect(session.getView().taskmintUser).toEqual(cal());
+    expect(vi.mocked(store.watchForecast).mock.calls.at(-1)![0]).toBe('cal');
+
+    // Signed out of TaskMint alone: no forecast, and BudgetMint goes on
+    await session.signOutOfTaskMint();
+    expect(session.getView()).toMatchObject({ phase: 'ready', taskmintUser: null, taskmint: { state: 'missing' } });
+    // TaskMint's account needn't be BudgetMint's uid
+    await session.signInToTaskMint('dee@example.com', 'pw');
+    expect(store.signInToTaskMint).toHaveBeenCalledWith('dee@example.com', 'pw');
+    expect(vi.mocked(store.watchForecast).mock.calls.at(-1)![0]).toBe('dee');
+    expect(session.getView().taskmint.state).toBe('ready');
+  });
+
+  it('waits for TaskMint’s sign-in to say who it is before reading a forecast', async () => {
+    const store = createFakeStore();
+    let tell: (user: CloudUser | null) => void = () => undefined;
+    vi.mocked(store.onTaskMint).mockImplementationOnce(listener => {
+      tell = listener;
+      return () => undefined;
+    });
+    const { session } = await signedIn(store);
+    expect(session.getView().taskmint.state).toBe('checking');
+    expect(store.watchForecast).not.toHaveBeenCalled();
+    tell(null);
+    expect(session.getView().taskmint.state).toBe('missing');
+  });
+
   it('starts over quietly after deleting the data here, and says so when it was deleted elsewhere', async () => {
     const store = createFakeStore();
     store.putDoc('item~rent', JSON.stringify(RENT));
@@ -148,7 +182,7 @@ describe('the session', () => {
     // The same epoch again: nothing to do
     store.setEpoch('cal', 3);
     expect(vi.mocked(store.listen)).toHaveBeenCalledTimes(3);
-    // Gone altogether (deleted by TaskMint's Delete account): starts again
+    // Gone altogether (deleted by hand): starts again
     store.setEpoch('cal', null);
     await waitFor(() => expect(vi.mocked(store.listen)).toHaveBeenCalledTimes(4));
   });
@@ -160,23 +194,18 @@ describe('the session', () => {
     expect(session.getView().phase).toBe('ready');
   });
 
-  it('deletes the account only when TaskMint doesn’t use it', async () => {
+  it('deletes the account once Firebase would, and says why when it won’t', async () => {
     const { store, session } = await signedIn();
-    store.setTaskMintData('cal', true);
-    await expect(session.deleteAccount()).rejects.toThrow('This is also your TaskMint account.');
-    expect(store.deleteUser).not.toHaveBeenCalled();
-
     // Signed in too long ago for Firebase to delete the account: nothing is deleted
-    store.setTaskMintData('cal', false);
     vi.mocked(store.signedInRecently).mockResolvedValueOnce(false);
     await expect(session.deleteAccount()).rejects.toThrow(
       'Sign out and in again, then delete the account. Nothing was deleted.'
     );
     expect(store.deleteAll).not.toHaveBeenCalled();
     expect(store.deleteUser).not.toHaveBeenCalled();
-    // Why the checks themselves failed
-    vi.mocked(store.hasTaskMintData).mockRejectedValueOnce({ code: 'permission-denied' });
-    await expect(session.deleteAccount()).rejects.toThrow('The cloud refused that change.');
+    // Why the check itself failed
+    vi.mocked(store.signedInRecently).mockRejectedValueOnce({ code: 'auth/network-request-failed' });
+    await expect(session.deleteAccount()).rejects.toThrow('Can’t reach Firebase.');
 
     // Refused all the same
     vi.mocked(store.deleteUser).mockRejectedValueOnce({ code: 'auth/requires-recent-login' });
@@ -196,7 +225,7 @@ describe('the session', () => {
     await expect(session.deleteData()).rejects.toThrow(offline);
     await expect(session.deleteAccount()).rejects.toThrow(offline);
     expect(store.deleteAll).not.toHaveBeenCalled();
-    expect(store.hasTaskMintData).not.toHaveBeenCalled();
+    expect(store.signedInRecently).not.toHaveBeenCalled();
   });
 
   it('says when the data can’t be read, and tries again', async () => {

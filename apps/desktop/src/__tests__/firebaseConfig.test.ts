@@ -1,15 +1,18 @@
 // Adapted from TaskMint apps/desktop/src/__tests__/firebaseConfig.test.ts @ 1623bee.
 import { describe, expect, it, vi } from 'vitest';
-import { DESKTOP_FIREBASE, desktopCloud, googleDesktopClient } from '../firebaseConfig';
+import { DESKTOP_FIREBASE, desktopCloud, googleDesktopClient, TASKMINT_DESKTOP_FIREBASE } from '../firebaseConfig';
 
 describe("the desktop's cloud sync", () => {
-  it("is the desktop web app's, with its own cache and no popups", () => {
+  it("is the desktop web apps', with its own cache and no popups", () => {
     expect(desktopCloud({ DEV: false })).toEqual({
       firebase: DESKTOP_FIREBASE,
+      taskmint: TASKMINT_DESKTOP_FIREBASE,
       cache: 'single',
       popupSignIn: false,
     });
-    expect(DESKTOP_FIREBASE.projectId).toBe('taskmint-f9a05');
+    // BudgetMint's own project, and TaskMint's for the forecast
+    expect(DESKTOP_FIREBASE.projectId).toBe('budgetmint');
+    expect(TASKMINT_DESKTOP_FIREBASE.projectId).toBe('taskmint-f9a05');
   });
 
   it('uses the emulators on the host a development build names, and only a development build', () => {

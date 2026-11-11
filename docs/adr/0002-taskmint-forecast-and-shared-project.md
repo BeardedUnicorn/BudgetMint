@@ -1,6 +1,9 @@
 # ADR 0002: TaskMint's forecast, in TaskMint's Firebase project
 
-- **Status:** accepted (2026-11-10)
+- **Status:** accepted (2026-11-10); decisions 1, 3 (for BudgetMint's rules)
+  and 4, and the account-deletion consequence, superseded by
+  [ADR 0003](0003-own-firebase-project.md): BudgetMint has its own project
+  and signs in to TaskMint's alongside
 - **Scope:** how BudgetMint learns TaskMint's upcoming withdrawals, the
   Firebase project and rules they share, and who owns what
 

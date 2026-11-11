@@ -28,7 +28,7 @@ pnpm test:scripts
 step "Core in WebAssembly (the TypeScript below imports it)"
 pnpm build:wasm
 
-step "BudgetMint's writes against TaskMint's rules, on the emulator"
+step "BudgetMint's rules, and its store against its rules and TaskMint's, on the emulator"
 scripts/test-emulator.sh
 
 step "TypeScript (sources and tests)"

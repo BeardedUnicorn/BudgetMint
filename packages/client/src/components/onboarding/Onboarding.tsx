@@ -132,7 +132,9 @@ export function Onboarding() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 {view.taskmint.state === 'checking'
                   ? 'Checking TaskMint…'
-                  : 'Not connected yet: turn on cloud sync in TaskMint with this account, and its withdrawals show up here.'}
+                  : view.taskmintUser
+                    ? 'Not connected yet: turn on cloud sync in TaskMint, and its withdrawals show up here.'
+                    : 'Not signed in to TaskMint: its account isn’t this one. Sign in to it later in Settings → TaskMint.'}
               </Typography>
             )}
             <FormControlLabel

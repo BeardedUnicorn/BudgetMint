@@ -2,7 +2,9 @@
 /**
  * Signing in: email and password (signing in, making an account, or a reset
  * link), and Google where the build can. BudgetMint needs an account: its
- * data is the cloud's, and TaskMint's withdrawals come with the same one.
+ * data is the cloud's. Signing in with the same email and password as
+ * TaskMint's (or the same Google account) brings TaskMint's withdrawals.
+ * Settings uses it for TaskMint alone, without making an account or a reset.
  */
 
 import { FormEvent, useRef, useState } from 'react';
@@ -28,17 +30,17 @@ const FORM_TITLES: Record<FormMode, string> = {
   reset: 'Send reset link',
 };
 
-/** What signing in needs: the session. */
+/** What signing in needs: the session. Without `signUp` or `resetPassword`, the form doesn't offer them. */
 export interface SignInActions {
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string): Promise<void>;
-  resetPassword(email: string): Promise<void>;
+  signUp?(email: string, password: string): Promise<void>;
+  resetPassword?(email: string): Promise<void>;
   signInWithGoogle(): Promise<void>;
   readonly canUseGoogle: boolean;
 }
 
 const INTRO =
-  'Your bills and balance, on all your devices. Use the account you use for TaskMint to see your withdrawals ahead.';
+  'Your bills and balance, on all your devices. Use the same email and password as TaskMint (or the same Google account) to see your withdrawals ahead.';
 
 /** Email and password: signing in, making an account, or a reset link. And Google, where the build can. */
 export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; intro?: string }) {
@@ -97,11 +99,11 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
     setProblem(null);
     try {
       if (mode === 'reset') {
-        await engine.resetPassword(email.trim());
+        await engine.resetPassword!(email.trim());
         setNotice(`If ${email.trim()} has an account, a reset link is on its way.`);
         setMode('signIn');
       } else {
-        await (mode === 'signIn' ? engine.signIn : engine.signUp)(email.trim(), password);
+        await (mode === 'signIn' ? engine.signIn : engine.signUp!)(email.trim(), password);
       }
     } catch (error) {
       setProblem(cloudErrorMessage(error));
@@ -181,12 +183,16 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
           </Button>
           {mode === 'signIn' ? (
             <>
-              <Button disabled={busy} onClick={() => switchTo('signUp')}>
-                Create an account
-              </Button>
-              <Button disabled={busy} onClick={() => switchTo('reset')}>
-                Forgot password?
-              </Button>
+              {engine.signUp && (
+                <Button disabled={busy} onClick={() => switchTo('signUp')}>
+                  Create an account
+                </Button>
+              )}
+              {engine.resetPassword && (
+                <Button disabled={busy} onClick={() => switchTo('reset')}>
+                  Forgot password?
+                </Button>
+              )}
             </>
           ) : (
             <Button disabled={busy} onClick={() => switchTo('signIn')}>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App, StartupError } from '../App';
 import type { AppExtensions } from '../shell/types';
@@ -63,6 +63,9 @@ describe('the app', () => {
   it('onboards with a balance, or without one', async () => {
     const { user, store } = await startBudget({ settings: null });
     expect(screen.getByText(/Not connected yet/)).toBeInTheDocument();
+    // TaskMint's account isn't this one: where to sign in to it
+    act(() => store.setTaskMintUser(null));
+    expect(screen.getByText(/Not signed in to TaskMint/)).toHaveTextContent('Settings → TaskMint');
     await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(screen.getByText('Enter your balance, or start without one')).toBeInTheDocument();
     expect(screen.getByLabelText('Balance')).toBeInvalid();
