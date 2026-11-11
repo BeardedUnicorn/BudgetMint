@@ -1,6 +1,6 @@
 [package]
 name = "budgetmint-wasm"
-version = "0.1.0"
+version = "1.0.0"
 description = "BudgetMint's rules for every app: budgetmint-core in WebAssembly"
 authors = ["Mike Herold"]
 license = "MIT"
