@@ -1,7 +1,8 @@
 /**
- * Overview: where the balance is going. Today's balance and the lowest it
- * gets, what's overdue, what's due this week and coming in, TaskMint's next
- * withdrawal, and the next two weeks day by day.
+ * Overview: where the balance is going. Today's balance, what's safe to
+ * spend and the lowest it gets, what's overdue, what's due this week and
+ * coming in, TaskMint's next withdrawal (and, when the balance goes short,
+ * what more TaskMint work would cover it), and the next two weeks day by day.
  */
 
 import { useState } from 'react';
@@ -13,7 +14,7 @@ import {
   Savings as WithdrawalIcon,
   TrendingDown as LowestIcon,
 } from '@mui/icons-material';
-import type { UpcomingDay } from '@budgetmint/contracts';
+import type { EarnToCover, Overview, UpcomingDay } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { PHONE } from '../../../theme/media';
@@ -70,6 +71,34 @@ function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
       ))}
     </Stack>
   );
+}
+
+/** What safe to spend leaves room for, in words. */
+function safeLine(overview: Overview): string {
+  const { safeToSpend: safe, setAsideCents } = overview;
+  const mark = Math.max(overview.lowBalanceCents, 0);
+  const kept = [
+    safe.spendingWeeklyCents > 0 && `${formatCents(safe.spendingWeeklyCents)} a week of everyday spending`,
+    setAsideCents > 0 && `${formatCents(setAsideCents)} set aside for bills`,
+  ].filter(Boolean);
+  const after = kept.length > 0 ? `after ${kept.join(' and ')}` : '';
+  if (safe.cents === 0) {
+    const under = mark > 0 ? `, under your ${formatCents(mark)} mark` : '';
+    return `Nothing to spare: ${after ? `${after}, ` : ''}it gets to ${formatCents(safe.tightest.cents)} on ${formatWeekday(safe.tightest.date)}${under}`;
+  }
+  return `It stays above ${formatCents(mark)} through ${formatDay(safe.through)}${after ? `, ${after}` : ''}`;
+}
+
+/** What more TaskMint work would cover the short, in words. */
+function coverLine(cover: EarnToCover): string {
+  const more = formatCents(cover.cents);
+  if (cover.workBy && cover.withdrawnOn && cover.arrivesOn) {
+    return `TaskMint could cover it: earn ${more} more by the end of ${formatWeekday(cover.workBy)}, withdraw it ${formatWeekday(cover.withdrawnOn)}, and it’s in the bank ${formatWeekday(cover.arrivesOn)}.`;
+  }
+  if (cover.arrivesOn) {
+    return `TaskMint can’t cover it in time: ${more} more earned today would be in the bank ${formatWeekday(cover.arrivesOn)}.`;
+  }
+  return 'TaskMint can’t cover it in time: no withdrawal before the forecast’s end would take more.';
 }
 
 export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
@@ -131,6 +160,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
       {firstShort ? (
         <Alert severity="error" sx={{ mb: 3 }}>
           Your balance goes below zero on {formatWeekday(firstShort.date)}, to {formatCents(firstShort.cents)}.
+          {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
         </Alert>
       ) : (
         // Not short: a low day is below a mark above zero
@@ -138,6 +168,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
           <Alert severity="warning" sx={{ mb: 3 }}>
             Your balance goes below {formatCents(overview.lowBalanceCents)} on {formatWeekday(firstLow.date)}, to{' '}
             {formatCents(firstLow.cents)}.
+            {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
           </Alert>
         )
       )}
@@ -150,19 +181,35 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
       )}
 
       <Paper component="section" aria-label="Balance today" sx={SECTION}>
-        <Typography variant="overline" color="text.secondary">
-          Balance today
-        </Typography>
-        <Typography
-          variant="h4"
-          component="p"
-          sx={{ fontFamily: MONO, fontWeight: 700, color: overview.todayCents < 0 ? 'error.main' : 'success.main' }}
-        >
-          {formatCents(overview.todayCents)}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Lowest in the next {overview.horizonDays} days: {formatCents(lowest.cents)} on {formatWeekday(lowest.date)}
-        </Typography>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 6 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary">
+              Balance today
+            </Typography>
+            <Typography
+              variant="h4"
+              component="p"
+              sx={{ fontFamily: MONO, fontWeight: 700, color: overview.todayCents < 0 ? 'error.main' : 'success.main' }}
+            >
+              {formatCents(overview.todayCents)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Lowest in the next {overview.horizonDays} days: {formatCents(lowest.cents)} on{' '}
+              {formatWeekday(lowest.date)}
+            </Typography>
+          </Box>
+          <Box role="group" aria-label="Safe to spend">
+            <Typography variant="overline" color="text.secondary">
+              Safe to spend
+            </Typography>
+            <Typography variant="h4" component="p" sx={{ fontFamily: MONO, fontWeight: 700 }}>
+              {formatCents(overview.safeToSpend.cents)}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {safeLine(overview)}
+            </Typography>
+          </Box>
+        </Stack>
       </Paper>
 
       <Box sx={STATS_GRID}>

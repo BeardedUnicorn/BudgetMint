@@ -3,12 +3,15 @@
 import type { ApplyDocsArgs } from "./ApplyDocsArgs";
 import type { ApplyForecastArgs } from "./ApplyForecastArgs";
 import type { ArchiveItemArgs } from "./ArchiveItemArgs";
+import type { BalanceCheckArgs } from "./BalanceCheckArgs";
+import type { BalanceCheckView } from "./BalanceCheckView";
 import type { BudgetExport } from "./BudgetExport";
 import type { ChangeScheduleArgs } from "./ChangeScheduleArgs";
 import type { DocWrite } from "./DocWrite";
 import type { DocsApplied } from "./DocsApplied";
 import type { ForecastStatus } from "./ForecastStatus";
 import type { ForecastView } from "./ForecastView";
+import type { GoalsView } from "./GoalsView";
 import type { ItemHistoryArgs } from "./ItemHistoryArgs";
 import type { ItemIdArgs } from "./ItemIdArgs";
 import type { ItemView } from "./ItemView";
@@ -17,14 +20,19 @@ import type { MonthView } from "./MonthView";
 import type { OccurrenceView } from "./OccurrenceView";
 import type { Overview } from "./Overview";
 import type { Planned } from "./Planned";
+import type { ReadStatementArgs } from "./ReadStatementArgs";
 import type { Reminder } from "./Reminder";
 import type { RemindersArgs } from "./RemindersArgs";
+import type { ReportView } from "./ReportView";
 import type { RestoreBudgetArgs } from "./RestoreBudgetArgs";
 import type { SaveItemArgs } from "./SaveItemArgs";
 import type { SaveSettingsArgs } from "./SaveSettingsArgs";
 import type { SetBalanceArgs } from "./SetBalanceArgs";
 import type { SetOccurrenceArgs } from "./SetOccurrenceArgs";
 import type { SettingsView } from "./SettingsView";
+import type { SettleArgs } from "./SettleArgs";
+import type { SpendingEstimate } from "./SpendingEstimate";
+import type { StatementView } from "./StatementView";
 import type { UndoArgs } from "./UndoArgs";
 
 /** Every command's arguments (`void` for none) and reply. */
@@ -49,6 +57,12 @@ export interface CommandMap {
   undo: { args: UndoArgs; reply: Array<DocWrite> };
   export_budget: { args: void; reply: BudgetExport };
   restore_budget: { args: RestoreBudgetArgs; reply: Planned };
+  get_goals: { args: void; reply: GoalsView };
+  get_report: { args: MonthArgs; reply: ReportView };
+  get_balance_check: { args: BalanceCheckArgs; reply: BalanceCheckView };
+  get_spending_estimate: { args: void; reply: SpendingEstimate | null };
+  settle: { args: SettleArgs; reply: Planned };
+  read_statement: { args: ReadStatementArgs; reply: StatementView };
 }
 
 export type CommandName = keyof CommandMap;

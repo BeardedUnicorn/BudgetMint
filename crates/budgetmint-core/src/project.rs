@@ -13,6 +13,8 @@
 //!   flagged: it can't be counted on.
 //! - TaskMint's withdrawals: the ones it recorded on the day they reach the
 //!   bank (after the arrival delay), and the projected ones too (forecast).
+//! - Everyday spending (the settings' weekly amount): a day's share of it
+//!   each day after the balance's.
 //!
 //! Without a balance set, the cash flow starts at zero from yesterday's end,
 //! and bills open in the last month count as overdue.
@@ -25,7 +27,7 @@ use crate::forecast::series::{project_withdrawals, ProjectedWithdrawal};
 use crate::model::{Cents, ItemKind, OccStatus, Settings, TaskMintPlan};
 use crate::occur::{occurrences, paid_outside, MOVE_DAYS};
 use crate::time::{Ctx, HOUR_MS};
-use chrono::{Duration, NaiveDate, NaiveTime};
+use chrono::{Datelike, Duration, NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 
 /// Without a balance, how far back an open bill still counts as overdue.
@@ -39,6 +41,8 @@ pub enum FlowKind {
     Income,
     /// A TaskMint withdrawal reaching the bank.
     Withdrawal,
+    /// A day's share of the everyday spending.
+    Spending,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +61,8 @@ pub enum FlowStatus {
     Recorded,
     /// A withdrawal ahead.
     Projected,
+    /// Everyday spending: assumed, not a bill.
+    Assumed,
 }
 
 /// One amount of money moving on a day.
@@ -93,6 +99,8 @@ pub struct DayRow {
     /// Below the low mark (and not short).
     pub low: bool,
     pub flows: Vec<Flow>,
+    /// Of the closing balance, what's set aside for bills (crate::goals).
+    pub set_aside_cents: Cents,
 }
 
 /// An occurrence that's late: which one, and when it was due.
@@ -276,9 +284,25 @@ pub fn project(
             ));
         }
     }
+    let weekly = settings.spending_weekly_cents.max(0);
+    let mut date = base + Duration::days(1);
+    while weekly > 0 && date <= end {
+        flows.push(Flow {
+            date,
+            kind: FlowKind::Spending,
+            status: FlowStatus::Assumed,
+            amount_cents: -day_spending(weekly, date),
+            item_id: None,
+            name: String::new(),
+            scheduled: None,
+            uncertain_cents: 0,
+        });
+        date += Duration::days(1);
+    }
     flows.sort_by_key(|flow| flow.date);
 
     let first = (base + Duration::days(1)).min(today);
+    let savings = crate::goals::savings(snapshot, ctx, first, end);
     let start_cents = balance.map_or(0, |balance| balance.cents);
     let mut running = start_cents;
     let mut days = Vec::new();
@@ -302,6 +326,7 @@ pub fn project(
             short: running < 0,
             low: running >= 0 && running < settings.low_balance_cents,
             flows: today_flows,
+            set_aside_cents: crate::goals::set_aside_on(&savings, date),
         });
         date += Duration::days(1);
     }
@@ -317,6 +342,25 @@ pub fn project(
         overdue,
         late_income,
     }
+}
+
+/// `date`'s share of `weekly` everyday spending: a seventh, the cents left
+/// over spread so that each week, Monday to Sunday, comes to `weekly`.
+pub fn day_spending(weekly: Cents, date: NaiveDate) -> Cents {
+    let day = i64::from(date.weekday().num_days_from_monday());
+    (day + 1) * weekly / 7 - day * weekly / 7
+}
+
+/// The everyday spending the cash flow takes out over the days after
+/// `after` up to `to`.
+pub fn spending_between(weekly: Cents, after: NaiveDate, to: NaiveDate) -> Cents {
+    let mut total = 0;
+    let mut date = after + Duration::days(1);
+    while weekly > 0 && date <= to {
+        total += day_spending(weekly, date);
+        date += Duration::days(1);
+    }
+    total
 }
 
 fn withdrawal_flow(date: NaiveDate, status: FlowStatus, cents: Cents, uncertain: Cents) -> Flow {

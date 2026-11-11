@@ -6,4 +6,12 @@ import type { Segment } from "./Segment";
 /**
  * An item as the user edits it (core keeps its times).
  */
-export type ItemInput = { id: string, kind: ItemKind, name: string, category: string | null, schedule: Array<Segment>, autopay: boolean, reminder: ItemReminder | null, archived: boolean, note: string | null, };
+export type ItemInput = { id: string, kind: ItemKind, name: string, category: string | null, schedule: Array<Segment>, autopay: boolean, reminder: ItemReminder | null, archived: boolean, note: string | null, 
+/**
+ * Its amount varies: expect the average of the last few paid.
+ */
+varies: boolean, 
+/**
+ * Set money aside for it ahead of each time (bills that come monthly or less often).
+ */
+saveUp: boolean, };

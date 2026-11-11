@@ -17,8 +17,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The documents' schema: one written by a newer BudgetMint (a higher
-/// number) is held, not read.
-pub const BUDGET_SCHEMA: u32 = 1;
+/// number) is held, not read. 2: schedules twice a month or on a weekday of
+/// the month, weekends moved, varying amounts, money set aside, everyday
+/// spending and balance checks (fields an older BudgetMint would drop).
+pub const BUDGET_SCHEMA: u32 = 2;
 
 /// The longest id an item may have (the rules' too).
 pub const MAX_ID_LEN: usize = 64;
@@ -273,11 +275,14 @@ mod tests {
                 until: None,
                 repeat: Repeat::Months { n: 1, day: 1 },
                 amount_cents: 120_000,
+                weekends: crate::model::Weekends::Keep,
             }],
             autopay: false,
             reminder: None,
             archived: false,
             note: None,
+            varies: false,
+            save_up: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         }
@@ -364,7 +369,7 @@ mod tests {
             IncomingDoc {
                 doc_id: "item~future".into(),
                 json: Some("{}".into()),
-                schema: 2,
+                schema: BUDGET_SCHEMA + 1,
             },
         ]);
         assert_eq!(

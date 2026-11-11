@@ -1,7 +1,8 @@
 /**
  * A calendar day: everything due, TaskMint's money coming in, what the day's
  * work earned in TaskMint that's not withdrawn yet (and when it reaches the
- * bank), and the balance at its end; the previous and next days a click away.
+ * bank), the everyday spending taken out, and the balance at its end; the
+ * previous and next days a click away.
  */
 
 import {
@@ -86,6 +87,16 @@ export function DayDialog({
                 : 'No withdrawal ahead takes it yet.'}
             </Typography>
           </Box>
+        )}
+        {day.spendingCents > 0 && (
+          <Stack direction="row" sx={{ py: 1, justifyContent: 'space-between' }}>
+            <Typography variant="body2" color="text.secondary">
+              Everyday spending (assumed)
+            </Typography>
+            <Typography sx={{ fontFamily: MONO, color: 'text.secondary' }}>
+              −{formatCents(day.spendingCents)}
+            </Typography>
+          </Stack>
         )}
         {day.closingCents !== null && (
           <Typography

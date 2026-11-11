@@ -37,7 +37,7 @@ describe('NavigationProvider', () => {
   });
 
   it('ignores a stored page that no longer exists', () => {
-    writeLocal(ACTIVE_VIEW_KEY, 'reports', null);
+    writeLocal(ACTIVE_VIEW_KEY, 'budgets', null);
     const { result } = renderHook(() => useNavigation(), { wrapper: persisted });
     expect(result.current.view).toBe('overview');
   });

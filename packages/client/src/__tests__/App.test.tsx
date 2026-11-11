@@ -195,7 +195,7 @@ describe('the app', () => {
     expect(shell.platform.notifications.request).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Allow' }));
     expect(shell.platform.notifications.request).toHaveBeenCalledTimes(1);
-    // The browser keeps ⌘1–⌘6 for its tabs: no hint of them
+    // The browser keeps ⌘1–⌘8 for its tabs: no hint of them
     await user.hover(screen.getByRole('button', { name: 'Bills' }));
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(screen.getByText('They come while BudgetMint is open in a tab.')).toBeInTheDocument();

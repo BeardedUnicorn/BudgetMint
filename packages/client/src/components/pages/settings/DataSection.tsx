@@ -2,7 +2,8 @@
  * The budget as files of the user's own: a backup that restores it, a
  * spreadsheet of a year's bills and income, and restoring from a backup
  * (it replaces the budget, with Undo). Core writes and reads the files
- * (export_budget, restore_budget); the shell saves them.
+ * (export_budget, restore_budget); the shell saves them. And a bank's
+ * statement, read to mark the bills it shows paid (StatementDialog).
  */
 
 import { type ChangeEvent, useRef, useState } from 'react';
@@ -11,6 +12,8 @@ import { SaveAlt as DataIcon } from '@mui/icons-material';
 import { useBudget, useBudgetChange } from '../../../data/BudgetContext';
 import { getShell } from '../../../shell';
 import { canSaveFiles, saveFile } from '../../../utils/saveFile';
+import type { StatementView } from '@budgetmint/contracts';
+import { StatementDialog } from '../../budget/StatementDialog';
 import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { SettingsSection } from './SettingsSection';
 
@@ -19,7 +22,9 @@ export function DataSection() {
   const change = useBudgetChange();
   const shell = getShell();
   const picker = useRef<HTMLInputElement>(null);
+  const statementPicker = useRef<HTMLInputElement>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
+  const [statement, setStatement] = useState<{ text: string; first: StatementView } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const save = async (kind: 'backup' | 'csv') => {
@@ -40,6 +45,19 @@ export function DataSection() {
     if (!file) return;
     setProblem(null);
     setRestoring(await file.text());
+  };
+
+  const pickedStatement = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setProblem(null);
+    const text = await file.text();
+    try {
+      setStatement({ text, first: core.call('read_statement', { text }) });
+    } catch (error) {
+      setProblem((error as Error).message);
+    }
   };
 
   const restore = () => {
@@ -79,6 +97,22 @@ export function DataSection() {
         )}
         <Button onClick={() => picker.current?.click()}>Restore from a backup…</Button>
       </Stack>
+      <Typography variant="body2" sx={{ mt: 3, mb: 1 }}>
+        Your bank’s statement, exported as a CSV or OFX file, marks the bills and income it shows paid, and can set your
+        balance. It stays on this device: only what you mark is saved.
+      </Typography>
+      <Button variant="outlined" onClick={() => statementPicker.current?.click()}>
+        Import a bank statement…
+      </Button>
+      <input
+        ref={statementPicker}
+        type="file"
+        accept=".csv,.ofx,.qfx,.txt,text/csv,application/x-ofx"
+        hidden
+        aria-label="Bank statement file"
+        onChange={event => void pickedStatement(event)}
+      />
+      {statement && <StatementDialog {...statement} onClose={() => setStatement(null)} />}
       <input
         ref={picker}
         type="file"

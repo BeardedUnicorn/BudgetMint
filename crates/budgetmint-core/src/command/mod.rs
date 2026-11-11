@@ -4,12 +4,16 @@
 //! tests/contracts.rs).
 
 use crate::backup::BudgetExport;
+use crate::balance::{self, BalanceCheckView, OccRef, PaidInput, SpendingEstimate};
+use crate::bank::{self, CsvColumns, StatementView};
 use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
+use crate::goals::{self, GoalsView};
 use crate::model::{Balance, Cents, Repeat, Settings};
 use crate::plan::{self, ItemInput, OccurrenceInput, Planned, ScheduleChange};
 use crate::reminders::{self, Reminder};
+use crate::report::{self, ReportView};
 use crate::time::Ctx;
 use crate::views::{self, ForecastView, ItemView, MonthView, OccurrenceView, Overview};
 use chrono::NaiveDate;
@@ -46,6 +50,12 @@ pub enum Command {
     Undo(UndoArgs),
     ExportBudget(NoArgs),
     RestoreBudget(RestoreBudgetArgs),
+    GetGoals(NoArgs),
+    GetReport(MonthArgs),
+    GetBalanceCheck(BalanceCheckArgs),
+    GetSpendingEstimate(NoArgs),
+    Settle(SettleArgs),
+    ReadStatement(ReadStatementArgs),
 }
 
 macro_rules! command_types {
@@ -101,6 +111,12 @@ command_types! {
     "undo": UndoArgs => Vec<DocWrite>,
     "export_budget": NoArgs => BudgetExport,
     "restore_budget": RestoreBudgetArgs => Planned,
+    "get_goals": NoArgs => GoalsView,
+    "get_report": MonthArgs => ReportView,
+    "get_balance_check": BalanceCheckArgs => BalanceCheckView,
+    "get_spending_estimate": NoArgs => Option<SpendingEstimate>,
+    "settle": SettleArgs => Planned,
+    "read_statement": ReadStatementArgs => StatementView,
 }
 
 /// `reply` read as a `T` and written back.
@@ -287,6 +303,48 @@ pub struct RestoreBudgetArgs {
     pub backup: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct BalanceCheckArgs {
+    /// The balance the user's giving (not set yet).
+    pub balance: Balance,
+    /// The open ones they say haven't come out (or in) yet.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub still_open: Option<Vec<OccRef>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SettleArgs {
+    /// Marked paid (or received), each on a day for an amount.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub paid: Option<Vec<PaidInput>>,
+    /// Not paid yet after all: left to come the day after the balance's.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub still_open: Option<Vec<OccRef>>,
+    /// The new balance, checked against what was expected by its day.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub balance: Option<Balance>,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ReadStatementArgs {
+    /// The statement file's text.
+    pub text: String,
+    /// A CSV's columns, when they weren't found.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub columns: Option<CsvColumns>,
+}
+
 impl Command {
     /// The command `name` with `args`, as a client sent them. Missing or null
     /// args are `{}`, and unknown keys are ignored.
@@ -385,6 +443,36 @@ pub fn execute(
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),
         Command::RestoreBudget(args) => to_value(plan::restore_budget(snapshot, &args.backup)?),
+        Command::GetGoals(_) => to_value(goals::goals(snapshot, ctx)),
+        Command::GetReport(args) => to_value(
+            report::report(snapshot, forecast, &args.month, ctx)
+                .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
+        ),
+        Command::GetBalanceCheck(args) => to_value(balance::balance_check(
+            snapshot,
+            forecast,
+            args.balance,
+            args.still_open.unwrap_or_default(),
+            ctx,
+        )),
+        Command::GetSpendingEstimate(_) => to_value(balance::spending_estimate(
+            &snapshot.settings(),
+            ctx.today(),
+        )),
+        Command::Settle(args) => to_value(balance::settle(
+            snapshot,
+            forecast,
+            args.paid.unwrap_or_default(),
+            args.still_open.unwrap_or_default(),
+            args.balance,
+            ctx,
+        )?),
+        Command::ReadStatement(args) => to_value(bank::read_statement(
+            snapshot,
+            &args.text,
+            args.columns,
+            ctx,
+        )?),
     })
 }
 

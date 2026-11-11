@@ -17,7 +17,7 @@ const PAY = item({
   id: 'pay',
   kind: 'income',
   name: 'Paycheck',
-  schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 80_000 }],
+  schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 80_000, weekends: 'keep' }],
 });
 
 async function calendar(seed: Parameters<typeof startBudget>[0] = {}) {
@@ -35,6 +35,7 @@ const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,
+  spendingCents: 0,
   earnedCents: 0,
   earnedUncertainCents: 0,
   earnedArrivesOn: null,
@@ -273,6 +274,7 @@ describe('the calendar', () => {
       scheduled: '2026-11-12',
       due: '2026-11-12',
       expectedCents: 1_000,
+      estimated: false,
       status: { state: 'open' as const },
       late: false,
       amountCents: null,

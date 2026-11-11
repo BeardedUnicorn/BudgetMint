@@ -1,6 +1,7 @@
 /**
- * The forecast: the balance it starts from, how far ahead it looks, and the
- * mark below which a day counts as low.
+ * The forecast: the balance it starts from, how far ahead it looks, the
+ * mark below which a day counts as low, and the everyday spending it takes
+ * out a day at a time (with what the balance's updates say it is).
  */
 
 import { useState } from 'react';
@@ -22,6 +23,7 @@ const HORIZONS = [30, 60, 90, 180, 365].filter(
 export function ForecastSection() {
   const [settings, save] = useSettings();
   const { today } = useCoreQuery('get_overview');
+  const estimate = useCoreQuery('get_spending_estimate');
   const [editing, setEditing] = useState(false);
   const { balance } = settings;
 
@@ -60,6 +62,27 @@ export function ForecastSection() {
           helperText={`Days that end below it are flagged (and below ${formatWholeCents(0)}, short). Leave it empty for none.`}
           sx={{ maxWidth: 260 }}
         />
+        <AmountSetting
+          label="Everyday spending, a week"
+          cents={settings.spendingWeeklyCents}
+          onSave={spendingWeeklyCents => save(current => ({ ...current, spendingWeeklyCents }))}
+          helperText="Food, fuel and the rest besides your bills: the forecast takes a day’s share out each day. Leave it empty for none."
+          sx={{ maxWidth: 260 }}
+        />
+        {estimate && estimate.weeklyCents !== settings.spendingWeeklyCents && (
+          <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+              By your balance updates over the last {estimate.days} days, you spend about{' '}
+              {formatCents(estimate.weeklyCents)} a week besides your bills.
+            </Typography>
+            <Button
+              variant="outlined"
+              onClick={() => save(current => ({ ...current, spendingWeeklyCents: estimate.weeklyCents }))}
+            >
+              Use it
+            </Button>
+          </Stack>
+        )}
       </Stack>
       {editing && <BalanceDialog balance={balance} today={today} onClose={() => setEditing(false)} />}
     </SettingsSection>

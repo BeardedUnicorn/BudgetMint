@@ -11,7 +11,7 @@ import type { OccurrenceView } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { occurrenceLabel } from '../../utils/describe';
-import { formatCents } from '../../utils/money';
+import { formatCents, formatMaybeCents } from '../../utils/money';
 import { useNotification } from '../../contexts/NotificationContext';
 import { OccurrenceDialog } from './OccurrenceDialog';
 
@@ -97,9 +97,9 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                 }}
               >
                 {sign}
-                {formatCents(
-                  occurrence.status.state === 'done' ? occurrence.status.amountCents : occurrence.expectedCents
-                )}
+                {occurrence.status.state === 'done'
+                  ? formatCents(occurrence.status.amountCents)
+                  : formatMaybeCents(occurrence.expectedCents, occurrence.estimated)}
               </Typography>
               <Stack direction="row" spacing={0.5}>
                 {!done && !occurrence.autopay ? (

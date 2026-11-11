@@ -6,9 +6,49 @@ use crate::docs::Snapshot;
 use crate::model::{Cents, Item, OccStatus, Override};
 use crate::recur::item_dates;
 use chrono::{Duration, NaiveDate};
+use serde::{Deserialize, Serialize};
 
 /// How far an occurrence may be moved from its date (either way).
 pub const MOVE_DAYS: i64 = 62;
+
+/// How many of its last payments a varying item's estimate averages.
+pub const ESTIMATE_FROM: usize = 3;
+
+/// What a varying item's next ones are expected to come to: the average of
+/// its last few paid (or received), and how many that is. None until one is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Estimate {
+    pub cents: Cents,
+    /// The payments it averages (1 to ESTIMATE_FROM).
+    pub from: u32,
+}
+
+/// The estimate for `item`, when its amount varies and it's been paid.
+pub fn estimate(snapshot: &Snapshot, item: &Item) -> Option<Estimate> {
+    if !item.varies {
+        return None;
+    }
+    let mut paid: Vec<(NaiveDate, Cents)> = snapshot
+        .overrides
+        .range((item.id.clone(), NaiveDate::MIN)..=(item.id.clone(), NaiveDate::MAX))
+        .filter_map(|(_, over)| match over.status {
+            OccStatus::Done { on, amount_cents } => Some((on, amount_cents)),
+            _ => None,
+        })
+        .collect();
+    // The latest paid first (by when, then which)
+    paid.sort_by(|a, b| b.cmp(a));
+    paid.truncate(ESTIMATE_FROM);
+    let from = paid.len() as i64;
+    let sum: Cents = paid.iter().map(|(_, cents)| cents).sum();
+    // Rounded to the nearest cent
+    (from > 0).then(|| Estimate {
+        cents: (sum + from / 2) / from,
+        from: from as u32,
+    })
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Occurrence<'a> {
@@ -18,6 +58,8 @@ pub struct Occurrence<'a> {
     /// When it's due: the schedule's date, or where it was moved.
     pub due: NaiveDate,
     pub expected_cents: Cents,
+    /// The expected amount is a varying item's estimate.
+    pub estimated: bool,
     pub status: OccStatus,
     pub over: Option<&'a Override>,
 }
@@ -38,16 +80,22 @@ pub fn item_occurrences<'a>(
 
     let mut found: Vec<Occurrence<'a>> = Vec::new();
     let dates = item_dates(item, wide_from, wide_to);
+    let estimate = estimate(snapshot, item);
     for (date, segment) in &dates {
         let over = snapshot.overrides.get(&(item.id.clone(), *date));
+        let status = over.map_or(OccStatus::Open, |over| over.status.clone());
+        let own = over.and_then(|over| over.amount_cents);
+        // Still to come, without its own amount: a varying item's estimate
+        let estimated = estimate.filter(|_| own.is_none() && status == OccStatus::Open);
         found.push(Occurrence {
             item,
             scheduled: *date,
             due: over.and_then(|over| over.moved_to).unwrap_or(*date),
-            expected_cents: over
-                .and_then(|over| over.amount_cents)
+            expected_cents: own
+                .or(estimated.map(|estimate| estimate.cents))
                 .unwrap_or(segment.amount_cents),
-            status: over.map_or(OccStatus::Open, |over| over.status.clone()),
+            estimated: estimated.is_some(),
+            status,
             over,
         });
     }
@@ -59,6 +107,7 @@ pub fn item_occurrences<'a>(
                 scheduled: over.date,
                 due: over.moved_to.unwrap_or(over.date),
                 expected_cents: over.amount_cents.unwrap_or(0),
+                estimated: false,
                 status: over.status.clone(),
                 over: Some(over),
             });
@@ -108,6 +157,7 @@ pub fn paid_outside(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> Vec<
                 scheduled: over.date,
                 due,
                 expected_cents: over.amount_cents.unwrap_or(0),
+                estimated: false,
                 status: over.status.clone(),
                 over: Some(over),
             });
@@ -138,11 +188,14 @@ pub(crate) mod tests {
                 until: None,
                 repeat,
                 amount_cents: cents,
+                weekends: crate::model::Weekends::Keep,
             }],
             autopay: false,
             reminder: None,
             archived: false,
             note: None,
+            varies: false,
+            save_up: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         }

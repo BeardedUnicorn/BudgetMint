@@ -9,4 +9,8 @@ short: boolean,
 /**
  * Below the low mark (and not short).
  */
-low: boolean, flows: Array<Flow>, };
+low: boolean, flows: Array<Flow>, 
+/**
+ * Of the closing balance, what's set aside for bills (crate::goals).
+ */
+setAsideCents: number, };

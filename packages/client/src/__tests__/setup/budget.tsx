@@ -27,6 +27,8 @@ export function item(seed: ItemSeed): Item {
     reminder: null,
     archived: false,
     note: null,
+    varies: false,
+    saveUp: null,
     createdAt: STAMP,
     updatedAt: STAMP,
     ...seed,
@@ -39,7 +41,9 @@ export function monthly(id: string, name: string, day: number, cents: number, mo
     id,
     kind: 'bill',
     name,
-    schedule: [{ from: '2026-10-01', until: null, repeat: { every: 'months', n: 1, day }, amountCents: cents }],
+    schedule: [
+      { from: '2026-10-01', until: null, repeat: { every: 'months', n: 1, day }, amountCents: cents, weekends: 'keep' },
+    ],
     ...more,
   });
 }

@@ -77,7 +77,8 @@ export type ChangeCommand =
   | 'set_occurrence'
   | 'set_balance'
   | 'save_settings'
-  | 'restore_budget';
+  | 'restore_budget'
+  | 'settle';
 
 /**
  * Makes a change: core checks and plans it (a refusal throws, with the

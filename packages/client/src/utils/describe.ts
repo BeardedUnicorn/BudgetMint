@@ -2,7 +2,7 @@
  * Schedules and occurrences in words.
  */
 
-import type { OccurrenceView, Repeat } from '@budgetmint/contracts';
+import type { OccurrenceView, Repeat, Weekends } from '@budgetmint/contracts';
 import { formatDay, formatDayInYear, parseDay } from './dates';
 import { formattingLocale } from './locale';
 
@@ -16,6 +16,20 @@ export function ordinal(n: number): string {
 
 const every = (n: number, one: string, many: string) => (n === 1 ? one : `Every ${n} ${many}`);
 
+/** "the 15th", "the last day". */
+const dayOfMonth = (day: number) => (day === 31 ? 'the last day' : `the ${ordinal(day)}`);
+
+/** Which week of the month (core's 1–4, 5 the last), as a schedule says it. */
+export const WEEKS_OF_MONTH = ['first', 'second', 'third', 'fourth', 'last'] as const;
+
+/** A weekday's name: 0 Monday … 6 Sunday, as core numbers them. */
+export function weekdayName(weekday: number): string {
+  // Nov 9, 2026 was a Monday
+  const monday = parseDay('2026-11-09');
+  const date = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + weekday);
+  return new Intl.DateTimeFormat(formattingLocale(), { weekday: 'long' }).format(date);
+}
+
 /** How a repeat reads, from its first date `from`: "Monthly on the 1st", "Every 2 weeks on Friday". */
 export function describeRepeat(repeat: Repeat, from: string): string {
   switch (repeat.every) {
@@ -27,12 +41,26 @@ export function describeRepeat(repeat: Repeat, from: string): string {
       const weekday = new Intl.DateTimeFormat(formattingLocale(), { weekday: 'long' }).format(parseDay(from));
       return `${every(repeat.n, 'Weekly', 'weeks')} on ${weekday}`;
     }
-    case 'months': {
-      const day = repeat.day === 31 ? 'the last day' : `the ${ordinal(repeat.day)}`;
-      return `${every(repeat.n, 'Monthly', 'months')} on ${day}`;
-    }
+    case 'months':
+      return `${every(repeat.n, 'Monthly', 'months')} on ${dayOfMonth(repeat.day)}`;
+    case 'twiceMonthly':
+      return `Twice a month, on ${dayOfMonth(repeat.first)} and ${dayOfMonth(repeat.second)}`;
+    case 'monthWeekday':
+      return `${every(repeat.n, 'Monthly', 'months')} on the ${WEEKS_OF_MONTH[repeat.week - 1]} ${weekdayName(repeat.weekday)}`;
     case 'years':
       return `${every(repeat.n, 'Yearly', 'years')} on ${formatDay(from)}`;
+  }
+}
+
+/** What a schedule does with weekend dates ("On a weekend, the Friday before"); nothing when they stay. */
+export function describeWeekends(weekends: Weekends): string {
+  switch (weekends) {
+    case 'keep':
+      return '';
+    case 'before':
+      return 'On a weekend, the Friday before';
+    case 'after':
+      return 'On a weekend, the Monday after';
   }
 }
 

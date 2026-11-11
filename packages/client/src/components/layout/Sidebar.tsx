@@ -19,6 +19,8 @@ import {
   Payments as IncomeIcon,
   CalendarToday as CalendarIcon,
   ShowChart as ForecastIcon,
+  Savings as SavingsIcon,
+  Assessment as ReportsIcon,
   Settings as SettingsIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
@@ -53,8 +55,10 @@ const VIEW_ICONS: Record<SidebarView, typeof OverviewIcon> = {
   overview: OverviewIcon,
   bills: BillsIcon,
   income: IncomeIcon,
+  savings: SavingsIcon,
   calendar: CalendarIcon,
   forecast: ForecastIcon,
+  reports: ReportsIcon,
   settings: SettingsIcon,
 };
 

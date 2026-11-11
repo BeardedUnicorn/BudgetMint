@@ -1,6 +1,6 @@
 /**
  * App-wide keyboard shortcuts (⌘ on macOS, Ctrl elsewhere), as TaskMint's:
- * ⌘1–⌘6 open the pages in sidebar order, and ⌘, opens Settings. Not in a
+ * ⌘1–⌘8 open the pages in sidebar order, and ⌘, opens Settings. Not in a
  * browser, which keeps them: ⌘N adds a bill (income, on its page), and ⌘/
  * lists them all. They wait while a dialog or menu is open.
  */

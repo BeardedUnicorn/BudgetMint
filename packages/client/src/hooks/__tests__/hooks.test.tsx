@@ -41,8 +41,10 @@ describe('keyboard shortcuts', () => {
 
   it('open the pages by number, and Settings with ⌘, outside a browser', () => {
     expect(shortcutView(press('1'), true, false)).toBe('overview');
-    expect(shortcutView(press('6'), true, false)).toBe('settings');
-    expect(shortcutView(press('7'), true, false)).toBeNull();
+    expect(shortcutView(press('8'), true, false)).toBe('settings');
+    expect(shortcutView(press('4'), true, false)).toBe('savings');
+    expect(shortcutView(press('7'), true, false)).toBe('reports');
+    expect(shortcutView(press('9'), true, false)).toBeNull();
     expect(shortcutView(press('0'), true, false)).toBeNull();
     expect(shortcutView(press(','), true, false)).toBe('settings');
     expect(shortcutView(press(','), true, true)).toBeNull();
@@ -52,8 +54,8 @@ describe('keyboard shortcuts', () => {
     expect(shortcutView(press('2'), false, false)).toBeNull();
     expect(shortcutView(press('2', { shiftKey: true }), true, false)).toBeNull();
     expect(shortcutView(press('2', { repeat: true }), true, false)).toBeNull();
-    expect(viewShortcut('calendar', true)).toBe('⌘4');
-    expect(viewShortcut('calendar', false)).toBe('Ctrl+4');
+    expect(viewShortcut('calendar', true)).toBe('⌘5');
+    expect(viewShortcut('calendar', false)).toBe('Ctrl+5');
     expect(modifierLabel(false)).toBe('Ctrl+');
     expect(typeof isMacPlatform()).toBe('boolean');
   });
@@ -95,7 +97,7 @@ describe('keyboard shortcuts', () => {
     const key = (k: string) => fireEvent.keyDown(window, { key: k, metaKey: mac, ctrlKey: !mac });
     key('3');
     expect(screen.getByRole('heading', { name: 'Income', level: 1 })).toBeInTheDocument();
-    key('6');
+    key('8');
     await user.click(screen.getByRole('button', { name: 'Delete account' }));
     key('1');
     expect(screen.getByRole('heading', { name: 'Settings', level: 1, hidden: true })).toBeInTheDocument();
@@ -195,7 +197,7 @@ describe('the tray', () => {
           id: 'x',
           kind: 'income',
           name: 'X',
-          schedule: [{ from: '2026-11-12', until: null, repeat: { every: 'once' }, amountCents: 1 }],
+          schedule: [{ from: '2026-11-12', until: null, repeat: { every: 'once' }, amountCents: 1, weekends: 'keep' }],
         }),
       ],
     });

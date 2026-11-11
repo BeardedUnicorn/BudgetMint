@@ -18,11 +18,13 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 
 | Page | What it's for |
 |---|---|
-| **Overview** | Today's balance and the lowest point ahead, a warning for the first day it goes short, what's due this week, income over the next two weeks, TaskMint's next withdrawal, and the upcoming list (mark paid or received, skip, change an amount). |
-| **Bills** and **Income** | Recurring items: once, every N days, weeks, months (a day of the month, kept from the first date, so the 31st falls on the last day of shorter months) or years. Autopay, a category, notes, reminders, and a schedule that changes from a date on while earlier occurrences stay as they were. Archive what's finished; each item's history is a click away. |
+| **Overview** | Today's balance, what's safe to spend (above your low mark to the forecast's end, after everyday spending and what's set aside), the lowest point ahead, a warning for the first day it goes short (with what more TaskMint work would cover it, and by when), what's due this week, income over the next two weeks, TaskMint's next withdrawal, and the upcoming list (mark paid or received, skip, change an amount). Updating the balance checks it against what was expected. |
+| **Bills** and **Income** | Recurring items: once, every N days, weeks, months (a day of the month, kept from the first date, so the 31st falls on the last day of shorter months), twice a month, a weekday of the month (the second Friday) or years, with weekend dates kept or moved to the Friday before or the Monday after. Autopay, a category, notes, reminders, an amount that varies (expected at the average of the last three paid), and a schedule that changes from a date on while earlier occurrences stay as they were. Archive what's finished; each item's history is a click away. |
+| **Savings** | Money set aside a month at a time for a yearly or monthly bill, or a goal of your own by a date: how much is set aside for each, and the next part. |
 | **Calendar** | Each day's bills, income and withdrawals, and the balance at the end of it, in red below your low-balance mark. Click a day for its details. |
-| **Forecast** | The balance line over the next 14 to 366 days, with your low-balance mark, a day-by-day table, and the assumptions it rests on. |
-| **Settings** | Your account, the forecast's assumptions, TaskMint's connection, reminders on this device, appearance, and (on the desktop) updates. |
+| **Forecast** | The balance line over the next 14 to 366 days (and what's left of it besides the money set aside), with your low-balance mark, a day-by-day table, and the assumptions it rests on, everyday spending among them. |
+| **Reports** | A month looked back on: bills paid against what was expected, by category; income and TaskMint's withdrawals; bills paid late; spending besides the bills; and the six months up to it. |
+| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, and (on the desktop) updates. |
 
 **TaskMint's withdrawals.** TaskMint publishes a forecast of what each
 withdrawal would take, and when the next one opens (only numbers: no task

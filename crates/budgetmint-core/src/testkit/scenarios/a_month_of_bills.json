@@ -8,7 +8,7 @@
     {
       "call": "set_balance",
       "args": { "balance": { "cents": 200000, "asOf": "2026-11-09" } },
-      "expect": { "writes": [{ "docId": "settings~account", "kind": "settings", "schema": 1 }], "undo": [{ "json": null }] }
+      "expect": { "writes": [{ "docId": "settings~account", "kind": "settings", "schema": 2 }], "undo": [{ "json": null }] }
     },
     {
       "call": "save_item",

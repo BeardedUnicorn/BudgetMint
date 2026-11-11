@@ -20,6 +20,7 @@ mod taskmint;
 const SCENARIOS: &[&str] = &[
     include_str!("scenarios/a_month_of_bills.json"),
     include_str!("scenarios/a_backup_restored.json"),
+    include_str!("scenarios/a_balance_checked_and_money_set_aside.json"),
 ];
 
 #[derive(Debug, Deserialize)]
