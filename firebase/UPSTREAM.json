@@ -1,7 +1,7 @@
 {
   "$comment": "What BudgetMint keeps from TaskMint, pinned to a TaskMint commit (scripts/sync-upstream.mjs): pnpm upstream:check checks the copies, pnpm upstream:pull refreshes them. Never edit them here.",
   "repo": "BeardedUnicorn/taskmint",
-  "ref": "1623beefe9765184fbd39141c751e25f627dfbd8 (with uncommitted changes)",
+  "ref": "27c12cb643ce48a4570316b306cbb1867a7237eb",
   "sources": [
     {
       "from": "firebase/firestore.rules",
