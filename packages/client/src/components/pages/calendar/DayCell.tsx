@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/pages/calendar/DayCell.tsx @ 1623bee.
+// Adapted from TaskMint packages/client/src/components/pages/calendar/DayCell.tsx @ 26aff93.
 /**
  * One day on the Calendar: its date, the balance at its end, and badges for
  * the bills due, the income and TaskMint's money coming in (dashed while
@@ -14,6 +14,7 @@ import { alpha, Theme } from '@mui/material/styles';
 import { BalanceFlag } from '../../budget/BalanceFlag';
 import { CallMade as BillIcon, CallReceived as IncomeIcon, Savings as WithdrawalIcon } from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
+import { focusColor } from '../../../theme/components';
 import { HOVER, PHONE } from '../../../theme/media';
 import { formatLongDay, parseDay } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
@@ -142,7 +143,7 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
           bgcolor: day.short ? alpha(theme.palette.error.main, 0.07) : 'transparent',
           transition: theme.transitions.create(['background-color', 'border-color'], { duration: 120 }),
           [HOVER]: { '&:hover': { bgcolor: theme.palette.action.hover } },
-          '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 1 },
+          '&:focus-visible': { outline: `2px solid ${focusColor(theme.palette.mode)}`, outlineOffset: 1 },
           [WIDE]: { minHeight: 112, p: 1 },
           [PHONE]: { minHeight: 52, p: 0.5 },
         })}

@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/theme/components.ts @ 8ca16f2: keep the two in step.
+// Copied from TaskMint packages/client/src/theme/components.ts @ 99392ae: keep the two in step.
 /**
  * Component defaults for both modes: visible focus rings, comfortable touch
  * targets (44px, 32px for small controls with a mouse), the few looks that
@@ -7,11 +7,18 @@
  */
 
 import type { Components, Theme } from '@mui/material/styles';
+import type {} from '@mui/x-date-pickers/themeAugmentation';
 import { PHONE, TOUCH } from './media';
 import { BRAND, BRAND_TEXT_LIGHT, ColorMode } from './palettes';
 
 /** The focus ring's color (and a focused field's edge): the brand green, darker on light surfaces where it would fade. */
 export const focusColor = (mode: ColorMode) => (mode === 'light' ? BRAND_TEXT_LIGHT : BRAND);
+
+// WebKit (Safari, the Mac app's webview) doesn't repaint an outline while the
+// gap for its label animates: the border crosses a selected field's label and
+// leaves a gap in one it left (WebKit bug 304070, mui/material-ui#44988).
+// Unanimated, the gap opens and closes in the same paint as the focus change.
+const steadyNotch = { '& legend': { transition: 'none' } };
 
 const SHADOWS: Record<ColorMode, [string, string, string]> = {
   light: [
@@ -81,6 +88,8 @@ export function components(mode: ColorMode): Components<Theme> {
         sizeSmall: { minWidth: 32, minHeight: 32, [TOUCH]: { minWidth: 44, minHeight: 44 } },
       },
     },
+    MuiOutlinedInput: { styleOverrides: { notchedOutline: steadyNotch } },
+    MuiPickersOutlinedInput: { styleOverrides: { notchedOutline: steadyNotch } },
     MuiTextField: {
       styleOverrides: {
         root: {
