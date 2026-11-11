@@ -1,0 +1,30 @@
+{
+  "$comment": "The only list of coverage exclusions. vitest.shared.ts reads the typescript section; scripts/check-coverage-policy.mjs enforces both sections and prints each crate's cargo-llvm-cov ignore regex. See docs/coverage-policy.md.",
+  "typescript": {
+    "allPackages": [
+      { "glob": "src/**/__tests__/**", "why": "tests and their helpers" },
+      { "glob": "src/**/*.{test,spec}.{ts,tsx}", "why": "test files outside __tests__" },
+      { "glob": "src/setupTests.ts", "why": "test setup" },
+      { "glob": "src/**/*.d.ts", "why": "type declarations, no runtime code" }
+    ],
+    "packages": {
+      "apps/desktop": [],
+      "apps/web": [],
+      "packages/client": [
+        { "glob": "src/core/wasm/**", "why": "wasm-bindgen's output for crates/budgetmint-wasm (scripts/build-wasm.mjs); core's host is tested in Rust" }
+      ],
+      "packages/contracts": []
+    }
+  },
+  "rust": {
+    "crates/budgetmint-core": [],
+    "crates/budgetmint-wasm": [
+      { "file": "src/lib.rs", "why": "#[wasm_bindgen] glue that calls core's tested host::JsonHost" }
+    ],
+    "apps/desktop/src-tauri": [
+      { "file": "src/main.rs", "why": "binary entry; calls budgetmint_lib::run" },
+      { "file": "src/app.rs", "why": "tauri::Builder, plugins, generate_context! and the run loop: they need a real event loop and main thread" },
+      { "file": "src/platform/os.rs", "why": "the Platform on Tauri: tray rendering, OS notifications, window focus. They need a real UI session" }
+    ]
+  }
+}

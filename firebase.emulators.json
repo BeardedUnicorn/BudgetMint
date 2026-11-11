@@ -1,0 +1,18 @@
+{
+  "$comment": "The emulators for development and scripts/test-emulator.sh: `pnpm firebase --config firebase.emulators.json emulators:start --project taskmint-f9a05`. The same ports as TaskMint's, so one emulator suite serves both apps. The rules are the pinned copy of TaskMint's.",
+  "firestore": {
+    "rules": "firebase/firestore.rules"
+  },
+  "hosting": {
+    "site": "budgetmint",
+    "public": "apps/web/dist",
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  },
+  "emulators": {
+    "singleProjectMode": true,
+    "auth": { "host": "127.0.0.1", "port": 9099 },
+    "firestore": { "host": "127.0.0.1", "port": 8085 },
+    "hosting": { "host": "127.0.0.1", "port": 5003 },
+    "ui": { "enabled": false }
+  }
+}

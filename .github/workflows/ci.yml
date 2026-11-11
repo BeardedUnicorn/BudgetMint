@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # macOS: the app's primary platform, and no extra WebKitGTK system
+    # packages are needed to compile the Tauri crate.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      # Version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: node scripts/check-coverage-policy.mjs
+
+      - run: node scripts/check-toolchains.mjs
+
+      # TaskMint's rules and forecast contract, as pinned (firebase/UPSTREAM.json)
+      - run: node scripts/sync-upstream.mjs --check
+
+      # Formatting and lint for the TypeScript and JavaScript (biome.jsonc)
+      - run: pnpm exec biome ci
+
+      # The scripts' own tests (release, sync-upstream)
+      - run: pnpm test:scripts
+
+      # The version and components in rust-toolchain.toml, with the wasm
+      # target (rustup no longer installs it on first use)
+      - run: rustup toolchain install
+
+      # The wasm-bindgen CLI, the version Cargo.lock has (check-toolchains)
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.127
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Core in WebAssembly: the TypeScript imports it
+      - run: pnpm build:wasm
+
+      # The Firestore emulator needs Java 21 or later
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: BudgetMint's writes against TaskMint's rules (emulator)
+        run: scripts/test-emulator.sh
+
+      # Sources and tests, every package.
+      - run: pnpm typecheck
+
+      # tsc for every package + the vite builds. Must run before cargo:
+      # tauri::generate_context! embeds apps/desktop/dist.
+      - run: pnpm build
+
+      - run: pnpm test:coverage
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: |
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo clippy -p budgetmint-core --features ts --all-targets -- -D warnings
+
+      - name: Contracts match the Rust
+        run: scripts/check-contracts.sh
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: budgetmint-core coverage (100%)
+        run: >-
+          cargo llvm-cov -p budgetmint-core --summary-only
+          --ignore-filename-regex "$(node scripts/check-coverage-policy.mjs --rust-ignore-regex crates/budgetmint-core)"
+          --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
+
+      - name: desktop shell coverage (100%)
+        run: >-
+          cargo llvm-cov -p budgetmint --summary-only
+          --ignore-filename-regex "$(node scripts/check-coverage-policy.mjs --rust-ignore-regex apps/desktop/src-tauri)"
+          --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100

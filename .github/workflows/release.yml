@@ -1,0 +1,266 @@
+# Adapted from TaskMint .github/workflows/release.yml @ 1623bee.
+name: Release
+
+# A vX.Y.Z tag (pushed by `pnpm release publish`) builds every file a release
+# ships and creates the GitHub release with the version's CHANGELOG section.
+# Manual runs, and pull requests that change how releases are built, build the
+# same files as workflow artifacts and publish nothing.
+#
+# The desktop builds also make the app's signed updates, with the key in the
+# TAURI_SIGNING_PRIVATE_KEY secret, and the release gets the latest.json that
+# installed apps check for updates (the README's "Desktop updates"). The
+# Android APK, once the workflow builds it, is signed with the release key in
+# the ANDROID_KEYSTORE secret, so each one installs over the one before (the
+# README's "Android signing").
+#
+# The web app is built too, and a tag deploys it to Firebase Hosting (the
+# budgetmint site in TaskMint's taskmint-f9a05 project) once every build has
+# passed, when the repository has the Workload Identity Federation variables.
+# Hosting only: the Firestore rules and indexes are TaskMint's, deployed from
+# TaskMint.
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/release.mjs
+      - scripts/release/**
+      - apps/desktop/src-tauri/tauri.conf.json
+      - apps/desktop/src-tauri/tauri.updater.conf.json
+      - apps/desktop/src-tauri/tauri.android.conf.json
+      - apps/desktop/src-tauri/gen/android/**
+      - firebase.json
+      - scripts/build-wasm.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # desktop: the targets that make the app's updates
+        include:
+          - target: macos-arm64
+            os: macos-26
+            desktop: true
+          # Cross-compiled on Apple silicon (scripts/release/lib.mjs buildPlan)
+          - target: macos-x64
+            os: macos-26
+            desktop: true
+          - target: windows-x64
+            os: windows-2025
+            desktop: true
+          # android-arm64 (os: ubuntu-26.04) goes here once the Android
+          # project, apps/desktop/src-tauri/gen/android, is committed with the
+          # release signing; add it to RELEASE_TARGETS in
+          # scripts/release/lib.mjs then too, so the release ships the APK.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      # A release without updates would leave installed apps where they are
+      - name: The updates can be signed
+        if: github.ref_type == 'tag' && matrix.desktop
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::The TAURI_SIGNING_PRIVATE_KEY secret isn't set, so the updates can't be signed (the README's \"Desktop updates\")"
+            exit 1
+          fi
+
+      # Windows checks out LF line ends too, so every build has the same files
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@v6
+
+      # No dependency caches: a release is built from a clean install.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - name: The tag is the app's version
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::The tag is $GITHUB_REF_NAME, but apps/desktop/package.json says $version"
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+
+      # The version and components in rust-toolchain.toml
+      - run: rustup toolchain install
+
+      # The APK: a JDK for Gradle, and the Android SDK with the same NDK as a
+      # local build (the README's "Android"). Gradle fetches the SDK Platform
+      # and Build-Tools it needs.
+      - if: matrix.target == 'android-arm64'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - if: matrix.target == 'android-arm64'
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools ndk;29.0.13599879
+          log-accepted-android-sdk-licenses: false
+
+      - if: matrix.target == 'android-arm64'
+        run: echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.13599879" >> "$GITHUB_ENV"
+
+      # Every APK is signed with the release key, so it installs over the
+      # last one; the build step checks the certificate too.
+      - name: The APK can be signed
+        if: matrix.target == 'android-arm64'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "::error::The ANDROID_KEYSTORE secret isn't set, so the APK can't be signed (the README's \"Android signing\")"
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE" | base64 --decode > "$RUNNER_TEMP/budgetmint-release.p12"
+          echo "BUDGETMINT_ANDROID_KEYSTORE=$RUNNER_TEMP/budgetmint-release.p12" >> "$GITHUB_ENV"
+
+      - run: node scripts/release.mjs --rebuild --target ${{ matrix.target }}
+        env:
+          # The desktop's Google sign-in client; without it, the desktop signs
+          # in to cloud sync by email only
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ matrix.desktop && secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID || '' }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ matrix.desktop && secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET || '' }}
+          # Signs the desktop builds' updates (only this step sees the key; the
+          # APK has no updates)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.desktop && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ matrix.desktop && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          # The release key's password, for the APK only
+          BUDGETMINT_ANDROID_KEYSTORE_PASSWORD: ${{ matrix.target == 'android-arm64' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: releases/
+          if-no-files-found: error
+
+  web:
+    name: web
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - run: pnpm install --frozen-lockfile
+
+      # BudgetMint's rules in WebAssembly: the Rust toolchain with its wasm
+      # target, and the wasm-bindgen CLI Cargo.lock pins (check-toolchains)
+      - run: rustup toolchain install
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.127
+
+      - run: pnpm build:wasm
+
+      - run: pnpm --filter @budgetmint/web build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: apps/web/dist/
+          if-no-files-found: error
+
+  deploy-web:
+    name: Deploy the web app
+    # Skipped until the repository has both variables: the budgetmint Hosting
+    # site and the provider aren't set up yet
+    if: >-
+      github.ref_type == 'tag' &&
+      vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' &&
+      vars.GCP_DEPLOY_SERVICE_ACCOUNT != ''
+    needs: [build, web]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      # The GitHub OIDC token Google's Workload Identity Federation takes
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: web
+          path: apps/web/dist
+
+      # No stored key: the provider should trust this repository's v* tags
+      # only, as a service account that can deploy Hosting and nothing more
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      # firebase-tools at the version package.json's "firebase" script pins.
+      # Hosting only (firebase.json's budgetmint site): never the Firestore
+      # rules or indexes, which are TaskMint's.
+      - run: pnpm firebase deploy --only hosting --project taskmint-f9a05 --non-interactive
+
+  github-release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: releases
+          merge-multiple: true
+
+      - run: node scripts/release.mjs github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

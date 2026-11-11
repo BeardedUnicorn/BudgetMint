@@ -1,0 +1,5 @@
+# Generated from crates/budgetmint-core; reviews show the Rust change instead.
+packages/contracts/src/generated/** linguist-generated=true
+# Vendored from TaskMint (scripts/sync-upstream.mjs): never edited here.
+firebase/firestore.rules linguist-vendored=true
+crates/budgetmint-core/src/testkit/taskmint/** linguist-vendored=true

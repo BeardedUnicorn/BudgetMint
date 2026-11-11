@@ -1,0 +1,9 @@
+# The Rust toolchain for local builds and CI, so rustfmt and clippy agree
+# everywhere (scripts/check-toolchains.mjs checks it's an exact version).
+# `rustup toolchain install` in the repo installs it.
+[toolchain]
+channel = "1.93.0"
+profile = "minimal"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+# BudgetMint's core in WebAssembly (crates/budgetmint-wasm), on every platform
+targets = ["wasm32-unknown-unknown"]

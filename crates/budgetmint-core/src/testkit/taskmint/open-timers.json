@@ -1,0 +1,151 @@
+{
+  "description": "A running timer (last changed 12:30, at $60/h) and a paused one: their steps are open, as of 12:30. At now (13:30) the running one has earned an hour more, and both are released 7 days after now.",
+  "nowMs": 1799933400000,
+  "forecast": {
+    "schema": 1,
+    "asOfMs": 1799931600000,
+    "fundsReleaseDays": 7,
+    "withdrawalIntervalMs": 259200000,
+    "lastImportMs": 1799931600000,
+    "cutoff": {
+      "takenAtMs": 1799841600000,
+      "amountCents": 5000
+    },
+    "recentWithdrawals": [
+      {
+        "takenAtMs": 1799841600000,
+        "amountCents": 5000
+      }
+    ],
+    "nextAllowedAtMs": 1800100800000,
+    "scheduled": null,
+    "carried": {
+      "actualCents": 1200,
+      "estimatedCents": 0,
+      "pastDueCents": 900
+    },
+    "steps": [
+      {
+        "atMs": 1800100800000,
+        "actualCents": 1000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "atMs": 1800187200000,
+        "actualCents": 2000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "atMs": 1800446400000,
+        "actualCents": 4000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "atMs": 1800534600000,
+        "actualCents": 0,
+        "estimatedCents": 3000,
+        "pastDueCents": 0,
+        "open": {
+          "sinceMs": 1799929800000,
+          "centsPerHour": 6000
+        }
+      },
+      {
+        "atMs": 1800534600000,
+        "actualCents": 0,
+        "estimatedCents": 3000,
+        "pastDueCents": 0,
+        "open": {
+          "sinceMs": 1799929800000,
+          "centsPerHour": 0
+        }
+      }
+    ],
+    "recentDays": [
+      {
+        "day": "2027-01-04",
+        "actualCents": 1000,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-05",
+        "actualCents": 500,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-07",
+        "actualCents": 400,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-09",
+        "actualCents": 1000,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-10",
+        "actualCents": 11999,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-13",
+        "actualCents": 4000,
+        "estimatedCents": 3000
+      },
+      {
+        "day": "2027-01-14",
+        "actualCents": 0,
+        "estimatedCents": 3000
+      }
+    ],
+    "zone": "America/Chicago"
+  },
+  "withdrawable": [
+    {
+      "atMs": 1799933400000,
+      "actualCents": 1200,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 1200
+    },
+    {
+      "atMs": 1800446400000,
+      "actualCents": 8200,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 8200
+    },
+    {
+      "atMs": 1800538140000,
+      "actualCents": 8200,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 8200
+    },
+    {
+      "atMs": 1800538200000,
+      "actualCents": 8200,
+      "estimatedCents": 12000,
+      "pastDueCents": 900,
+      "totalCents": 20200
+    },
+    {
+      "atMs": 1801310400000,
+      "actualCents": 8200,
+      "estimatedCents": 12000,
+      "pastDueCents": 900,
+      "totalCents": 20200
+    }
+  ],
+  "next": {
+    "opensAtMs": 1800100800000,
+    "isOpen": false,
+    "actualCents": 2200,
+    "estimatedCents": 0,
+    "pastDueCents": 900,
+    "totalCents": 2200
+  }
+}

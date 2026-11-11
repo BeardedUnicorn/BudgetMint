@@ -1,0 +1,11 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "identifier": "com.budgetmint.android",
+  "app": {
+    "security": {
+      "devCsp": {
+        "connect-src": "'self' ipc: http://ipc.localhost https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com ws://localhost:1430 ws://*:1430 http://10.0.2.2:9099 http://10.0.2.2:8085"
+      }
+    }
+  }
+}

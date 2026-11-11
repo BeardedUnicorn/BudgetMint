@@ -1,0 +1,34 @@
+# budgetmint-core is pure: no clock reads, no filesystem access and no
+# randomness. The client passes `now` and the ids in, and does the I/O.
+# (Clippy paths take no globs, so every std::fs function is listed, and the
+# fs types are banned outright. chrono's own clock, Utc::now and Local::now,
+# isn't there at all: Cargo.toml builds chrono without its clock feature.)
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "core never reads the clock; take `now` as a parameter" },
+    { path = "std::time::Instant::now", reason = "core never reads the clock; take `now` as a parameter" },
+    { path = "std::fs::canonicalize", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::copy", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::create_dir", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::create_dir_all", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::exists", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::hard_link", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::metadata", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::read", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::read_dir", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::read_link", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::read_to_string", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::remove_dir", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::remove_dir_all", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::remove_file", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::rename", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::set_permissions", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::soft_link", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::symlink_metadata", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::write", reason = "core does no I/O; the host reads and writes files" },
+]
+disallowed-types = [
+    { path = "std::fs::File", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::OpenOptions", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::DirBuilder", reason = "core does no I/O; the host reads and writes files" },
+    { path = "std::fs::ReadDir", reason = "core does no I/O; the host reads and writes files" },
+]

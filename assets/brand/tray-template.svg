@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- The menu-bar icon: a stack of coins in black on transparent, which macOS
+       tints. Each coin is cut back from the one above it, and the top coin has
+       a dollar sign cut out. -->
+  <defs>
+    <path id="c1" d="M5 17 A27 11 0 0 1 59 17 V25 A27 11 0 0 1 5 25 Z"/>
+    <path id="c2" d="M5 27.5 A27 11 0 0 1 59 27.5 V35.5 A27 11 0 0 1 5 35.5 Z"/>
+    <path id="c3" d="M5 38 A27 11 0 0 1 59 38 V46 A27 11 0 0 1 5 46 Z"/>
+    <mask id="under1"><rect width="64" height="64" fill="#fff"/><use href="#c1" fill="#000" stroke="#000" stroke-width="5"/></mask>
+    <mask id="under2"><rect width="64" height="64" fill="#fff"/><use href="#c2" fill="#000" stroke="#000" stroke-width="5"/></mask>
+    <mask id="top">
+      <rect width="64" height="64" fill="#fff"/>
+      <path d="M5 17 A27 11 0 0 0 59 17" fill="none" stroke="#000" stroke-width="2.5"/>
+      <g fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round" transform="translate(32 16.5) scale(0.1) translate(-515 -384)">
+        <path d="M590 334 C568 316 540 310 512 312 C474 314 448 330 450 352 C452 372 478 380 516 386 C556 392 590 400 590 424 C590 446 556 458 518 456 C482 455 456 446 440 430" stroke-width="32"/>
+        <path d="M518 290 V478" stroke-width="32"/>
+      </g>
+    </mask>
+  </defs>
+  <g mask="url(#under2)"><use href="#c3"/></g>
+  <g mask="url(#under1)"><use href="#c2"/></g>
+  <use href="#c1" mask="url(#top)"/>
+</svg>

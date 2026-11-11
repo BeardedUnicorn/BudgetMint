@@ -1,0 +1,401 @@
+/**
+ * The smaller paths through the pages and their parts: an occurrence's
+ * dialog, what shows in dark mode, refusals that come from data changed
+ * elsewhere, and the like.
+ */
+
+import { cloneElement, type ReactElement } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { ThemeProvider } from '@mui/material';
+import type { CalendarDay } from '@budgetmint/contracts';
+import { createAppTheme } from '../theme';
+import { cloudErrorMessage } from '../cloud/errors';
+import { getShell, setShell } from '../shell';
+import { useNavigation } from '../contexts/NavigationContext';
+import { useBudget } from '../data/BudgetContext';
+import { DayCell } from '../components/pages/calendar/DayCell';
+import { DayDialog } from '../components/pages/calendar/DayDialog';
+import { axisMoney, tooltipDay, tooltipMoney } from '../components/pages/forecast/ForecastPage';
+import { PageContainer } from '../components/layout/PageLayout';
+import { EmptyState } from '../components/ui/display/EmptyState';
+import { formatDateTime } from '../utils/locale';
+import { cal, createFakeStore, TEST_NOW } from '../testing';
+import { BudgetSession } from '../cloud/session';
+import { testCore } from '../testing';
+import { forecastDoc, item, monthly, override, startBudget } from './setup/budget';
+
+vi.mock('recharts', async importOriginal => {
+  const actual = await importOriginal<typeof import('recharts')>();
+  return {
+    ...actual,
+    // jsdom lays nothing out: give the chart a size
+    ResponsiveContainer: ({ children }: { children: ReactElement }) => (
+      <div>
+        {cloneElement(children as ReactElement<{ width: number; height: number }>, { width: 600, height: 300 })}
+      </div>
+    ),
+  };
+});
+
+const day = (changes: Partial<CalendarDay>): CalendarDay => ({
+  date: '2026-11-12',
+  occurrences: [],
+  withdrawalCents: 0,
+  withdrawalUncertainCents: 0,
+  withdrawalProjected: false,
+  closingCents: null,
+  short: false,
+  low: false,
+  ...changes,
+});
+
+describe('an occurrence’s dialog', () => {
+  it('marks it paid on a day for an amount, moves it, and opens it again', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    const details = () => screen.getByRole('button', { name: 'Rent on Nov 12: details' });
+    await user.click(details());
+    let dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    expect(within(dialog).getByText('$500.00 due Nov 12')).toBeInTheDocument();
+    // This time: less, and on the 14th, with a note
+    const amount = within(dialog).getByLabelText('This time');
+    await user.clear(amount);
+    await user.type(amount, '450');
+    fireEvent.change(within(dialog).getByLabelText('Due'), { target: { value: '2026-11-14' } });
+    await user.type(within(dialog).getByLabelText('Note (optional)'), 'Agreed');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json)).toMatchObject({
+        amountCents: 45_000,
+        movedTo: '2026-11-14',
+        note: 'Agreed',
+      })
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Paid' }));
+    const paid = within(dialog).getByLabelText('Amount');
+    await user.clear(paid);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter the amount')).toBeInTheDocument();
+    await user.type(paid, '450');
+    fireEvent.change(within(dialog).getByLabelText('Paid on'), { target: { value: '2026-12-31' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(
+      within(dialog).getByText("It can't be paid later than tomorrow: mark it paid once it is")
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Paid on'), { target: { value: '2026-11-10' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json).status).toEqual({
+        state: 'done',
+        on: '2026-11-10',
+        amountCents: 45_000,
+      })
+    );
+
+    // Open again, as it was (a paid one's dialog starts on its payment)
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    expect(within(dialog).getByRole('radio', { name: 'Paid' })).toBeChecked();
+    await user.click(within(dialog).getByRole('radio', { name: 'Still to pay' }));
+    fireEvent.change(within(dialog).getByLabelText('Due'), { target: { value: '2026-11-12' } });
+    await user.clear(within(dialog).getByLabelText('Note (optional)'));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json)).toMatchObject({ movedTo: null, note: null })
+    );
+  });
+
+  it('starts a past one’s payment on its due day, and words income as received', async () => {
+    const pay = item({
+      id: 'pay',
+      kind: 'income',
+      name: 'Pay',
+      autopay: true,
+      schedule: [{ from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 9_000 }],
+    });
+    const { user } = await startBudget({
+      items: [pay, monthly('water', 'Water', 9, 1_000)],
+      settings: { balance: { cents: 1, asOf: '2026-11-08' } },
+    });
+    await user.click(screen.getByRole('button', { name: 'Pay on Nov 13: details' }));
+    let dialog = screen.getByRole('dialog', { name: 'Pay, Nov 13' });
+    expect(within(dialog).getByText('$90.00 due Nov 13, on autopay')).toBeInTheDocument();
+    expect(within(dialog).getByRole('radio', { name: 'Still to come' })).toBeChecked();
+    await user.click(within(dialog).getByRole('radio', { name: 'Received' }));
+    expect(within(dialog).getByLabelText('Received on')).toHaveValue('2026-11-10');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Water on Nov 9: details' }));
+    dialog = screen.getByRole('dialog', { name: 'Water, Nov 9' });
+    await user.click(within(dialog).getByRole('radio', { name: 'Paid' }));
+    expect(within(dialog).getByLabelText('Paid on')).toHaveValue('2026-11-09');
+  });
+});
+
+describe('changes to data changed elsewhere', () => {
+  it('say so in a toast', async () => {
+    const { user, core } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    // Deleted on another device, the page not yet told
+    core.call('apply_docs', { docs: [{ docId: 'item~rent', json: null, schema: 1 }] });
+    await user.click(screen.getByRole('button', { name: 'Mark Rent paid' }));
+    expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
+  });
+
+  it('say so on the bills page too', async () => {
+    const { user, core } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    core.call('apply_docs', { docs: [{ docId: 'item~rent', json: null, schema: 1 }] });
+    await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
+    expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
+  });
+});
+
+describe('the pages’ other buttons and states', () => {
+  it('opens the balance and a first bill from the overview', async () => {
+    const { user } = await startBudget();
+    await user.click(screen.getByRole('button', { name: 'Update balance' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Add your first bill' }));
+    expect(screen.getByRole('dialog', { name: 'Add bill' })).toBeInTheDocument();
+  });
+
+  it('edits a one-off bill without a reminder, and a weekly-withdrawal plan', async () => {
+    const once = item({
+      id: 'fix',
+      kind: 'bill',
+      name: 'Repair',
+      schedule: [{ from: '2026-10-05', until: null, repeat: { every: 'once' }, amountCents: 4_000 }],
+    });
+    const { user, store } = await startBudget({
+      items: [once],
+      settings: { taskmint: { policy: { kind: 'weekly', weekday: 2, hour: 8 } } },
+    });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Repair' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit Repair' });
+    expect(within(dialog).getByRole('switch', { name: 'Remind me' })).not.toBeChecked();
+    await user.type(within(dialog).getByLabelText('Name'), '!');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(JSON.parse(store.docs.get('item~fix')!.json).name).toBe('Repair!'));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const taskmint = screen.getByRole('heading', { name: 'TaskMint' }).closest('.MuiPaper-root') as HTMLElement;
+    expect(within(taskmint).getByLabelText('On')).toHaveTextContent('Wednesday');
+    expect(within(taskmint).getByLabelText('At')).toHaveTextContent('8 AM');
+    // An emptied low mark is none
+    fireEvent.blur(screen.getByLabelText('Low balance mark'));
+    await waitFor(() => expect(JSON.parse(store.docs.get('settings~account')!.json).lowBalanceCents).toBe(0));
+  });
+
+  it('says who’s signed in with Google (or without an email)', async () => {
+    const { store } = await startBudget();
+    store.setUser({ uid: 'cal', email: null, providers: ['google.com'] });
+    await (await import('@testing-library/user-event')).default
+      .setup()
+      .click(await screen.findByRole('button', { name: 'Settings' }));
+    expect(screen.getByText(/Signed in as/)).toHaveTextContent('Signed in as you with Google.');
+  });
+
+  it('starts without a balance from onboarding', async () => {
+    const { user, store } = await startBudget({ settings: null });
+    await user.click(screen.getByRole('button', { name: 'Start without a balance' }));
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+    expect(JSON.parse(store.docs.get('settings~account')!.json).balance).toBeNull();
+  });
+
+  it('shows a short day in the sidebar’s collapsed foot', async () => {
+    const { user } = await startBudget({ settings: { balance: { cents: -500, asOf: '2026-11-09' } } });
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    expect(screen.getByRole('img', { name: /Balance today -\$5\.00/ })).toHaveTextContent('-$5');
+  });
+
+  it('charts the forecast, with a recorded withdrawal and a low day', async () => {
+    const { user } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 95_000)],
+      settings: { balance: { cents: 100_000, asOf: '2026-11-09' }, lowBalanceCents: 10_000 },
+      forecast: forecastDoc({
+        asOfMs: TEST_NOW,
+        cutoff: { takenAtMs: TEST_NOW - 86_400_000, amountCents: 3_000 },
+        recentWithdrawals: [{ takenAtMs: TEST_NOW - 86_400_000, amountCents: 3_000 }],
+      }),
+    });
+    await user.click(screen.getByRole('button', { name: 'Forecast' }));
+    expect(screen.getByText('TaskMint withdrawal')).toBeInTheDocument();
+    expect(document.querySelector('.recharts-line')).not.toBeNull();
+    expect(axisMoney(12.5)).toBe('$13');
+    expect(tooltipMoney(-4)).toEqual(['-$4.00', 'Balance']);
+    expect(tooltipDay('2026-11-30')).toBe('Mon, Nov 30');
+  });
+});
+
+describe('the last branches', () => {
+  it('say a write was refused, and an undo too', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    vi.mocked(store.write)
+      .mockRejectedValueOnce({ code: 'permission-denied' })
+      .mockRejectedValueOnce({ code: 'permission-denied' });
+    await user.click(screen.getByRole('button', { name: 'Mark Rent paid' }));
+    expect(await screen.findByText('The cloud refused that change. Sign out and in again.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() =>
+      expect(screen.getAllByText('The cloud refused that change. Sign out and in again.')).toHaveLength(2)
+    );
+  });
+
+  it('show a note alone, a late bill’s next date, and an emptied amount setting as none', async () => {
+    const { user, store } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 50_000), monthly('water', 'Water', 9, 1_000)],
+      overrides: [override({ itemId: 'rent', date: '2026-11-12', status: { state: 'open' }, note: 'Call first' })],
+      settings: { balance: { cents: 1, asOf: '2026-11-08' }, taskmint: { minWithdrawalCents: 500 } },
+    });
+    expect(screen.getByText('Call first')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    // Water, unpaid since the 9th
+    expect(screen.getByText('Yesterday')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const minimum = screen.getByLabelText('Wait until there’s at least');
+    await user.clear(minimum);
+    fireEvent.blur(minimum);
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('settings~account')!.json).taskmint.minWithdrawalCents).toBe(0)
+    );
+  });
+
+  it('chart the forecast on a phone, without a low mark, and label a plain bill', async () => {
+    const { setPhoneViewport } = await import('./setup/viewport');
+    setPhoneViewport();
+    const { user } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(await screen.findByRole('button', { name: 'Forecast' }));
+    const days = await screen.findByRole('region', { name: 'Day by day' });
+    expect(within(days).getAllByText('Rent').length).toBeGreaterThan(0);
+    expect(document.querySelector('.recharts-reference-line')).not.toBeNull();
+  });
+
+  it('mark income received, and show it so in the forecast', async () => {
+    const pay = item({
+      id: 'pay',
+      kind: 'income',
+      name: 'Paycheck',
+      schedule: [{ from: '2026-11-12', until: null, repeat: { every: 'once' }, amountCents: 20_000 }],
+    });
+    const { user } = await startBudget({ items: [pay] });
+    await user.click(screen.getByRole('button', { name: 'Mark Paycheck received' }));
+    expect(await screen.findByText('Paycheck marked received')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Forecast' }));
+    expect(screen.getByText('Paycheck (received)')).toBeInTheDocument();
+  });
+
+  it('reads a day in light mode, and an expected withdrawal in its dialog', async () => {
+    render(
+      <ThemeProvider theme={createAppTheme('light')}>
+        <DayCell
+          day={day({ withdrawalCents: 100 })}
+          isToday={false}
+          tabbable={false}
+          onOpen={vi.fn()}
+          onFocusDay={vi.fn()}
+        />
+      </ThemeProvider>
+    );
+    expect(screen.getByRole('button', { name: /TaskMint withdrawal \$1\.00/ })).toBeInTheDocument();
+    render(
+      <DayDialog
+        day={day({ withdrawalCents: 100, withdrawalProjected: true })}
+        today="2026-11-10"
+        onStep={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByText('TaskMint withdrawal (expected)')).toBeInTheDocument();
+  });
+});
+
+describe('a calendar day', () => {
+  it('reads in dark mode, a low balance in its own colour', () => {
+    render(
+      <ThemeProvider theme={createAppTheme('dark')}>
+        <DayCell
+          day={day({
+            withdrawalCents: 500,
+            withdrawalProjected: true,
+            withdrawalUncertainCents: 100,
+            closingCents: 50,
+            low: true,
+          })}
+          isToday
+          tabbable
+          onOpen={vi.fn()}
+          onFocusDay={vi.fn()}
+        />
+      </ThemeProvider>
+    );
+    expect(
+      screen.getByRole('button', { name: /TaskMint withdrawal expected \$5\.00; balance \$0\.50, low/ })
+    ).toBeInTheDocument();
+  });
+
+  it('shows a recorded withdrawal and a short end in its dialog', () => {
+    render(
+      <DayDialog
+        day={day({ withdrawalCents: 500, closingCents: -1, short: true })}
+        today="2026-11-10"
+        onStep={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByText('TaskMint withdrawal')).toBeInTheDocument();
+    expect(screen.getByText('Balance at the end of the day: -$0.01')).toBeInTheDocument();
+  });
+
+  it('shows the balance on a quiet day without one', () => {
+    render(<DayDialog day={day({})} today="2026-11-10" onStep={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.getByText('Nothing due.')).toBeInTheDocument();
+    expect(override).toBeDefined();
+  });
+});
+
+describe('the pieces', () => {
+  it('need their providers and shell', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(() => renderHook(() => useNavigation())).toThrow('useNavigation must be used within a NavigationProvider');
+    expect(() => renderHook(() => useBudget())).toThrow('useBudget must be used within a BudgetProvider');
+    setShell(null as never);
+    expect(() => getShell()).toThrow('No shell: startClient sets it');
+    vi.restoreAllMocks();
+  });
+
+  it('word errors that aren’t Errors, and other bits copied from TaskMint', () => {
+    expect(cloudErrorMessage('plain words')).toBe('plain words');
+    expect(formatDateTime(new Date(2026, 10, 30, 9, 5))).toMatch(/2026/);
+    render(
+      <PageContainer fill>
+        <EmptyState plain icon={<span />} title="Nothing" description="Here" />
+      </PageContainer>
+    );
+    expect(screen.getByText('Nothing')).toBeInTheDocument();
+  });
+
+  it('deletes an account it isn’t reading, and drops a late error from an earlier user', async () => {
+    const store = createFakeStore();
+    const session = new BudgetSession(store, testCore(), 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
+    session.stop();
+    session.start();
+    store.setUser(cal());
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    const [, , onError] = vi.mocked(store.watchAccount).mock.calls.at(-1)!;
+    // Older than the 400 days read, and another account's epoch: neither reaches this one
+    store.putDoc('occ~2020-01-01~old', '{}');
+    store.setEpoch('someone-else', 4);
+    store.failListen(new Error('gone'));
+    expect(session.getView().phase).toBe('error');
+    expect(await store.hasTaskMintData('nobody')).toBe(false);
+    await session.deleteAccount();
+    expect(store.deleteAll).not.toHaveBeenCalled();
+    expect(store.deleteUser).toHaveBeenCalled();
+    // Signed out since: the old watch's error changes nothing
+    onError(new Error('late'));
+    expect(session.getView()).toMatchObject({ phase: 'signedOut', error: null });
+  });
+});

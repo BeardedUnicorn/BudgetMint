@@ -1,0 +1,204 @@
+import { describe, expect, it, vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
+import { BudgetSession, SESSION_OPTIONS } from '../session';
+import { cal, createFakeStore, TEST_NOW, testCore, type FakeStore } from '../../testing';
+import { forecastDoc, item, TODAY } from '../../__tests__/setup/budget';
+
+const RENT = item({
+  id: 'rent',
+  kind: 'bill',
+  name: 'Rent',
+  schedule: [{ from: '2026-12-01', until: null, repeat: { every: 'months', n: 1, day: 1 }, amountCents: 120_000 }],
+});
+
+function started(store: FakeStore = createFakeStore(), google: (() => Promise<string | null>) | null = null) {
+  const core = testCore();
+  const session = new BudgetSession(store, core, 'desk', google, { historyDays: 400, clock: () => TEST_NOW });
+  session.start();
+  return { store, core, session };
+}
+
+async function signedIn(store: FakeStore = createFakeStore()) {
+  const found = started(store);
+  store.setUser(cal());
+  await waitFor(() => expect(found.session.getView().phase).toBe('ready'));
+  return found;
+}
+
+describe('the session', () => {
+  it('waits signed out, and passes signing in, up and out to Firebase', async () => {
+    const { store, session } = started();
+    expect(session.getView()).toMatchObject({ phase: 'signedOut', user: null, version: 1 });
+    expect(session.canUseGoogle).toBe(false);
+    await session.signIn('cal@example.com', 'pw');
+    expect(store.signIn).toHaveBeenCalledWith('cal@example.com', 'pw');
+    await session.signUp('dee@example.com', 'pw');
+    await session.resetPassword('cal@example.com');
+    expect(store.resetPassword).toHaveBeenCalledWith('cal@example.com');
+    await session.signOut();
+    expect(session.getView().phase).toBe('signedOut');
+
+    const google = started(createFakeStore(), async () => 'token');
+    expect(google.session.canUseGoogle).toBe(true);
+    await google.session.signInWithGoogle();
+    expect(google.store.signInWithGoogle).toHaveBeenCalledWith('token');
+    expect(SESSION_OPTIONS.historyDays).toBe(400);
+  });
+
+  it('starts the account’s data on its first epoch and reads it in', async () => {
+    const store = createFakeStore();
+    store.putDoc('item~rent', JSON.stringify(RENT));
+    const { core, session } = started(store);
+    const seen = vi.fn();
+    const unsubscribe = session.subscribe(seen);
+    store.setUser(cal());
+    expect(session.getView().phase).toBe('starting');
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    expect(store.createAccount).toHaveBeenCalledWith('cal');
+    // Occurrences from 400 days back
+    expect(vi.mocked(store.listen).mock.calls[0][1]).toBe('2025-10-06');
+    expect(core.call('get_items')[0].item.id).toBe('rent');
+    expect(seen).toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it('says when it’s offline, saving, or holding a newer BudgetMint’s documents', async () => {
+    const store = createFakeStore();
+    store.offline = true;
+    const { session, core } = await signedIn(store);
+    expect(session.getView().offline).toBe(true);
+    store.putDoc('item~later', '{}', 9);
+    expect(session.getView().held).toBe(1);
+    const planned = core.call('save_item', {
+      item: { ...RENT, category: null, autopay: false, reminder: null, archived: false, note: null },
+    });
+    await session.write(planned.writes);
+    expect(store.writes[0]).toMatchObject({ uid: 'cal', meta: { deviceId: 'desk', epoch: 1 } });
+    expect(session.getView().saving).toBe(true);
+    // Its echo from the server
+    store.offline = false;
+    store.putDoc('item~rent', store.docs.get('item~rent')!.json);
+    store.putDoc('settings~account', null);
+    store.putDoc('occ~2026-12-01~rent', null);
+    expect(session.getView()).toMatchObject({ offline: false, saving: false });
+  });
+
+  it('writes an undo into core at once, and says why a write failed', async () => {
+    const { store, session, core } = await signedIn();
+    await session.write([]);
+    expect(store.write).not.toHaveBeenCalled();
+    vi.mocked(store.write).mockRejectedValueOnce({ code: 'permission-denied' });
+    const docs = [{ docId: 'item~rent', kind: 'item', json: JSON.stringify(RENT), schema: 1 }];
+    await expect(session.write(docs)).rejects.toThrow('The cloud refused that change. Sign out and in again.');
+    // Core has it all the same (Firestore's listener puts it back as the server has it)
+    expect(core.call('get_items')).toHaveLength(1);
+  });
+
+  it('refuses to write signed out', async () => {
+    const { session } = started();
+    await expect(session.write([])).rejects.toThrow('Sign in to save changes.');
+  });
+
+  it('reads TaskMint’s forecast, and takes a refusal to read it as none', async () => {
+    const store = createFakeStore();
+    store.publishForecast(forecastDoc({ asOfMs: TEST_NOW, carried: { actualCents: 500 } }));
+    const { session, core } = await signedIn(store);
+    expect(session.getView().taskmint).toMatchObject({ state: 'ready', appVersion: '4.2.0' });
+    expect(core.call('get_overview').nextWithdrawal?.totalCents).toBe(500);
+    store.failForecast({ code: 'permission-denied' });
+    expect(session.getView().taskmint.state).toBe('missing');
+    store.publishForecast(null);
+    expect(session.getView().taskmint.state).toBe('missing');
+  });
+
+  it('starts over quietly after deleting the data here, and says so when it was deleted elsewhere', async () => {
+    const store = createFakeStore();
+    store.putDoc('item~rent', JSON.stringify(RENT));
+    const { session, core } = await signedIn(store);
+    await session.deleteData();
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    expect(session.getView().resetElsewhere).toBe(false);
+    expect(core.call('get_items')).toEqual([]);
+    expect(vi.mocked(store.listen)).toHaveBeenCalledTimes(2);
+
+    // Another device: epoch 3
+    store.putDoc('item~rent', JSON.stringify(RENT));
+    store.setEpoch('cal', 3);
+    await waitFor(() => expect(session.getView().resetElsewhere).toBe(true));
+    session.dismissReset();
+    expect(session.getView().resetElsewhere).toBe(false);
+    // The same epoch again: nothing to do
+    store.setEpoch('cal', 3);
+    expect(vi.mocked(store.listen)).toHaveBeenCalledTimes(3);
+    // Gone altogether (deleted by TaskMint's Delete account): starts again
+    store.setEpoch('cal', null);
+    await waitFor(() => expect(vi.mocked(store.listen)).toHaveBeenCalledTimes(4));
+  });
+
+  it('says why deleting the data failed, and keeps going', async () => {
+    const { store, session } = await signedIn();
+    vi.mocked(store.deleteAll).mockRejectedValueOnce({ code: 'unavailable' });
+    await expect(session.deleteData()).rejects.toThrow('Can’t reach the cloud.');
+    expect(session.getView().phase).toBe('ready');
+  });
+
+  it('deletes the account only when TaskMint doesn’t use it', async () => {
+    const { store, session } = await signedIn();
+    store.setTaskMintData('cal', true);
+    await expect(session.deleteAccount()).rejects.toThrow('This is also your TaskMint account.');
+    expect(store.deleteUser).not.toHaveBeenCalled();
+
+    store.setTaskMintData('cal', false);
+    vi.mocked(store.deleteUser).mockRejectedValueOnce({ code: 'auth/requires-recent-login' });
+    await expect(session.deleteAccount()).rejects.toThrow('Sign in again first, then try once more.');
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    await session.deleteAccount();
+    expect(store.deleteAll).toHaveBeenCalledTimes(2);
+    expect(session.getView().phase).toBe('signedOut');
+  });
+
+  it('says when the data can’t be read, and tries again', async () => {
+    const { store, session } = await signedIn();
+    store.failListen({ code: 'permission-denied' });
+    expect(session.getView()).toMatchObject({
+      phase: 'error',
+      error: 'The cloud refused that change. Sign out and in again.',
+    });
+    // A late answer for the failed attempt changes nothing
+    store.failListen(new Error('again'));
+    await session.retry();
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+  });
+
+  it('says when the account can’t be reached, and drops what a sign-out overtook', async () => {
+    const store = createFakeStore();
+    const { session } = started(store);
+    vi.mocked(store.account).mockRejectedValueOnce(new Error('offline'));
+    store.setUser(cal());
+    await waitFor(() => expect(session.getView()).toMatchObject({ phase: 'error', error: 'offline' }));
+
+    let answer: (epoch: number | null) => void = () => undefined;
+    vi.mocked(store.account).mockImplementationOnce(() => new Promise(resolve => (answer = resolve)));
+    store.setUser(cal());
+    store.setUser(null);
+    answer(1);
+    await waitFor(() => expect(session.getView().phase).toBe('signedOut'));
+    expect(vi.mocked(store.listen)).not.toHaveBeenCalled();
+
+    // An epoch watch that fails
+    store.setUser(cal());
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    const [, , onError] = vi.mocked(store.watchAccount).mock.calls.at(-1)!;
+    onError(new Error('watch failed'));
+    expect(session.getView()).toMatchObject({ phase: 'error', error: 'watch failed' });
+  });
+
+  it('stops listening when stopped', async () => {
+    const { store, session } = await signedIn();
+    session.stop();
+    store.putDoc('item~rent', JSON.stringify(RENT));
+    store.setUser(null);
+    expect(session.getView().phase).toBe('ready');
+    expect(TODAY).toBe('2026-11-10');
+  });
+});

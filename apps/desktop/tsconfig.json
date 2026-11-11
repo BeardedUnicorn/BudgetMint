@@ -1,0 +1,20 @@
+// The desktop entry imports the client's sources, so it needs the client's
+// ambient declarations too.
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src",
+    "vitest.config.ts",
+    "../../packages/client/src/**/*.d.ts"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2600 496" width="2600" height="496">
+  <!-- The wordmark: the mark, then "Budget" and a green "Mint", as TaskMint's.
+       logo-dark.png is the same with a light "Budget" (scripts/brand/render.mjs). -->
+  <svg x="0" y="0" width="496" height="496" viewBox="0 0 512 512">MARK</svg>
+  <text x="520" y="372" font-family="Avenir Next" font-weight="800" font-size="330" letter-spacing="-6"><tspan id="first" fill="#023222">Budget</tspan><tspan fill="#03B764">Mint</tspan></text>
+</svg>

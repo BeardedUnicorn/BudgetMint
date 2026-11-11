@@ -1,0 +1,45 @@
+packages:
+  - apps/desktop
+  - apps/web
+  - packages/*
+
+# Dependencies' install scripts, reviewed (the same as TaskMint's). esbuild's
+# only checks its platform binary, which it finds without it. @firebase/util's
+# writes App Hosting's FIREBASE_WEBAPP_CONFIG into the package (BudgetMint
+# passes its config in), and protobufjs's only warns about version schemes.
+allowBuilds:
+  esbuild: false
+  "@firebase/util": false
+  protobufjs: false
+
+# Versions shared by more than one package; packages refer to them as
+# "catalog:". TaskMint's versions, so the two apps move together.
+catalog:
+  "@emotion/react": ^11.14.0
+  "@emotion/styled": ^11.14.1
+  "@fontsource/inter": ^5.3.0
+  "@fontsource/roboto-mono": ^5.3.0
+  "@mui/icons-material": ^9.3.1
+  "@mui/material": ^9.3.1
+  "@mui/x-date-pickers": ^9.11.0
+  "@resvg/resvg-js": 2.6.2
+  "@tauri-apps/api": ~2.12.4
+  "@tauri-apps/cli": ^2.12.4
+  "@testing-library/jest-dom": ^7.0.1
+  "@testing-library/react": ^16.3.2
+  "@testing-library/user-event": ^14.6.4
+  "@types/node": ^26.2.0
+  "@types/react": ^19.2.18
+  "@types/react-dom": ^19.2.4
+  "@vitejs/plugin-react": ^6.0.5
+  "@vitest/coverage-v8": ^4.1.10
+  dayjs: ^1.11.23
+  firebase: ^13.2.0
+  jsdom: ^30.0.1
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  recharts: ^3.10.1
+  typescript: ~7.0.2
+  vite: ^8.2.1
+  vitest: ^4.1.10
+  zod: ^4.4.3

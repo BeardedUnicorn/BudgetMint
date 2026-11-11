@@ -1,0 +1,29 @@
+[package]
+name = "budgetmint-core"
+version = "0.1.0"
+description = "BudgetMint's rules: bills and income, their schedules, TaskMint's withdrawals ahead and the cash-flow forecast, shared by every app"
+authors = ["Mike Herold"]
+license = "MIT"
+edition = "2021"
+publish = false
+
+[dependencies]
+# No clock (core never reads it) and no wasm-bindgen: core runs as WebAssembly
+# through crates/budgetmint-wasm only
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+chrono-tz = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# TypeScript for the wire types, only when generating packages/contracts
+# (tests/contracts.rs). The version TaskMint uses.
+ts-rs = { version = "=12.0.1", optional = true, features = ["chrono-impl", "serde-json-impl"] }
+
+[features]
+ts = ["dep:ts-rs"]
+
+# The contracts generator exists only with the TypeScript derives. Without
+# this, an empty test binary would still link a second, unexercised copy of
+# the library into the coverage report.
+[[test]]
+name = "contracts"
+required-features = ["ts"]

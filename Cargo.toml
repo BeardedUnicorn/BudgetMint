@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/budgetmint-core", "crates/budgetmint-wasm", "apps/desktop/src-tauri"]
+# The desktop crate needs WebKitGTK on Linux, so plain `cargo` commands at the
+# root leave it out; `--workspace` or `-p budgetmint` includes it.
+default-members = ["crates/budgetmint-core"]
+
+# The core goes over the network to every app: smaller beats faster there.
+# scripts/build-wasm.mjs builds it with this profile.
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

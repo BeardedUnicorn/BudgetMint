@@ -1,0 +1,85 @@
+// Formatting and lint for the TypeScript and JavaScript (`pnpm lint`,
+// `pnpm lint:fix`; .githooks/pre-commit checks staged files). Rust has
+// rustfmt and clippy, and JSON, CSS and Markdown keep their hand layout.
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.mjs",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!target",
+      // The Rust crates' trees (fixtures and scenarios are test data)
+      "!apps/desktop/src-tauri",
+      "!crates",
+      // wasm-bindgen's output (scripts/build-wasm.mjs)
+      "!packages/client/src/core/wasm",
+      // Generated from crates/budgetmint-core; scripts/check-contracts.sh
+      // compares it byte for byte with what the Rust generates
+      "!packages/contracts/src/generated"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "jsxQuoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "es5",
+      "arrowParentheses": "asNeeded",
+      "bracketSpacing": true
+    }
+  },
+  // Import sorting would reorder every file's imports
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "style": {
+        // tsc (isolatedModules) already flags the imports that must be
+        // type-only; rewriting the rest is churn with no effect on the build
+        "useImportType": "off",
+        // Used where tsc can't see an invariant the code checks (and in tests)
+        "noNonNullAssertion": "off"
+      },
+      "suspicious": {
+        // tsc --strict is the type gate. The remaining `any` are loose on
+        // purpose: test fakes that return anything
+        "noExplicitAny": "off",
+        // Flags `forEach(item => fn(item))`, whose return value forEach ignores
+        "useIterableCallbackReturn": "off"
+      },
+      "complexity": {
+        // Constructor mocks (vi.fn(function () { … })) must be functions so
+        // `new` works; the arrow-function fix breaks them
+        "useArrowFunction": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Test doubles render bare elements in place of the real components
+      "includes": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useButtonType": "off",
+            "noStaticElementInteractions": "off",
+            "useKeyWithClickEvents": "off"
+          }
+        }
+      }
+    }
+  ]
+}

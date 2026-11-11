@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.sw?
+
+# Test coverage output
+coverage/
+
+# Rust build output (Cargo workspace at the repo root)
+/target
+
+# Local Claude Code launch config
+.claude/
+
+# Installers that `pnpm release` collects
+/releases/
+
+# Firebase CLI: its deploy cache and the emulators' logs
+.firebase/
+firebase-debug*.log
+firestore-debug.log
+ui-debug.log
+
+# The core in WebAssembly, built by scripts/build-wasm.mjs
+packages/client/src/core/wasm/

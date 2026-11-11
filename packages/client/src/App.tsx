@@ -1,0 +1,195 @@
+/**
+ * The app: signing in until someone is, onboarding until the settings are
+ * saved, then the pages in TaskMint's frame: the sidebar (a slide-in menu
+ * and a top bar on a phone) and the page beside it.
+ */
+
+import { ComponentType, useEffect, useState } from 'react';
+import { Alert, Box, Button, CircularProgress, CssBaseline, Stack } from '@mui/material';
+import type { CoreClient } from './core';
+import type { BudgetSession } from './cloud/session';
+import { AppExtensionsContext, useAppExtensions } from './app/extensions';
+import { AuthLayout } from './components/auth/AuthLayout';
+import { SignInForm } from './components/auth/SignInForm';
+import { BalanceFooter } from './components/layout/BalanceFooter';
+import { CompactTopBar } from './components/layout/CompactTopBar';
+import { Sidebar } from './components/layout/Sidebar';
+import { StatusNotices } from './components/layout/StatusNotices';
+import { Onboarding } from './components/onboarding/Onboarding';
+import { CalendarPage } from './components/pages/calendar/CalendarPage';
+import { ForecastPage } from './components/pages/forecast/ForecastPage';
+import { ItemsPage } from './components/pages/items/ItemsPage';
+import { OverviewPage } from './components/pages/overview/OverviewPage';
+import { SettingsPage } from './components/pages/settings/SettingsPage';
+import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { BudgetProvider, useBudget, useCoreQuery } from './data/BudgetContext';
+import { useCompactLayout } from './hooks/useCompactLayout';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useReminders } from './hooks/useReminders';
+import { useSystemBarsTheme } from './hooks/useSystemBarsTheme';
+import { useTrayStatus } from './hooks/useTrayStatus';
+import { VIEW_LABELS, type SidebarView } from './navigation/views';
+import { getShell } from './shell';
+import type { AppExtensions } from './shell/types';
+
+const PAGES: Record<SidebarView, ComponentType> = {
+  overview: OverviewPage,
+  bills: () => <ItemsPage kind="bill" />,
+  income: () => <ItemsPage kind="income" />,
+  calendar: CalendarPage,
+  forecast: ForecastPage,
+  settings: SettingsPage,
+};
+
+/** Firebase (or core) couldn't load when the app opened. */
+export function StartupError({ message }: { message: string }) {
+  return (
+    <ThemeProvider>
+      <CssBaseline enableColorScheme />
+      <AuthLayout title="BudgetMint can’t start">
+        <Stack spacing={2}>
+          <Alert severity="error">{message}</Alert>
+          <Button variant="contained" onClick={() => window.location.reload()}>
+            Try again
+          </Button>
+        </Stack>
+      </AuthLayout>
+    </ThemeProvider>
+  );
+}
+
+function Loading() {
+  return (
+    <Box
+      role="status"
+      aria-label="Loading your budget"
+      sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}
+    >
+      <CircularProgress />
+    </Box>
+  );
+}
+
+/** What the session's phase shows: signing in, loading, an error, or the app. */
+function Gate() {
+  const { session, view } = useBudget();
+  // Android's launch screen holds until the app has something to show
+  useEffect(() => {
+    if (view.phase !== 'loading') getShell().platform.splashScreen?.hide();
+  }, [view.phase]);
+
+  switch (view.phase) {
+    case 'loading':
+    case 'starting':
+      return <Loading />;
+    case 'signedOut':
+      return (
+        <AuthLayout title="Sign in to BudgetMint">
+          <SignInForm engine={session} />
+        </AuthLayout>
+      );
+    case 'error':
+      return (
+        <AuthLayout title="BudgetMint can’t reach your data">
+          <Stack spacing={2}>
+            <Alert severity="error">{view.error}</Alert>
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" onClick={() => void session.retry()}>
+                Try again
+              </Button>
+              <Button onClick={() => void session.signOut()}>Sign out</Button>
+            </Stack>
+          </Stack>
+        </AuthLayout>
+      );
+    default:
+      return <Ready />;
+  }
+}
+
+/** Signed in, with the data read: onboarding the first time, then the app. */
+function Ready() {
+  const { saved } = useCoreQuery('get_settings');
+  return saved ? (
+    <NavigationProvider persist>
+      <AppShell />
+    </NavigationProvider>
+  ) : (
+    <Onboarding />
+  );
+}
+
+/** What runs behind the pages: reminders, the tray, the system bars, and the shell's own. */
+function BackgroundJobs() {
+  const { Background } = useAppExtensions();
+  useReminders();
+  useTrayStatus();
+  useSystemBarsTheme();
+  useKeyboardShortcuts(getShell().capabilities.runtime === 'web');
+  return Background ? <Background /> : null;
+}
+
+function AppShell() {
+  const { view: activeView, navigate } = useNavigation();
+  const compact = useCompactLayout();
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const Page = PAGES[activeView];
+  const footer = (collapsed: boolean) => <BalanceFooter collapsed={collapsed} />;
+
+  return (
+    <>
+      <BackgroundJobs />
+      {/* dvh: a phone's browser bars and keyboard don't hide the bottom */}
+      <Box sx={{ height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, display: 'flex' }}>
+        <Sidebar
+          variant={compact ? 'temporary' : 'permanent'}
+          open={navigationOpen}
+          onClose={() => setNavigationOpen(false)}
+          activeView={activeView}
+          onViewChange={navigate}
+          footer={footer}
+        />
+        <Box
+          component="main"
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'auto',
+            pb: 'env(safe-area-inset-bottom)',
+          }}
+        >
+          {compact && (
+            <CompactTopBar title={VIEW_LABELS[activeView]} onOpenNavigation={() => setNavigationOpen(true)} />
+          )}
+          <StatusNotices />
+          <Page />
+        </Box>
+      </Box>
+    </>
+  );
+}
+
+export interface AppProps {
+  session: BudgetSession;
+  core: CoreClient;
+  extensions?: AppExtensions;
+}
+
+export function App({ session, core, extensions = {} }: AppProps) {
+  return (
+    <ThemeProvider>
+      <CssBaseline enableColorScheme />
+      <NotificationProvider>
+        <BudgetProvider session={session} core={core}>
+          <AppExtensionsContext.Provider value={extensions}>
+            <Gate />
+          </AppExtensionsContext.Provider>
+        </BudgetProvider>
+      </NotificationProvider>
+    </ThemeProvider>
+  );
+}

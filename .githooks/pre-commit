@@ -1,0 +1,23 @@
+#!/bin/sh
+# Checks what's staged: Biome for the TypeScript and JavaScript, rustfmt for
+# the Rust. It only checks; the message says what fixes it. `pnpm install`
+# installs it (scripts/install-hooks.mjs); `git commit --no-verify` skips it.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+if printf '%s\n' "$staged" | grep -qE '\.(ts|tsx|js|mjs)$'; then
+  biome=node_modules/.bin/biome
+  if [ ! -x "$biome" ]; then
+    echo "pre-commit: Biome isn't installed here (run pnpm install); not checking the TypeScript." >&2
+  elif ! "$biome" check --staged --no-errors-on-unmatched; then
+    echo "pre-commit: Biome found problems. \`pnpm lint:fix\` fixes the formatting and the fixable ones; stage the result." >&2
+    exit 1
+  fi
+fi
+
+if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+  if ! cargo fmt --all --check >/dev/null 2>&1; then
+    echo "pre-commit: the Rust isn't formatted. Run \`cargo fmt --all\` and stage the result." >&2
+    exit 1
+  fi
+fi

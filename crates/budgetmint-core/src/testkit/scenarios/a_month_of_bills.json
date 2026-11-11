@@ -1,0 +1,129 @@
+{
+  "name": "A month of bills, TaskMint's withdrawals, and every command",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    { "call": "get_settings", "expect": { "saved": false, "settings": { "horizonDays": 60, "balance": null } } },
+    { "call": "get_overview", "expect": { "today": "2026-11-10", "balance": null, "todayCents": 0, "upcoming": [] } },
+    {
+      "call": "set_balance",
+      "args": { "balance": { "cents": 200000, "asOf": "2026-11-09" } },
+      "expect": { "writes": [{ "docId": "settings~account", "kind": "settings", "schema": 1 }], "undo": [{ "json": null }] }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "rent", "kind": "bill", "name": "Rent", "schedule": [
+        { "from": "2026-12-01", "repeat": { "every": "months", "n": 1, "day": 1 }, "amountCents": 150000 }
+      ], "reminder": { "leadDays": [3] } } },
+      "expect": { "writes": [{ "docId": "item~rent", "kind": "item" }] }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "pay", "kind": "income", "name": "Paycheck", "autopay": true, "schedule": [
+        { "from": "2026-11-13", "repeat": { "every": "weeks", "n": 2 }, "amountCents": 120000 }
+      ] } }
+    },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "streaming", "kind": "bill", "name": "Streaming", "category": "Fun", "autopay": true, "schedule": [
+        { "from": "2026-11-12", "repeat": { "every": "months", "n": 1, "day": 12 }, "amountCents": 1599 }
+      ] } }
+    },
+    {
+      "call": "get_items",
+      "expect": [
+        { "item": { "id": "streaming" }, "next": { "due": "2026-11-12" }, "monthlyCents": 1599 },
+        { "item": { "id": "pay" }, "next": { "due": "2026-11-13" } },
+        { "item": { "id": "rent" }, "next": { "due": "2026-12-01" }, "lastDone": null }
+      ]
+    },
+    {
+      "call": "get_overview",
+      "expect": {
+        "todayCents": 200000,
+        "lowest": { "date": "2026-11-12", "cents": 198401 },
+        "firstShort": null,
+        "dueThisWeek": { "count": 1, "cents": 1599 },
+        "incomeAheadCents": 120000,
+        "upcoming": [{ "date": "2026-11-12", "closingCents": 198401 }, { "date": "2026-11-13", "closingCents": 318401 }],
+        "nextWithdrawal": null,
+        "taskmint": { "state": "missing" }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": { "occurrence": { "itemId": "streaming", "date": "2026-11-12", "status": { "state": "done", "on": "2026-11-10", "amountCents": 1599 } } },
+      "expect": { "writes": [{ "docId": "occ~2026-11-12~streaming", "kind": "occ" }] }
+    },
+    { "call": "get_overview", "expect": { "todayCents": 198401, "dueThisWeek": { "count": 0, "cents": 0 } } },
+    { "call": "get_month", "args": { "month": "2026-12" }, "expect": { "month": "2026-12", "billsCents": 151599, "incomeCents": 240000 } },
+    { "call": "get_forecast", "expect": { "today": "2026-11-10", "assumedPerDayCents": 0 } },
+    {
+      "call": "get_reminders",
+      "args": { "windowDays": 30, "max": 10 },
+      "expect": [{ "key": "rent~2026-12-01~3", "atMs": 1795878000000, "kind": "bill", "due": "2026-12-01", "amountCents": 150000 }]
+    },
+    {
+      "call": "change_schedule",
+      "args": { "itemId": "rent", "from": "2027-01-01", "repeat": { "every": "months", "n": 1, "day": 1 }, "amountCents": 160000 },
+      "expect": { "writes": [{ "docId": "item~rent" }] }
+    },
+    {
+      "call": "get_item_history",
+      "args": { "itemId": "rent", "from": "2026-11-01", "to": "2027-02-28" },
+      "expect": [{ "scheduled": "2027-02-01", "expectedCents": 160000 }, { "scheduled": "2027-01-01" }, { "scheduled": "2026-12-01", "expectedCents": 150000 }]
+    },
+    { "call": "archive_item", "args": { "itemId": "streaming", "archived": true }, "expect": { "writes": [{ "docId": "item~streaming" }] } },
+    {
+      "call": "save_settings",
+      "args": { "settings": { "horizonDays": 30, "lowBalanceCents": 250000 } },
+      "expect": { "writes": [{ "docId": "settings~account" }] }
+    },
+    {
+      "call": "get_overview",
+      "expect": { "todayCents": 198401, "horizonDays": 30, "firstLow": { "date": "2026-11-10", "cents": 198401 }, "balance": { "cents": 200000 } }
+    },
+    {
+      "call": "apply_forecast",
+      "args": { "doc": { "schema": 1, "appVersion": "4.2.0", "updatedAtMs": 1794330000000, "json": "{\"schema\":1,\"asOfMs\":1794330000000,\"fundsReleaseDays\":7,\"withdrawalIntervalMs\":259200000,\"lastImportMs\":1794330000000,\"cutoff\":{\"takenAtMs\":1794247200000,\"amountCents\":5000},\"recentWithdrawals\":[{\"takenAtMs\":1794247200000,\"amountCents\":5000}],\"nextAllowedAtMs\":1794506400000,\"scheduled\":null,\"carried\":{\"actualCents\":1000,\"estimatedCents\":0,\"pastDueCents\":0},\"steps\":[{\"atMs\":1794592800000,\"actualCents\":2000,\"estimatedCents\":0,\"pastDueCents\":0}],\"recentDays\":[],\"zone\":\"America/Chicago\"}" } },
+      "expect": { "state": "ready", "appVersion": "4.2.0", "asOfMs": 1794330000000 }
+    },
+    {
+      "call": "get_overview",
+      "expect": {
+        "todayCents": 203401,
+        "nextWithdrawal": { "atMs": 1794506400000, "opensNow": false, "totalCents": 1000, "arrivesOn": "2026-11-13" },
+        "taskmint": { "state": "ready" }
+      }
+    },
+    {
+      "call": "apply_docs",
+      "args": { "docs": [{ "docId": "item~later", "json": "{}", "schema": 9 }, { "docId": "item~bad", "json": "nope", "schema": 1 }] },
+      "expect": { "applied": 0, "held": ["item~later"], "unreadable": ["item~bad"] }
+    },
+    { "call": "delete_item", "args": { "itemId": "rent" }, "expect": { "writes": [{ "docId": "item~rent", "json": null }] } },
+    { "call": "get_item_history", "args": { "itemId": "rent", "from": "2026-11-01", "to": "2026-12-31" }, "error": "That bill isn't there any more" },
+    { "call": "get_month", "args": { "month": "2026-13" }, "error": "Not a month: 2026-13" },
+    {
+      "call": "save_item",
+      "args": { "item": { "id": "x", "kind": "bill", "name": "", "schedule": [] } },
+      "error": "Give it a name"
+    },
+    { "call": "delete_item", "args": { "itemId": "rent" }, "error": "That bill isn't there any more (deleted on another device?)" },
+    { "call": "archive_item", "args": { "itemId": "rent", "archived": true }, "error": "That bill isn't there any more (deleted on another device?)" },
+    {
+      "call": "change_schedule",
+      "args": { "itemId": "rent", "from": "2027-01-01", "repeat": { "every": "once" }, "amountCents": 1 },
+      "error": "That bill isn't there any more (deleted on another device?)"
+    },
+    {
+      "call": "set_occurrence",
+      "args": { "occurrence": { "itemId": "rent", "date": "2026-12-01", "status": { "state": "open" } } },
+      "error": "That bill isn't there any more (deleted on another device?)"
+    },
+    { "call": "save_settings", "args": { "settings": { "horizonDays": 5 } }, "error": "Look 14 to 366 days ahead" },
+    { "call": "reset_docs", "expect": null },
+    { "call": "get_settings", "expect": { "saved": false } },
+    { "call": "get_overview", "expect": { "todayCents": 0, "taskmint": { "state": "missing" } } }
+  ]
+}

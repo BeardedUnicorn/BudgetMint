@@ -1,0 +1,323 @@
+//! What BudgetMint keeps: bills and income on schedules, what happened to
+//! their occurrences, and the account's settings. Each is a document of its
+//! own (crate::docs); this is their JSON. Money is integer cents, dates are
+//! calendar dates in the user's zone, and every field a later version adds
+//! has a default, so older documents keep reading.
+
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Money in cents.
+pub type Cents = i64;
+
+/// The most a single amount may be: $10 billion, far past any bill.
+pub const MAX_CENTS: Cents = 1_000_000_000_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ItemKind {
+    /// Money going out.
+    Bill,
+    /// Money coming in (other than TaskMint's withdrawals).
+    Income,
+}
+
+/// How often an item comes round.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "every", rename_all = "camelCase")]
+pub enum Repeat {
+    /// Only on the segment's first date.
+    Once,
+    /// Every `n` days from the first date.
+    Days { n: u16 },
+    /// Every `n` weeks, on the first date's weekday.
+    Weeks { n: u8 },
+    /// Every `n` months, on day `day` (1–31). A month shorter than `day`
+    /// has it on its last day, so 31 is "the last day of the month".
+    Months { n: u8, day: u8 },
+    /// Every `n` years, on the first date's month and day (Feb 29 is Feb 28
+    /// in other years).
+    Years { n: u8 },
+}
+
+/// A stretch of an item's schedule: from `from` (its first date) to `until`
+/// (inclusive; open-ended without one), or to the next segment's `from`.
+/// "Change from a date" starts a new segment, so the dates before keep
+/// their occurrences.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Segment {
+    pub from: NaiveDate,
+    #[serde(default)]
+    pub until: Option<NaiveDate>,
+    pub repeat: Repeat,
+    /// What each occurrence is expected to be (positive, for bills and income alike).
+    pub amount_cents: Cents,
+}
+
+/// When to be reminded of an item's occurrences: days before each (0: on the day).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ItemReminder {
+    pub lead_days: Vec<u8>,
+}
+
+/// A bill or a source of income.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Item {
+    /// Made by the client (core has no randomness): letters, digits, dashes.
+    pub id: String,
+    pub kind: ItemKind,
+    pub name: String,
+    #[serde(default)]
+    pub category: Option<String>,
+    /// Oldest first; never empty.
+    pub schedule: Vec<Segment>,
+    /// Paid (or received) on its own: assumed done on its date.
+    #[serde(default)]
+    pub autopay: bool,
+    #[serde(default)]
+    pub reminder: Option<ItemReminder>,
+    /// Stopped: its occurrences no longer count, and history keeps them.
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub note: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// What happened to one occurrence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum OccStatus {
+    /// Still to pay (or to come in).
+    Open,
+    /// Paid (or received) on `on`, for `amountCents`.
+    Done {
+        on: NaiveDate,
+        #[serde(rename = "amountCents")]
+        amount_cents: Cents,
+    },
+    /// Not happening this time.
+    Skipped,
+}
+
+/// The user's word on one occurrence of an item: the one its schedule puts
+/// on `date` (moving it doesn't change which one it is). Without one, an
+/// occurrence is as the schedule says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Override {
+    pub item_id: String,
+    pub date: NaiveDate,
+    pub status: OccStatus,
+    /// This time's expected amount, when it isn't the schedule's.
+    #[serde(default)]
+    pub amount_cents: Option<Cents>,
+    /// When it's due this time, when not on its date.
+    #[serde(default)]
+    pub moved_to: Option<NaiveDate>,
+    #[serde(default)]
+    pub note: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// The balance the forecast starts from: what the account held at the end
+/// of `asOf`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Balance {
+    pub cents: Cents,
+    pub as_of: NaiveDate,
+}
+
+/// When TaskMint's withdrawals are assumed to be made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum WithdrawPolicy {
+    /// As soon as the site allows one (and there's money to take).
+    #[default]
+    AsSoonAsOpen,
+    /// On a weekday (0 Monday … 6 Sunday) at an hour, once the site allows.
+    Weekly { weekday: u8, hour: u8 },
+}
+
+/// TaskMint's forecast reaches only as far as work already done. Beyond it,
+/// earnings to come can be assumed (and are shown as assumed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum FutureEarnings {
+    /// Only what TaskMint knows of.
+    #[default]
+    Off,
+    /// This much earned a week.
+    Weekly { cents: Cents },
+    /// What the last `weeks` weeks averaged.
+    Trailing { weeks: u8 },
+}
+
+/// How the forecast counts TaskMint's withdrawals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", default)]
+pub struct TaskMintPlan {
+    /// Count TaskMint's withdrawals at all.
+    pub use_forecast: bool,
+    pub policy: WithdrawPolicy,
+    /// Don't withdraw less than this: wait for more.
+    pub min_withdrawal_cents: Cents,
+    /// How long a withdrawal takes to reach the bank.
+    pub arrival_delay_hours: u16,
+    /// Count tracked time not imported yet (TaskMint's ~ amounts).
+    pub count_estimates: bool,
+    /// Count money the site still lists as pending after its release.
+    pub count_past_due: bool,
+    pub future: FutureEarnings,
+}
+
+impl Default for TaskMintPlan {
+    fn default() -> Self {
+        Self {
+            use_forecast: true,
+            policy: WithdrawPolicy::AsSoonAsOpen,
+            min_withdrawal_cents: 0,
+            arrival_delay_hours: 24,
+            count_estimates: true,
+            count_past_due: true,
+            future: FutureEarnings::Off,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", default)]
+pub struct ReminderSettings {
+    /// The hour of the day reminders come (0–23).
+    pub hour: u8,
+    /// Days ahead a new bill reminds by default.
+    pub lead_days: u8,
+    /// Remind when the balance is about to go below the low mark.
+    pub low_balance: bool,
+}
+
+impl Default for ReminderSettings {
+    fn default() -> Self {
+        Self {
+            hour: 9,
+            lead_days: 3,
+            low_balance: true,
+        }
+    }
+}
+
+/// The account's settings: one document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    pub balance: Option<Balance>,
+    /// Days below this are flagged low (below zero is short).
+    pub low_balance_cents: Cents,
+    /// How far ahead the forecast looks.
+    pub horizon_days: u16,
+    pub taskmint: TaskMintPlan,
+    pub reminders: ReminderSettings,
+}
+
+pub const DEFAULT_HORIZON_DAYS: u16 = 60;
+pub const MIN_HORIZON_DAYS: u16 = 14;
+pub const MAX_HORIZON_DAYS: u16 = 366;
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            balance: None,
+            low_balance_cents: 0,
+            horizon_days: DEFAULT_HORIZON_DAYS,
+            taskmint: TaskMintPlan::default(),
+            reminders: ReminderSettings::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn reads_older_documents_with_defaults() {
+        let settings: Settings = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(settings, Settings::default());
+        let partial: Settings =
+            serde_json::from_value(json!({ "taskmint": { "minWithdrawalCents": 500 } })).unwrap();
+        assert_eq!(partial.taskmint.min_withdrawal_cents, 500);
+        assert!(partial.taskmint.count_estimates);
+        assert_eq!(partial.reminders.hour, 9);
+    }
+
+    #[test]
+    fn writes_the_documented_json() {
+        let item = Item {
+            id: "rent".into(),
+            kind: ItemKind::Bill,
+            name: "Rent".into(),
+            category: None,
+            schedule: vec![Segment {
+                from: NaiveDate::from_ymd_opt(2026, 1, 31).unwrap(),
+                until: None,
+                repeat: Repeat::Months { n: 1, day: 31 },
+                amount_cents: 120_000,
+            }],
+            autopay: false,
+            reminder: Some(ItemReminder { lead_days: vec![3] }),
+            archived: false,
+            note: None,
+            created_at: DateTime::UNIX_EPOCH,
+            updated_at: DateTime::UNIX_EPOCH,
+        };
+        assert_eq!(
+            serde_json::to_value(&item).unwrap(),
+            json!({
+                "id": "rent", "kind": "bill", "name": "Rent", "category": null,
+                "schedule": [{ "from": "2026-01-31", "until": null,
+                               "repeat": { "every": "months", "n": 1, "day": 31 }, "amountCents": 120000 }],
+                "autopay": false, "reminder": { "leadDays": [3] }, "archived": false, "note": null,
+                "createdAt": "1970-01-01T00:00:00Z", "updatedAt": "1970-01-01T00:00:00Z"
+            })
+        );
+        let done = OccStatus::Done {
+            on: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+            amount_cents: 5,
+        };
+        assert_eq!(
+            serde_json::to_value(done).unwrap(),
+            json!({ "state": "done", "on": "2026-02-01", "amountCents": 5 })
+        );
+        assert_eq!(
+            serde_json::to_value(WithdrawPolicy::Weekly {
+                weekday: 4,
+                hour: 9
+            })
+            .unwrap(),
+            json!({ "kind": "weekly", "weekday": 4, "hour": 9 })
+        );
+        assert_eq!(
+            serde_json::to_value(FutureEarnings::Trailing { weeks: 4 }).unwrap(),
+            json!({ "kind": "trailing", "weeks": 4 })
+        );
+    }
+}

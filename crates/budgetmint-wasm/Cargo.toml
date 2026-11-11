@@ -1,0 +1,16 @@
+[package]
+name = "budgetmint-wasm"
+version = "0.1.0"
+description = "BudgetMint's rules for every app: budgetmint-core in WebAssembly"
+authors = ["Mike Herold"]
+license = "MIT"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+budgetmint-core = { path = "../budgetmint-core" }
+# Exactly the version scripts/build-wasm.mjs's wasm-bindgen CLI is (TaskMint's too)
+wasm-bindgen = "=0.2.127"

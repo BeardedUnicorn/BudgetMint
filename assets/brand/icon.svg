@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- BudgetMint's app icon: a stack of coins and TaskMint's leaf, in
+       TaskMint's flat style (its tile, gradient, pale-mint lines and greens). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#104B4F"/>
+      <stop offset="1" stop-color="#05292E"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#tile)"/>
+  <g transform="translate(512 512) scale(1.1) translate(-563 -577)">
+  <g id="coins" fill="#0B3A3F" stroke="#DFF5E9" stroke-width="40" stroke-linejoin="round">
+    <!-- Bottom coin, then the middle one, then the top: each hides the one below -->
+    <path d="M232 640 A206 96 0 0 1 644 640 V712 A206 96 0 0 1 232 712 Z"/>
+    <path d="M256 530 A214 100 0 0 1 684 530 V604 A214 100 0 0 1 256 604 Z"/>
+    <path d="M292 380 A226 106 0 0 1 744 380 V458 A226 106 0 0 1 292 458 Z"/>
+    <ellipse cx="518" cy="380" rx="226" ry="106"/>
+    <!-- The dollar sign on the top coin -->
+    <g fill="none" stroke="#36DC80" stroke-width="32" stroke-linecap="round" transform="translate(515 384) scale(0.84) translate(-515 -384)">
+      <path d="M590 334 C568 316 540 310 512 312 C474 314 448 330 450 352 C452 372 478 380 516 386 C556 392 590 400 590 424 C590 446 556 458 518 456 C482 455 456 446 440 430"/>
+      <path d="M518 290 V478"/>
+    </g>
+  </g>
+  <!-- The leaf, as TaskMint's: green with a pale outline and midrib -->
+  <g stroke="#DFF5E9" stroke-width="26" stroke-linejoin="round">
+    <path fill="#54E894" d="M312 880 C330 720 450 600 640 572 C760 554 840 520 902 440 C920 600 880 760 760 830 C650 892 520 880 420 858 C380 850 345 860 318 888 Z"/>
+  </g>
+  <path fill="#DFF5E9" d="M348 850 C420 730 560 650 752 598 C600 660 460 740 348 850 Z"/>
+  </g>
+</svg>

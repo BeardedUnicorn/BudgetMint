@@ -1,0 +1,112 @@
+{
+  "description": "The last withdrawal long ago: the next is open now, and takes everything released since.",
+  "nowMs": 1800014400000,
+  "forecast": {
+    "schema": 1,
+    "asOfMs": 1799931600000,
+    "fundsReleaseDays": 7,
+    "withdrawalIntervalMs": 259200000,
+    "lastImportMs": 1799931600000,
+    "cutoff": {
+      "takenAtMs": 1798891200000,
+      "amountCents": 1000
+    },
+    "recentWithdrawals": [
+      {
+        "takenAtMs": 1798891200000,
+        "amountCents": 1000
+      }
+    ],
+    "nextAllowedAtMs": 1799150400000,
+    "scheduled": null,
+    "carried": {
+      "actualCents": 1900,
+      "estimatedCents": 0,
+      "pastDueCents": 900
+    },
+    "steps": [
+      {
+        "atMs": 1800100800000,
+        "actualCents": 1000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "atMs": 1800187200000,
+        "actualCents": 2000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "atMs": 1800446400000,
+        "actualCents": 4000,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      }
+    ],
+    "recentDays": [
+      {
+        "day": "2027-01-04",
+        "actualCents": 1000,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-05",
+        "actualCents": 500,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-07",
+        "actualCents": 400,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-09",
+        "actualCents": 1000,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-10",
+        "actualCents": 11999,
+        "estimatedCents": 0
+      },
+      {
+        "day": "2027-01-13",
+        "actualCents": 4000,
+        "estimatedCents": 0
+      }
+    ],
+    "zone": "America/Chicago"
+  },
+  "withdrawable": [
+    {
+      "atMs": 1800014400000,
+      "actualCents": 1900,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 1900
+    },
+    {
+      "atMs": 1800187200000,
+      "actualCents": 4900,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 4900
+    },
+    {
+      "atMs": 1801310400000,
+      "actualCents": 8900,
+      "estimatedCents": 0,
+      "pastDueCents": 900,
+      "totalCents": 8900
+    }
+  ],
+  "next": {
+    "opensAtMs": 1800014400000,
+    "isOpen": true,
+    "actualCents": 1900,
+    "estimatedCents": 0,
+    "pastDueCents": 900,
+    "totalCents": 1900
+  }
+}

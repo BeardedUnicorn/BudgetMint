@@ -1,0 +1,317 @@
+//! The reminders coming up: each open occurrence of an item with a
+//! reminder, the set number of days before it's due, at the hour the user
+//! chose; and, when the balance is about to go low, one about that. Each has
+//! a stable key (and a 31-bit id from it, for Android's scheduled
+//! notifications), so scheduling them again replaces rather than repeats.
+//! The client words them.
+
+use crate::docs::Snapshot;
+use crate::forecast::contract::PayoutForecast;
+use crate::model::{Cents, ItemKind, OccStatus};
+use crate::occur::occurrences;
+use crate::project::project;
+use crate::time::{hour, Ctx};
+use chrono::{Duration, NaiveDate};
+use serde::{Deserialize, Serialize};
+
+/// The furthest ahead reminders are worked out, and the most at once.
+pub const MAX_WINDOW_DAYS: u16 = 60;
+pub const MAX_REMINDERS: u16 = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ReminderKind {
+    Bill,
+    Income,
+    /// The balance goes below the low mark (or zero) on `due`.
+    LowBalance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Reminder {
+    /// Stable: the same reminder always has it.
+    pub key: String,
+    /// The key as a positive 31-bit number (Android's notification ids).
+    pub id: u32,
+    pub at_ms: i64,
+    pub kind: ReminderKind,
+    pub item_id: Option<String>,
+    pub name: String,
+    pub due: NaiveDate,
+    /// The occurrence's amount; the balance then, for a low-balance one.
+    pub amount_cents: Cents,
+    pub lead_days: u8,
+    pub autopay: bool,
+    /// Below zero (not just low), for a low-balance one.
+    pub short: bool,
+}
+
+/// FNV-1a (32-bit) of `key`, as a positive 31-bit id.
+pub fn reminder_id(key: &str) -> u32 {
+    let hash = key.bytes().fold(0x811c_9dc5_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(0x0100_0193)
+    });
+    hash & 0x7fff_ffff
+}
+
+/// The reminders from now to `window_days` ahead, soonest first, `max` at most.
+pub fn upcoming(
+    snapshot: &Snapshot,
+    taskmint: Option<&PayoutForecast>,
+    ctx: &Ctx,
+    window_days: u16,
+    max: u16,
+) -> Vec<Reminder> {
+    let settings = snapshot.settings();
+    let now = ctx.now_ms();
+    let today = ctx.today();
+    let window = i64::from(window_days.min(MAX_WINDOW_DAYS));
+    let until = now + window * crate::time::DAY_MS;
+    let at_hour = hour(settings.reminders.hour.min(23));
+    let mut found = Vec::new();
+
+    // Leads reach up to 30 days ahead of the due day
+    for occurrence in occurrences(snapshot, today, today + Duration::days(window + 31), false) {
+        let item = occurrence.item;
+        let Some(reminder) = &item.reminder else {
+            continue;
+        };
+        if occurrence.status != OccStatus::Open {
+            continue;
+        }
+        for lead in &reminder.lead_days {
+            let at_ms = ctx.at(occurrence.due - Duration::days(i64::from(*lead)), at_hour);
+            if at_ms <= now || at_ms > until {
+                continue;
+            }
+            let key = format!(
+                "{}~{}~{}",
+                item.id,
+                occurrence.scheduled.format("%Y-%m-%d"),
+                lead
+            );
+            found.push(Reminder {
+                id: reminder_id(&key),
+                key,
+                at_ms,
+                kind: if item.kind == ItemKind::Bill {
+                    ReminderKind::Bill
+                } else {
+                    ReminderKind::Income
+                },
+                item_id: Some(item.id.clone()),
+                name: item.name.clone(),
+                due: occurrence.due,
+                amount_cents: occurrence.expected_cents,
+                lead_days: *lead,
+                autopay: item.autopay,
+                short: false,
+            });
+        }
+    }
+
+    if settings.reminders.low_balance {
+        let projection = project(snapshot, taskmint, ctx, today + Duration::days(window));
+        let low = projection
+            .ahead()
+            .iter()
+            .find(|day| day.closing_cents < settings.low_balance_cents.max(0));
+        // At the reminder hour, today's if it's still to come
+        let next_at = |date: NaiveDate| ctx.at(date, at_hour);
+        let at_ms = if next_at(today) > now {
+            next_at(today)
+        } else {
+            next_at(today + Duration::days(1))
+        };
+        if let Some(day) = low.filter(|day| ctx.day_of(at_ms) <= day.date && at_ms <= until) {
+            let key = format!("low~{}", day.date.format("%Y-%m-%d"));
+            found.push(Reminder {
+                id: reminder_id(&key),
+                key,
+                at_ms,
+                kind: ReminderKind::LowBalance,
+                item_id: None,
+                name: String::new(),
+                due: day.date,
+                amount_cents: day.closing_cents,
+                lead_days: 0,
+                autopay: false,
+                short: day.short,
+            });
+        }
+    }
+
+    found.sort_by(|a, b| (a.at_ms, &a.key).cmp(&(b.at_ms, &b.key)));
+    found.truncate(usize::from(max.min(MAX_REMINDERS)));
+    found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::docs::DocKey;
+    use crate::model::{Balance, ItemReminder, Repeat, Settings};
+    use crate::occur::tests::{d, item, over, put_item, put_over};
+    use crate::time::instant;
+
+    /// Nov 10, 2026, noon in Chicago.
+    fn ctx() -> Ctx {
+        Ctx::new(1_794_333_600_000, "America/Chicago")
+    }
+
+    fn reminded(lead_days: Vec<u8>, mut it: crate::model::Item) -> crate::model::Item {
+        it.reminder = Some(ItemReminder { lead_days });
+        it
+    }
+
+    #[test]
+    fn reminds_the_set_days_before_at_the_set_hour() {
+        let mut s = Snapshot::default();
+        put_item(
+            &mut s,
+            reminded(
+                vec![0, 3],
+                item(
+                    "rent",
+                    ItemKind::Bill,
+                    d(2026, 11, 14),
+                    Repeat::Months { n: 1, day: 14 },
+                    9,
+                ),
+            ),
+        );
+        let mut pay = reminded(
+            vec![1],
+            item("pay", ItemKind::Income, d(2026, 11, 20), Repeat::Once, 5),
+        );
+        pay.autopay = true;
+        put_item(&mut s, pay);
+        // No reminder, a paid one, and one whose reminder time has passed (today at 9)
+        put_item(
+            &mut s,
+            item("quiet", ItemKind::Bill, d(2026, 11, 12), Repeat::Once, 1),
+        );
+        put_item(
+            &mut s,
+            reminded(
+                vec![0],
+                item("paid", ItemKind::Bill, d(2026, 11, 13), Repeat::Once, 1),
+            ),
+        );
+        put_over(
+            &mut s,
+            over(
+                "paid",
+                d(2026, 11, 13),
+                OccStatus::Done {
+                    on: d(2026, 11, 9),
+                    amount_cents: 1,
+                },
+            ),
+        );
+        put_item(
+            &mut s,
+            reminded(
+                vec![0],
+                item("today", ItemKind::Bill, d(2026, 11, 10), Repeat::Once, 1),
+            ),
+        );
+        let settings = Settings {
+            reminders: crate::model::ReminderSettings {
+                low_balance: false,
+                ..Default::default()
+            },
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+
+        let found = upcoming(&s, None, &ctx(), 20, 10);
+        let summary: Vec<_> = found
+            .iter()
+            .map(|r| (r.key.as_str(), instant(r.at_ms).to_rfc3339(), r.kind))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    "rent~2026-11-14~3",
+                    "2026-11-11T15:00:00+00:00".into(),
+                    ReminderKind::Bill
+                ),
+                (
+                    "rent~2026-11-14~0",
+                    "2026-11-14T15:00:00+00:00".into(),
+                    ReminderKind::Bill
+                ),
+                (
+                    "pay~2026-11-20~1",
+                    "2026-11-19T15:00:00+00:00".into(),
+                    ReminderKind::Income
+                ),
+            ]
+        );
+        // December's 3-days-before is past the window's 20 days
+        assert_eq!(upcoming(&s, None, &ctx(), 31, 10).len(), 4);
+        assert!(found[2].autopay);
+        assert_eq!(found[0].id, reminder_id("rent~2026-11-14~3"));
+        assert!(found.iter().all(|r| r.id < 1 << 31));
+        // The most asked for
+        assert_eq!(upcoming(&s, None, &ctx(), 20, 2).len(), 2);
+        // Within the window only
+        assert_eq!(upcoming(&s, None, &ctx(), 5, 10).len(), 2);
+    }
+
+    #[test]
+    fn warns_before_the_balance_goes_low() {
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 1_000,
+                as_of: d(2026, 11, 10),
+            }),
+            low_balance_cents: 500,
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        put_item(
+            &mut s,
+            item("card", ItemKind::Bill, d(2026, 11, 16), Repeat::Once, 2_000),
+        );
+        let found = upcoming(&s, None, &ctx(), 10, 10);
+        assert_eq!(found.len(), 1);
+        let low = &found[0];
+        assert_eq!(
+            (low.kind, low.due, low.amount_cents, low.short),
+            (ReminderKind::LowBalance, d(2026, 11, 16), -1_000, true)
+        );
+        // It's past 9 today: tomorrow at 9
+        assert_eq!(instant(low.at_ms).to_rfc3339(), "2026-11-11T15:00:00+00:00");
+        // Before 9: today at 9
+        let early = Ctx::new(
+            1_794_333_600_000 - 5 * crate::time::HOUR_MS,
+            "America/Chicago",
+        );
+        assert_eq!(
+            instant(upcoming(&s, None, &early, 10, 10)[0].at_ms).to_rfc3339(),
+            "2026-11-10T15:00:00+00:00"
+        );
+        // Not low within the window, or low today already (too late to warn ahead)
+        assert!(upcoming(&s, None, &ctx(), 3, 10).is_empty());
+        let mut low_now = settings.clone();
+        low_now.balance = Some(Balance {
+            cents: 100,
+            as_of: d(2026, 11, 10),
+        });
+        s.write(DocKey::Settings, Some(&low_now));
+        assert!(upcoming(&s, None, &ctx(), 10, 10).is_empty());
+    }
+
+    #[test]
+    fn ids_are_stable_31_bit_hashes() {
+        assert_eq!(reminder_id(""), 0x811c_9dc5 & 0x7fff_ffff);
+        assert_eq!(reminder_id("a"), 0xe40c_292c & 0x7fff_ffff);
+    }
+}
