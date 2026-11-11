@@ -8,7 +8,7 @@ import { ComponentType, useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, CssBaseline, Stack } from '@mui/material';
 import type { CoreClient } from './core';
 import type { BudgetSession } from './cloud/session';
-import { AppExtensionsContext, useAppExtensions } from './app/extensions';
+import { AppExtensionsContext } from './app/extensions';
 import { AuthLayout } from './components/auth/AuthLayout';
 import { SignInForm } from './components/auth/SignInForm';
 import { BalanceFooter } from './components/layout/BalanceFooter';
@@ -121,14 +121,13 @@ function Ready() {
   );
 }
 
-/** What runs behind the pages: reminders, the tray, the system bars, and the shell's own. */
+/** What runs behind the pages once signed in: reminders, the tray, the system bars and shortcuts. */
 function BackgroundJobs() {
-  const { Background } = useAppExtensions();
   useReminders();
   useTrayStatus();
   useSystemBarsTheme();
   useKeyboardShortcuts(getShell().capabilities.runtime === 'web');
-  return Background ? <Background /> : null;
+  return null;
 }
 
 function AppShell() {
@@ -180,6 +179,7 @@ export interface AppProps {
 }
 
 export function App({ session, core, extensions = {} }: AppProps) {
+  const { Background } = extensions;
   return (
     <ThemeProvider>
       <CssBaseline enableColorScheme />
@@ -187,6 +187,9 @@ export function App({ session, core, extensions = {} }: AppProps) {
         <BudgetProvider session={session} core={core}>
           <AppExtensionsContext.Provider value={extensions}>
             <Gate />
+            {/* The shell's own work (the desktop's update check) runs whatever
+                the phase, so an update can reach an app that can't sign in */}
+            {Background && <Background />}
           </AppExtensionsContext.Provider>
         </BudgetProvider>
       </NotificationProvider>

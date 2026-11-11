@@ -2,18 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App, StartupError } from '../App';
+import type { AppExtensions } from '../shell/types';
 import { BudgetSession } from '../cloud/session';
 import { setShell } from '../shell';
 import { cal, createFakeShell, createFakeStore, TEST_NOW, testCore } from '../testing';
 import { monthly, startBudget } from './setup/budget';
 import { setPhoneViewport } from './setup/viewport';
 
-function unstarted(store = createFakeStore()) {
+function unstarted(store = createFakeStore(), extensions: AppExtensions = {}) {
   const shell = createFakeShell();
   setShell(shell);
   const core = testCore();
   const session = new BudgetSession(store, core, 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
-  render(<App session={session} core={core} />);
+  render(<App session={session} core={core} extensions={extensions} />);
   return { store, session, shell };
 }
 
@@ -32,6 +33,14 @@ describe('the app', () => {
     expect(store.signIn).toHaveBeenCalledWith('cal@example.com', 'secret');
     // A new account: onboarding first
     expect(await screen.findByRole('heading', { name: 'Welcome to BudgetMint' })).toBeInTheDocument();
+  });
+
+  it('runs the shell’s background before sign-in too, so an update reaches an app that can’t sign in', async () => {
+    const Background = () => <div>shell background</div>;
+    const { session } = unstarted(createFakeStore(), { Background });
+    session.start();
+    expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
+    expect(screen.getByText('shell background')).toBeInTheDocument();
   });
 
   it('says when the account’s data can’t be read, and tries again or signs out', async () => {
