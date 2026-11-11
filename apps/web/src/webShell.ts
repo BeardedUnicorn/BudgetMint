@@ -9,15 +9,18 @@ import type { ScheduledNotification, Shell } from '@budgetmint/client/shell';
 /** The longest a browser's timer waits (about 24.8 days); a later reminder waits in steps. */
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/** Shows `reminder` now, if notifications are allowed. Clicking it brings the tab forward. */
-function show({ id, title, body }: ScheduledNotification): void {
-  if (Notification.permission !== 'granted') return;
-  const notification = new Notification(title, { body, tag: String(id), icon: '/budgetmint-icon.png' });
-  notification.onclick = () => window.focus();
-}
-
 export function createWebShell(clock: () => number = Date.now): Shell {
   let timers: ReturnType<typeof setTimeout>[] = [];
+  /** Shown already (this page): one missed while closed stays in the list, and isn't shown again. */
+  const shown = new Set<number>();
+
+  /** Shows `reminder` now, once, if notifications are allowed. Clicking it brings the tab forward. */
+  function show({ id, title, body }: ScheduledNotification): void {
+    if (shown.has(id) || Notification.permission !== 'granted') return;
+    shown.add(id);
+    const notification = new Notification(title, { body, tag: String(id), icon: '/budgetmint-icon.png' });
+    notification.onclick = () => window.focus();
+  }
 
   /** Waits for `reminder`'s time, in steps when it's further off than a timer can wait. */
   function arm(reminder: ScheduledNotification): void {

@@ -4,7 +4,7 @@
 //! to the manual QA checklist: keep it to calls, with any decision made in
 //! the code that uses it.
 //!
-//! The tray and the updater exist only on a desktop. On Android and iOS
+//! The tray, the updater and opening at login exist only on a desktop. On Android and iOS
 //! `mobile::DesktopParts` stands in for them and reports each one missing
 //! (the webview leaves out what needs them: apps/desktop/src/tauriShell.ts).
 
@@ -105,7 +105,7 @@ fn cancel_os_notification(_app: &AppHandle, _id: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray and the updater.
+/// The tray, the updater and opening at login.
 #[cfg(desktop)]
 mod desktop {
     use super::text;
@@ -117,6 +117,7 @@ mod desktop {
     use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
+    use tauri_plugin_autostart::ManagerExt;
     use tauri_plugin_updater::{Update, UpdaterExt};
 
     #[derive(Default)]
@@ -209,6 +210,19 @@ mod desktop {
             Ok(())
         }
 
+        pub fn autostart(&self, app: &AppHandle) -> Result<bool, String> {
+            app.autolaunch().is_enabled().map_err(text)
+        }
+
+        pub fn set_autostart(&self, app: &AppHandle, enabled: bool) -> Result<(), String> {
+            let launcher = app.autolaunch();
+            match enabled {
+                true => launcher.enable(),
+                false => launcher.disable(),
+            }
+            .map_err(text)
+        }
+
         pub fn check_update(&self, app: &AppHandle) -> Result<Option<AvailableUpdate>, String> {
             let updater = app.updater().map_err(text)?;
             let found = finish(updater.check()).map_err(text)?;
@@ -278,6 +292,14 @@ mod mobile {
 
         pub fn render_tray(&self, _app: &AppHandle, _menu: &TrayMenu) -> Result<(), String> {
             Err(missing("The system tray"))
+        }
+
+        pub fn autostart(&self, _app: &AppHandle) -> Result<bool, String> {
+            Err(missing("Opening at login"))
+        }
+
+        pub fn set_autostart(&self, _app: &AppHandle, _enabled: bool) -> Result<(), String> {
+            Err(missing("Opening at login"))
         }
 
         pub fn check_update(&self, _app: &AppHandle) -> Result<Option<AvailableUpdate>, String> {
@@ -353,6 +375,14 @@ impl Platform for TauriPlatform {
 
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String> {
         self.desktop.render_tray(&self.app, menu)
+    }
+
+    fn autostart(&self) -> Result<bool, String> {
+        self.desktop.autostart(&self.app)
+    }
+
+    fn set_autostart(&self, enabled: bool) -> Result<(), String> {
+        self.desktop.set_autostart(&self.app, enabled)
     }
 
     fn restart(&self) {

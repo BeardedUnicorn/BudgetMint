@@ -20,6 +20,7 @@ export function createFakeShell(
       firesWhenClosed: options.firesWhenClosed ?? false,
     },
     googleSignIn: vi.fn(async () => 'google-id-token'),
+    autostart: { isEnabled: vi.fn(async () => false), setEnabled: vi.fn(async () => undefined) },
     tray: { setStatus: vi.fn(async () => undefined) },
     systemBars: { setDark: vi.fn() },
     splashScreen: { hide: vi.fn() },

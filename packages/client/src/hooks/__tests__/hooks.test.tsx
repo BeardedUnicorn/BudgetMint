@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react';
 import type { Reminder } from '@budgetmint/contracts';
 import { item, monthly, startBudget } from '../../__tests__/setup/budget';
-import { createFakeShell } from '../../testing';
+import { createFakeShell, TEST_NOW } from '../../testing';
 import { shortcutView, viewShortcut, modifierLabel, isMacPlatform } from '../useKeyboardShortcuts';
-import { reminderText, scheduled } from '../useReminders';
+import { LAST_RAN_INTERVAL_MS, LAST_RAN_KEY, reminderText, scheduled } from '../useReminders';
+import { readLocal, writeLocal } from '../../utils/localStore';
 import { useSettings } from '../useSettingsChange';
 import { useTick } from '../../data/BudgetContext';
 
@@ -18,6 +19,7 @@ const reminder = (changes: Partial<Reminder>): Reminder => ({
   due: '2026-12-01',
   amountCents: 120_000,
   leadDays: 3,
+  daysLeft: 3,
   autopay: false,
   short: false,
   ...changes,
@@ -72,14 +74,21 @@ describe('keyboard shortcuts', () => {
 describe('reminders', () => {
   it('are worded for bills, income and the balance', () => {
     expect(reminderText(reminder({}))).toEqual({ title: 'Rent is due in 3 days', body: '$1,200.00, Tue, Dec 1.' });
-    expect(reminderText(reminder({ leadDays: 0, autopay: true }))).toEqual({
+    expect(reminderText(reminder({ daysLeft: 0, autopay: true }))).toEqual({
       title: 'Rent is due today',
       body: '$1,200.00 goes out on autopay, Tue, Dec 1.',
     });
-    expect(reminderText(reminder({ kind: 'income', name: 'Pay', leadDays: 1 }))).toEqual({
+    expect(reminderText(reminder({ kind: 'income', name: 'Pay', daysLeft: 1 }))).toEqual({
       title: 'Pay comes in tomorrow',
       body: '$1,200.00, Tue, Dec 1.',
     });
+    // Shown late (missed while the app was closed): as of today
+    expect(reminderText(reminder({ daysLeft: 2 })).title).toBe('Rent is due in 2 days');
+    expect(reminderText(reminder({ daysLeft: -1 })).title).toBe('Rent was due yesterday');
+    expect(reminderText(reminder({ daysLeft: -2 })).title).toBe('Rent was due 2 days ago');
+    expect(reminderText(reminder({ kind: 'income', name: 'Pay', daysLeft: -1 })).title).toBe(
+      'Pay was to come in yesterday'
+    );
     expect(reminderText(reminder({ kind: 'lowBalance', amountCents: 800 })).title).toBe('Your balance gets low');
     expect(reminderText(reminder({ kind: 'lowBalance', amountCents: -800, short: true }))).toEqual({
       title: 'Your balance goes below zero',
@@ -107,6 +116,39 @@ describe('reminders', () => {
     await user.click(screen.getByRole('switch', { name: 'Remind me on this device' }));
     await waitFor(() => expect(schedule).toHaveBeenLastCalledWith([]));
     warn.mockRestore();
+  });
+});
+
+describe('reminders missed while the app was closed', () => {
+  // Rent's reminder was at 9:00 today; it's noon
+  const items = () => [monthly('rent', 'Rent', 10, 50_000, { reminder: { leadDays: [0] } })];
+  // The ones due already, which the shell shows at once (December's comes later)
+  const missed = (shell: ReturnType<typeof createFakeShell>) =>
+    vi
+      .mocked(shell.platform.notifications.schedule)
+      .mock.lastCall![0].filter(n => n.atMs <= TEST_NOW)
+      .map(n => n.title);
+
+  it('come at launch when the device last ran before their time, and it keeps when it runs', async () => {
+    writeLocal<number | null>(LAST_RAN_KEY, TEST_NOW - 10 * 60 * 60 * 1000, null);
+    const shell = createFakeShell();
+    await startBudget({ shell, items: items() });
+    await waitFor(() => expect(missed(shell)).toEqual(['Rent is due today']));
+    expect(readLocal<number | null>(LAST_RAN_KEY, null)).toBeGreaterThan(TEST_NOW - 60 * 60 * 1000);
+    expect(LAST_RAN_INTERVAL_MS).toBe(30_000);
+  });
+
+  it('don’t come the first time, or where the system showed them (a phone)', async () => {
+    const first = createFakeShell();
+    await startBudget({ shell: first, items: items() });
+    await waitFor(() => expect(first.platform.notifications.schedule).toHaveBeenCalled());
+    expect(missed(first)).toEqual([]);
+
+    writeLocal<number | null>(LAST_RAN_KEY, TEST_NOW - 10 * 60 * 60 * 1000, null);
+    const phone = createFakeShell({ firesWhenClosed: true });
+    await startBudget({ shell: phone, items: items() });
+    await waitFor(() => expect(phone.platform.notifications.schedule).toHaveBeenCalled());
+    expect(missed(phone)).toEqual([]);
   });
 });
 

@@ -13,8 +13,13 @@ use crate::state::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::utils::config::AppDirectoriesOverride;
-use tauri::Manager;
+use tauri::{Manager, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
+
+/// What the login item passes (Settings → Reminders, Open at login): the
+/// app starts in the tray, without its window.
+#[cfg(desktop)]
+const STARTED_AT_LOGIN: &str = "--hidden";
 
 #[cfg(desktop)]
 fn show_window(app: &tauri::AppHandle) {
@@ -58,6 +63,11 @@ pub fn run() {
         // Updates from GitHub's latest release (plugins.updater in
         // tauri.conf.json); the webview asks before installing one
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Open at login, as a launch agent on macOS (the webview turns it on)
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![STARTED_AT_LOGIN]),
+        ))
         // Closing the window hides it to the tray, so reminders keep coming;
         // quit from the tray. Without a tray icon it closes normally.
         .on_window_event(|window, event| {
@@ -81,6 +91,14 @@ pub fn run() {
             });
             app.manage(platform);
             app.manage(state.clone());
+
+            // The main window ("create": false in tauri.conf.json), hidden
+            // when the app was started at login: the tray brings it up
+            let window = app.config().app.windows[0].clone();
+            let builder = WebviewWindowBuilder::from_config(app.handle(), &window)?;
+            #[cfg(desktop)]
+            let builder = builder.visible(!std::env::args().any(|arg| arg == STARTED_AT_LOGIN));
+            builder.build()?;
 
             // Clicking a notification brings the window forward (it may be
             // hidden to the tray)

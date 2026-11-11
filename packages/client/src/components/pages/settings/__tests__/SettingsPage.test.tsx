@@ -172,6 +172,39 @@ describe('settings', () => {
     await waitFor(() => expect(settingsOf(store).reminders.lowBalance).toBe(false));
   });
 
+  it('opens at login on the desktop, as the system has it, and says when it can’t', async () => {
+    const shell = createFakeShell();
+    vi.mocked(shell.platform.autostart.isEnabled).mockResolvedValueOnce(true);
+    const { user } = await settings({ shell });
+    const reminders = () => section('Reminders');
+    const toggle = await within(reminders()).findByRole('switch', { name: 'Open BudgetMint at login' });
+    await waitFor(() => expect(toggle).toBeChecked());
+    await user.click(toggle);
+    expect(shell.platform.autostart.setEnabled).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    vi.mocked(shell.platform.autostart.setEnabled).mockRejectedValueOnce('The login item couldn’t be added');
+    await user.click(toggle);
+    expect(
+      await within(reminders()).findByText('Couldn’t change opening at login. The login item couldn’t be added')
+    ).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
+  });
+
+  it('leaves opening at login out where the shell can’t', async () => {
+    await settings({ shell: createFakeShell({ without: ['autostart'] }) });
+    expect(within(section('Reminders')).queryByRole('switch', { name: 'Open BudgetMint at login' })).toBeNull();
+  });
+
+  it('says when the system can’t be asked whether it opens at login', async () => {
+    const shell = createFakeShell();
+    vi.mocked(shell.platform.autostart.isEnabled).mockRejectedValueOnce('no launcher');
+    await settings({ shell });
+    expect(
+      await within(section('Reminders')).findByText('Can’t tell whether BudgetMint opens at login. no launcher')
+    ).toBeInTheDocument();
+    expect(within(section('Reminders')).getByRole('switch', { name: 'Open BudgetMint at login' })).toBeDisabled();
+  });
+
   it('shows the shell’s own sections, the appearance, and what BudgetMint is', async () => {
     const Updates = () => <div>Updates go here</div>;
     const { user } = await settings({

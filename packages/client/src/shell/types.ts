@@ -33,6 +33,8 @@ export interface Platform {
   notifications: Notifications;
   /** A Google ID token, got the shell's own way (desktop, Android). */
   googleSignIn?: () => Promise<string>;
+  /** Opening at login, started in the tray (the desktop's). */
+  autostart?: { isEnabled(): Promise<boolean>; setEnabled(enabled: boolean): Promise<void> };
   /** The tray's lines (the desktop's menu-bar item). */
   tray?: { setStatus(lines: string[]): Promise<void> };
   /** Android's status and navigation bars follow the theme. */

@@ -64,6 +64,10 @@ pub trait Platform: Send + Sync {
     fn show_main_window(&self);
     /// Shows `menu` in the tray, creating the tray icon the first time.
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String>;
+    /// Whether the app opens when the user logs in. Only a desktop can.
+    fn autostart(&self) -> Result<bool, String>;
+    /// Opens the app when the user logs in (hidden in the tray), or stops.
+    fn set_autostart(&self, enabled: bool) -> Result<(), String>;
     /// Starts the app again (into an update).
     fn restart(&self);
     /// Asks the update feed whether there's a newer version, and keeps what

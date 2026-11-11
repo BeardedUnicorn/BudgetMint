@@ -18,6 +18,8 @@ pub const COMMANDS: &[&str] = &[
     "show_notification",
     "schedule_reminders",
     "set_tray_status",
+    "get_autostart",
+    "set_autostart",
     "google_sign_in",
     "check_for_update",
     "install_update",
@@ -32,6 +34,11 @@ struct ScheduleArgs {
 struct NotifyArgs {
     title: String,
     body: String,
+}
+
+#[derive(Deserialize)]
+struct AutostartArgs {
+    enabled: bool,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +71,12 @@ pub fn run(state: &AppState, command: &str, value: Value) -> Result<Value, Strin
         "set_tray_status" => {
             let TrayArgs { lines } = args(command, value)?;
             platform.render_tray(&tray::menu(&lines))?;
+            Ok(Value::Null)
+        }
+        "get_autostart" => Ok(json!(platform.autostart()?)),
+        "set_autostart" => {
+            let AutostartArgs { enabled } = args(command, value)?;
+            platform.set_autostart(enabled)?;
             Ok(Value::Null)
         }
         "google_sign_in" => {
@@ -116,7 +129,7 @@ mod tests {
             run(&phone.state, "nope", Value::Null),
             Err("Unknown command: nope".to_string())
         );
-        assert_eq!(COMMANDS.len(), 8);
+        assert_eq!(COMMANDS.len(), 10);
     }
 
     #[test]
@@ -182,6 +195,26 @@ mod tests {
             json!({ "reminders": [{ "id": 1, "atMs": 0, "title": "", "body": "" }] })
         )
         .is_err());
+    }
+
+    #[test]
+    fn opens_at_login_when_asked() {
+        let f = fixture();
+        assert_eq!(
+            run(&f.state, "get_autostart", Value::Null),
+            Ok(json!(false))
+        );
+        assert_eq!(
+            run(&f.state, "set_autostart", json!({ "enabled": true })),
+            Ok(Value::Null)
+        );
+        assert_eq!(run(&f.state, "get_autostart", Value::Null), Ok(json!(true)));
+        assert!(run(&f.state, "set_autostart", json!({}))
+            .unwrap_err()
+            .starts_with("Invalid arguments for set_autostart"));
+        f.platform.fail("autostart");
+        assert!(run(&f.state, "get_autostart", Value::Null).is_err());
+        assert!(run(&f.state, "set_autostart", json!({ "enabled": false })).is_err());
     }
 
     #[test]

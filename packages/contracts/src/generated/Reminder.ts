@@ -13,7 +13,12 @@ id: number, atMs: number, kind: ReminderKind, itemId: string | null, name: strin
 /**
  * The occurrence's amount; the balance then, for a low-balance one.
  */
-amountCents: number, leadDays: number, autopay: boolean, 
+amountCents: number, leadDays: number, 
+/**
+ * Days from when it's shown to `due`: `lead_days` at its time, fewer
+ * for one shown late (below zero once `due` has passed).
+ */
+daysLeft: number, autopay: boolean, 
 /**
  * Below zero (not just low), for a low-balance one.
  */
