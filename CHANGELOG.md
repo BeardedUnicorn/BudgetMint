@@ -8,6 +8,24 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.5.0 – 2026-11-11
+
+### Added
+
+- Updating your balance says what BudgetMint expected it to be by then, and asks about the bills and income due since your last update: the ones that haven't come out (or in) yet are left to come the day after, and the rest are marked paid. One Undo takes it all back.
+- Settings → Your data imports a bank statement, as the CSV or OFX file your bank exports: BudgetMint matches it to the bills and income still open and marks the ones you tick paid, on the day and for the amount the bank shows, and can set your balance from the statement's. It's read on this device; only what you mark is saved. When it can't tell a CSV's columns apart, it asks which is which.
+- Everyday spending (Settings → Forecast): a week's food, fuel and the rest besides your bills, which the forecast takes out a day's share at a time. After a few balance updates, BudgetMint says what you really spend a week, to use instead.
+- A bill or income can come twice a month (the 1st and the 15th, the 15th and the last day) or on a weekday of the month (the second Friday, the last Monday), and a date that falls on a weekend can move to the Friday before or the Monday after, as banks move paydays.
+- Reports: a month looked back on, with the bills paid against what was expected and by category, the income and TaskMint's withdrawals received, what's left over, the bills paid late, the spending besides the bills by your balance updates, and the six months up to it side by side.
+- The overview says what's safe to spend today: what you could spend and still keep the balance above your low mark (or zero) all the way to the forecast's end, after everyday spending and what's set aside for bills.
+- Savings: money set aside a month at a time for a yearly or monthly bill ("Set money aside for it each month" in its form), or for a goal of your own, a holiday or a laptop by a date. The Savings page shows how much is set aside for each and the next part; what's set aside isn't counted as safe to spend, and the forecast's chart draws the balance without it.
+- When your balance would go below zero (or your low mark), the overview says what more TaskMint work would cover it: how much, the last day to earn it, and when it would be withdrawn and in the bank. Or, when no work now would arrive in time, says so.
+- A bill whose amount varies (power, water) can be expected at the average of the last three paid: the ones to come show it with a ~, and the lists say what it's from.
+
+### Changed
+
+- What this version saves can't be changed from BudgetMint 1.4 or older on another device, which would drop what's new: that device says to update first. Backups from this version restore in this version or later.
+
 ## 1.4.0 – 2026-11-11
 
 ### Added
