@@ -232,11 +232,28 @@ mod tests {
             note: Some("late fee\nwaived".into()),
             updated_at: DateTime::UNIX_EPOCH,
         };
-        s.apply(vec![IncomingDoc {
-            doc_id: "occ~2026-11-01~rent".into(),
-            json: Some(serde_json::to_string(&paid).unwrap()),
-            schema: 1,
-        }]);
+        let received = Override {
+            item_id: "pay".into(),
+            date: d(2026, 11, 13),
+            status: OccStatus::Done {
+                on: d(2026, 11, 10),
+                amount_cents: 80_000,
+            },
+            note: None,
+            ..paid.clone()
+        };
+        s.apply(vec![
+            IncomingDoc {
+                doc_id: "occ~2026-11-01~rent".into(),
+                json: Some(serde_json::to_string(&paid).unwrap()),
+                schema: 1,
+            },
+            IncomingDoc {
+                doc_id: "occ~2026-11-13~pay".into(),
+                json: Some(serde_json::to_string(&received).unwrap()),
+                schema: 1,
+            },
+        ]);
         s
     }
 
@@ -263,7 +280,7 @@ mod tests {
             rows[2],
             "2026-11-01,\"Rent, flat \"\"A\"\"\",Bill,'=Home,1200.00,Paid,2026-10-30,1200.50,\"late fee\nwaived\""
         );
-        assert!(rows.contains(&"2026-11-13,PAY,Income,,800.00,Open,,,"));
+        assert!(rows.contains(&"2026-11-13,PAY,Income,,800.00,Received,2026-11-10,800.00,"));
         assert_eq!(rows.last(), Some(&""));
         assert_eq!(amount(-1250), "-12.50");
         assert_eq!(cell("plain"), "plain");

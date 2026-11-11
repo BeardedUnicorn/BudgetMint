@@ -75,6 +75,11 @@ describe('your data', () => {
     await user.click(within(data).getByRole('button', { name: 'Download backup' }));
     expect(await within(data).findByText('It wasn’t saved: disk full')).toBeInTheDocument();
 
+    // The button asks for the file
+    const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    await user.click(within(data).getByRole('button', { name: 'Restore from a backup…' }));
+    expect(choose).toHaveBeenCalled();
+    choose.mockRestore();
     // Rent deleted since: the backup brings it back, and Undo takes it away again
     store.putDoc('item~rent', null);
     await user.upload(within(data).getByLabelText('Backup file'), new File([backup], 'budget.json'));

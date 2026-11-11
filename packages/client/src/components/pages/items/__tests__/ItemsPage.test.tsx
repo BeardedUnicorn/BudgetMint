@@ -283,6 +283,10 @@ describe('bills and income', () => {
     await user.click(await screen.findByRole('button', { name: 'Bills' }));
     expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit Rent' })).not.toBeInTheDocument();
+    // Opened, and closed again without a choice
+    await user.click(screen.getByRole('button', { name: 'Rent: what to do' }));
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
     await user.click(screen.getByRole('button', { name: 'Rent: what to do' }));
     await user.click(screen.getByRole('menuitem', { name: 'Archive Rent' }));
     await waitFor(() => expect(docOf(store, 'rent').archived).toBe(true));

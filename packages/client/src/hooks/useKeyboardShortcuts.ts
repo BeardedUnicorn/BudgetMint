@@ -47,7 +47,7 @@ function somethingOnTop(): boolean {
 }
 
 /** `onList`: ⌘/ was pressed (the list is the caller's to show). */
-export function useKeyboardShortcuts(inBrowser: boolean, onList: () => void = () => undefined): void {
+export function useKeyboardShortcuts(inBrowser: boolean, onList: () => void): void {
   const navigation = useNavigation();
   const latest = useRef({ navigation, onList });
   latest.current = { navigation, onList };

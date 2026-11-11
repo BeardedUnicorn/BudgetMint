@@ -1219,13 +1219,28 @@ mod tests {
     fn restores_a_backup_whole_and_undoes_it_whole() {
         let mut s = Snapshot::default();
         save_item(&mut s, input("rent"), &ctx()).unwrap();
+        let skipped = occurrence("rent", d(2026, 11, 1), OccStatus::Skipped);
+        set_occurrence(&mut s, skipped, &ctx()).unwrap();
         let backup = crate::backup::export(&s, &ctx()).backup;
         save_item(&mut s, input("gym"), &ctx()).unwrap();
+        // The occurrence opened again since: the backup's skip comes back
+        let open = occurrence("rent", d(2026, 11, 1), OccStatus::Open);
+        set_occurrence(&mut s, open, &ctx()).unwrap();
         let planned = restore_budget(&mut s, &backup).unwrap();
         assert_eq!(s.items.keys().collect::<Vec<_>>(), vec!["rent"]);
+        assert_eq!(
+            s.overrides[&("rent".to_string(), d(2026, 11, 1))].status,
+            OccStatus::Skipped
+        );
         // Once more: nothing changes
         assert_eq!(restore_budget(&mut s, &backup).unwrap(), Planned::default());
-        assert_eq!(undo(&s, planned).unwrap()[0].doc_id, "item~gym");
+        // Undone: gym back, and the occurrence open again
+        let undone: Vec<String> = undo(&s, planned)
+            .unwrap()
+            .into_iter()
+            .map(|write| write.doc_id)
+            .collect();
+        assert_eq!(undone, ["occ~2026-11-01~rent", "item~gym"]);
         // A newer BudgetMint's document isn't replaced: nothing is
         s.apply(vec![crate::docs::IncomingDoc {
             doc_id: "item~rent".into(),
