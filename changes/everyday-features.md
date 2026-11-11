@@ -9,5 +9,5 @@ type: Added
 - Up to three reminders before each bill.
 - ⌘N (Ctrl+N) adds a bill, or income on its page, and ⌘/ lists every shortcut, on the desktop.
 - Amounts can be written in another currency, and the calendar's weeks can start on Monday (Settings → Appearance).
-- Creating an account asks for the password twice and can show it; onboarding starts on Enter and offers the same arrival times as Settings; amount fields take up to the largest amount BudgetMint does; Settings → About links to the privacy policy.
+- Creating an account asks for the password twice and can show it; onboarding starts on Enter and offers the same arrival times as Settings; amount fields take up to the largest amount BudgetMint does.
 - On a phone, each bill's actions are in a menu by its name.

@@ -19,9 +19,6 @@ import { SettingsSection } from './SettingsSection';
 import { TaskMintSection } from './TaskMintSection';
 import { ThemeSelector } from './ThemeSelector';
 
-/** BudgetMint's privacy policy, on its web app's site. */
-export const PRIVACY_URL = 'https://budgetmint.web.app/privacy.html';
-
 export function SettingsPage() {
   const { settingsSections = [] } = useAppExtensions();
   const { params, clearParams } = useNavigation();
@@ -70,10 +67,6 @@ export function SettingsPage() {
             Open source under the MIT license.{' '}
             <Link href="https://github.com/BeardedUnicorn/BudgetMint" target="_blank" rel="noreferrer">
               Source and releases
-            </Link>
-            {' · '}
-            <Link href={PRIVACY_URL} target="_blank" rel="noreferrer">
-              Privacy
             </Link>
           </Typography>
         </SettingsSection>
