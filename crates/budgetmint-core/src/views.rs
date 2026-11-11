@@ -7,7 +7,7 @@ use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
 use crate::forecast::series::ProjectedWithdrawal;
 use crate::forecast::ForecastStatus;
-use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Settings, TaskMintPlan};
+use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Segment, Settings, TaskMintPlan};
 use crate::occur::{item_occurrences, occurrences, Occurrence};
 use crate::project::{project, settled_through, DayRow, FlowKind, FlowStatus, Projection};
 use crate::time::Ctx;
@@ -34,14 +34,22 @@ pub struct OccurrenceView {
     pub due: NaiveDate,
     pub expected_cents: Cents,
     pub status: OccStatus,
-    /// Still open after its due day (and not on autopay).
+    /// Still open after its due day, not on autopay, and not settled by the
+    /// balance (which has taken what was due by its day as paid).
     pub late: bool,
+    /// This time's amount, when the user set one (else the schedule's).
+    pub amount_cents: Option<Cents>,
     /// The user changed something about this one (moved, amount, note).
     pub changed: bool,
     pub note: Option<String>,
 }
 
-fn occurrence_view(occurrence: &Occurrence<'_>, today: NaiveDate) -> OccurrenceView {
+/// `settled`: the last day the balance has settled (project::settled_through).
+fn occurrence_view(
+    occurrence: &Occurrence<'_>,
+    today: NaiveDate,
+    settled: NaiveDate,
+) -> OccurrenceView {
     let item = occurrence.item;
     OccurrenceView {
         item_id: item.id.clone(),
@@ -53,7 +61,11 @@ fn occurrence_view(occurrence: &Occurrence<'_>, today: NaiveDate) -> OccurrenceV
         due: occurrence.due,
         expected_cents: occurrence.expected_cents,
         status: occurrence.status.clone(),
-        late: occurrence.status == OccStatus::Open && !item.autopay && occurrence.due < today,
+        late: occurrence.status == OccStatus::Open
+            && !item.autopay
+            && occurrence.due < today
+            && occurrence.due > settled,
+        amount_cents: occurrence.over.and_then(|over| over.amount_cents),
         changed: occurrence.over.is_some_and(|over| {
             over.moved_to.is_some() || over.amount_cents.is_some() || over.note.is_some()
         }),
@@ -114,6 +126,8 @@ pub struct Overview {
     /// Money coming in over the next 14 days, TaskMint's included.
     pub income_ahead_cents: Cents,
     pub next_withdrawal: Option<ProjectedWithdrawal>,
+    /// The next bill still to pay, within the upcoming days (the tray names it).
+    pub next_bill: Option<OccurrenceView>,
     /// Bills past due, still owed.
     pub overdue: Vec<OccurrenceView>,
     /// Income past due, not yet in.
@@ -136,6 +150,7 @@ fn late_views(
     late: &[crate::project::Late],
     today: NaiveDate,
 ) -> Vec<OccurrenceView> {
+    let settled = settled_through(&snapshot.settings(), today);
     late.iter()
         .filter_map(|late| {
             // The projection names only items that are there
@@ -143,7 +158,7 @@ fn late_views(
             item_occurrences(snapshot, item, late.scheduled - Duration::days(62), today)
                 .iter()
                 .find(|occurrence| occurrence.scheduled == late.scheduled)
-                .map(|occurrence| occurrence_view(occurrence, today))
+                .map(|occurrence| occurrence_view(occurrence, today, settled))
         })
         .collect()
 }
@@ -156,6 +171,7 @@ pub fn overview(
 ) -> Overview {
     let settings = snapshot.settings();
     let today = ctx.today();
+    let settled = settled_through(&settings, today);
     let projection = project(snapshot, taskmint, ctx, horizon_end(&settings, today));
     let ahead = projection.ahead();
     let lowest = ahead
@@ -195,7 +211,7 @@ pub fn overview(
         let occurrences: Vec<OccurrenceView> = all
             .iter()
             .filter(|occurrence| occurrence.due == day.date)
-            .map(|occurrence| occurrence_view(occurrence, today))
+            .map(|occurrence| occurrence_view(occurrence, today, settled))
             .collect();
         let withdrawals = day
             .flows
@@ -226,6 +242,11 @@ pub fn overview(
         due_this_week,
         income_ahead_cents,
         next_withdrawal: projection.withdrawals.first().cloned(),
+        next_bill: upcoming
+            .iter()
+            .flat_map(|day| &day.occurrences)
+            .find(|o| o.kind == ItemKind::Bill && o.status == OccStatus::Open)
+            .cloned(),
         overdue: late_views(snapshot, &projection.overdue, today),
         late_income: late_views(snapshot, &projection.late_income, today),
         upcoming,
@@ -242,6 +263,10 @@ pub struct CalendarDay {
     pub date: NaiveDate,
     /// Everything due that day, paid or not (skipped ones too).
     pub occurrences: Vec<OccurrenceView>,
+    /// What the day's bills come to: paid ones at what was paid, skipped ones not at all.
+    pub bills_cents: Cents,
+    /// What its income comes to, likewise.
+    pub income_cents: Cents,
     /// TaskMint's money reaching the bank (recorded or projected).
     pub withdrawal_cents: Cents,
     pub withdrawal_uncertain_cents: Cents,
@@ -282,6 +307,7 @@ pub fn month(
     let last = first
         + Duration::days(i64::from(crate::recur::days_in_month(first.year(), first.month())) - 1);
     let today = ctx.today();
+    let settled = settled_through(&snapshot.settings(), today);
     let settings = snapshot.settings();
     let end = last
         .max(horizon_end(&settings, today))
@@ -304,8 +330,9 @@ pub fn month(
             .iter()
             .filter(|occurrence| occurrence.due == date)
             .filter(|occurrence| !occurrence.item.archived || occurrence.status != OccStatus::Open)
-            .map(|occurrence| occurrence_view(occurrence, today))
+            .map(|occurrence| occurrence_view(occurrence, today, settled))
             .collect();
+        let (mut bills_cents, mut income_cents) = (0, 0);
         for occurrence in occurrences
             .iter()
             .filter(|o| o.status != OccStatus::Skipped)
@@ -315,10 +342,12 @@ pub fn month(
                 _ => occurrence.expected_cents,
             };
             match occurrence.kind {
-                ItemKind::Bill => view.bills_cents += cents,
-                ItemKind::Income => view.income_cents += cents,
+                ItemKind::Bill => bills_cents += cents,
+                ItemKind::Income => income_cents += cents,
             }
         }
+        view.bills_cents += bills_cents;
+        view.income_cents += income_cents;
         let withdrawals: Vec<_> = row
             .into_iter()
             .flat_map(|row| &row.flows)
@@ -329,6 +358,8 @@ pub fn month(
         view.days.push(CalendarDay {
             date,
             occurrences,
+            bills_cents,
+            income_cents,
             withdrawal_cents,
             withdrawal_uncertain_cents: withdrawals.iter().map(|flow| flow.uncertain_cents).sum(),
             withdrawal_projected: withdrawals
@@ -396,18 +427,26 @@ pub struct ItemView {
     pub last_done: Option<OccurrenceView>,
     /// What it comes to a month, on average (its current schedule).
     pub monthly_cents: Cents,
+    /// The part of its schedule in force today (its first, before it starts).
+    pub current: Segment,
+    /// Its schedule has begun: a change to it applies from a date, and what's before stays.
+    pub started: bool,
+}
+
+/// The part of `item`'s schedule in force on `today`: the latest that has
+/// begun, or its first before any has.
+fn current_segment(item: &Item, today: NaiveDate) -> Option<&Segment> {
+    item.schedule
+        .iter()
+        .rev()
+        .find(|segment| segment.from <= today)
+        .or(item.schedule.first())
 }
 
 /// What `item`'s current schedule comes to a month, on average.
 fn monthly_cents(item: &Item, today: NaiveDate) -> Cents {
     use crate::model::Repeat;
-    let Some(segment) = item
-        .schedule
-        .iter()
-        .rev()
-        .find(|segment| segment.from <= today)
-        .or(item.schedule.first())
-    else {
+    let Some(segment) = current_segment(item, today) else {
         return 0;
     };
     let cents = i128::from(segment.amount_cents);
@@ -427,7 +466,9 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
     let mut views: Vec<ItemView> = snapshot
         .items
         .values()
-        .map(|item| {
+        // (Every item read has a schedule: docs refuses one without)
+        .filter_map(|item| {
+            let current = current_segment(item, today)?.clone();
             let back = today - Duration::days(400);
             let ahead = today + Duration::days(400);
             let all = item_occurrences(snapshot, item, back, ahead);
@@ -439,7 +480,7 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                         && o.due > settled
                         && (o.due >= today || !item.autopay)
                 })
-                .map(|o| occurrence_view(o, today));
+                .map(|o| occurrence_view(o, today, settled));
             let last_done = all
                 .iter()
                 .filter_map(|o| match o.status {
@@ -447,13 +488,15 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                     _ => None,
                 })
                 .max_by_key(|(on, _)| *on)
-                .map(|(_, o)| occurrence_view(o, today));
-            ItemView {
+                .map(|(_, o)| occurrence_view(o, today, settled));
+            Some(ItemView {
                 item: item.clone(),
                 next,
                 last_done,
                 monthly_cents: monthly_cents(item, today),
-            }
+                started: item.schedule[0].from <= today,
+                current,
+            })
         })
         .collect();
     views.sort_by(|a, b| {
@@ -478,9 +521,10 @@ pub fn history(
 ) -> Option<Vec<OccurrenceView>> {
     let item = snapshot.items.get(item_id)?;
     let today = ctx.today();
+    let settled = settled_through(&snapshot.settings(), today);
     let mut found: Vec<OccurrenceView> = item_occurrences(snapshot, item, from, to)
         .iter()
-        .map(|occurrence| occurrence_view(occurrence, today))
+        .map(|occurrence| occurrence_view(occurrence, today, settled))
         .collect();
     found.reverse();
     Some(found)
@@ -669,6 +713,7 @@ mod tests {
             &mut s,
             crate::model::Override {
                 note: Some("asked for a week".into()),
+                amount_cents: Some(4_321),
                 ..over("phone", d(2026, 11, 14), OccStatus::Open)
             },
         );
@@ -686,6 +731,9 @@ mod tests {
         );
         assert_eq!(views[1].monthly_cents, 45_000);
         assert!(views[2].next.as_ref().unwrap().changed);
+        // This time's own amount is told apart from the schedule's
+        assert_eq!(views[2].next.as_ref().unwrap().amount_cents, Some(4_321));
+        assert_eq!(views[1].next.as_ref().unwrap().amount_cents, None);
         assert_eq!(
             views[2].next.as_ref().unwrap().note.as_deref(),
             Some("asked for a week")
@@ -815,5 +863,110 @@ mod tests {
         assert_eq!(view.days[0].date, d(2026, 11, 10));
         assert_eq!(view.assumed_per_day_cents, 0);
         assert_eq!(view.low_balance_cents, 10_000);
+    }
+
+    #[test]
+    fn a_bill_the_balance_settled_isnt_late() {
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 10_000,
+                as_of: d(2026, 11, 5),
+            }),
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        // Never ticked off: the 3rd's is in the balance already, the 7th's is still owed
+        for (id, day) in [("phone", 3), ("rent", 7)] {
+            let on = Repeat::Months { n: 1, day };
+            put_item(
+                &mut s,
+                item(id, ItemKind::Bill, d(2026, 11, day.into()), on, 100),
+            );
+        }
+        let november = month(&s, None, "2026-11", &ctx()).unwrap();
+        let late = |day: usize| november.days[day - 1].occurrences[0].late;
+        assert!(!late(3));
+        assert!(late(7));
+        let phone = history(&s, "phone", d(2026, 11, 1), d(2026, 11, 30), &ctx()).unwrap();
+        assert!(!phone[0].late);
+    }
+
+    #[test]
+    fn says_what_the_pages_would_otherwise_work_out() {
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 100_000,
+                as_of: d(2026, 11, 9),
+            }),
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        let monthly = |day| Repeat::Months { n: 1, day };
+        // Rent: $500 until January, $600 from then; the 12th's is paid for $480
+        let mut rent = item("rent", ItemKind::Bill, d(2026, 10, 12), monthly(12), 50_000);
+        rent.schedule.push(Segment {
+            from: d(2027, 1, 12),
+            until: None,
+            repeat: monthly(12),
+            amount_cents: 60_000,
+        });
+        put_item(&mut s, rent);
+        let paid = OccStatus::Done {
+            on: d(2026, 11, 10),
+            amount_cents: 48_000,
+        };
+        put_over(&mut s, over("rent", d(2026, 11, 12), paid));
+        // Power on the 12th too, skipped; pay that day; a gym that hasn't started
+        put_item(
+            &mut s,
+            item("power", ItemKind::Bill, d(2026, 10, 12), monthly(12), 7_000),
+        );
+        put_over(&mut s, over("power", d(2026, 11, 12), OccStatus::Skipped));
+        put_item(
+            &mut s,
+            item(
+                "pay",
+                ItemKind::Income,
+                d(2026, 10, 12),
+                monthly(12),
+                90_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            item("gym", ItemKind::Bill, d(2026, 11, 20), monthly(20), 3_000),
+        );
+        // An item without a schedule can't be read; one put there anyway is left out
+        let mut none = item("none", ItemKind::Bill, d(2026, 11, 1), Repeat::Once, 1);
+        none.schedule.clear();
+        s.items.insert("none".into(), none);
+
+        // A day's totals: the paid one at what was paid, the skipped one not at all
+        let november = month(&s, None, "2026-11", &ctx()).unwrap();
+        let twelfth = &november.days[11];
+        assert_eq!(
+            (twelfth.bills_cents, twelfth.income_cents),
+            (48_000, 90_000)
+        );
+        assert_eq!(
+            (november.days[0].bills_cents, november.days[0].income_cents),
+            (0, 0)
+        );
+
+        // The schedule in force today, and whether it has begun
+        let views = items(&s, &ctx());
+        let view = |id: &str| views.iter().find(|view| view.item.id == id).unwrap();
+        assert_eq!(view("rent").current.amount_cents, 50_000);
+        assert!(view("rent").started);
+        assert_eq!(view("gym").current.from, d(2026, 11, 20));
+        assert!(!view("gym").started);
+        assert!(views.iter().all(|view| view.item.id != "none"));
+
+        // The next bill still to pay: the gym (rent's is paid, the power's skipped)
+        let status = TaskMint::default().status;
+        let overview = overview(&s, None, &status, &ctx());
+        assert_eq!(overview.next_bill.unwrap().item_id, "gym");
     }
 }

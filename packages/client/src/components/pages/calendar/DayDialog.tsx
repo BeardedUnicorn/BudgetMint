@@ -42,15 +42,16 @@ export function DayDialog({
       fullWidth
       sx={{ '& .MuiDialog-container': { alignItems: 'flex-start' } }}
     >
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {/* The title is the day alone (it names the dialog); the buttons sit beside it, not in it */}
+      <Box sx={{ display: 'flex', alignItems: 'center', px: 2 }}>
         <IconButton aria-label="The day before" onClick={() => onStep(-1)}>
           <ChevronLeft />
         </IconButton>
-        <Box sx={{ flex: 1 }}>{formatLongDay(day.date)}</Box>
+        <DialogTitle sx={{ flex: 1, px: 1 }}>{formatLongDay(day.date)}</DialogTitle>
         <IconButton aria-label="The day after" onClick={() => onStep(1)}>
           <ChevronRight />
         </IconButton>
-      </DialogTitle>
+      </Box>
       <DialogContent>
         {day.occurrences.length > 0 && <OccurrenceList occurrences={day.occurrences} today={today} />}
         {day.occurrences.length === 0 && day.withdrawalCents === 0 && (

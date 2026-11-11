@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { forecastDoc, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
+import { forecastDoc, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 import { createFakeShell } from '../../../../testing';
+import { APP_VERSION } from '../../../../utils/appVersion';
 
 const settingsOf = (store: { docs: Map<string, { json: string }> }) =>
   JSON.parse(store.docs.get('settings~account')!.json);
@@ -43,6 +44,39 @@ describe('settings', () => {
     expect(store.deleteAll).toHaveBeenCalled();
     await session.signOut();
     expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
+  });
+
+  it('leaves an amount another device changed as it is, until it’s typed over here', async () => {
+    const { user, store } = await startBudget({ settings: { ...SETTLED, lowBalanceCents: 10_000 } });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const low = () => screen.getByLabelText('Low balance mark');
+    expect(low()).toHaveValue('100.00');
+    // Changed on another device: the field follows, and passing through it writes nothing back
+    store.putDoc('settings~account', JSON.stringify({ ...SETTLED, lowBalanceCents: 20_000 }));
+    await waitFor(() => expect(low()).toHaveValue('200.00'));
+    await user.click(low());
+    fireEvent.blur(low());
+    expect(JSON.parse(store.docs.get('settings~account')!.json).lowBalanceCents).toBe(20_000);
+    // Emptied here: no low mark
+    await user.clear(low());
+    fireEvent.blur(low());
+    await waitFor(() => expect(JSON.parse(store.docs.get('settings~account')!.json).lowBalanceCents).toBe(0));
+    expect(low()).toHaveValue('');
+  });
+
+  it('sends a test reminder, and says where to look when it doesn’t show', async () => {
+    const shell = createFakeShell();
+    const { user } = await startBudget({ shell });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Send a test reminder' }));
+    expect(shell.platform.notifications.show).toHaveBeenCalledWith(
+      'BudgetMint reminders',
+      'This is how a reminder looks.'
+    );
+    expect(await screen.findByText(/^Sent\. If nothing appeared/)).toBeInTheDocument();
+    vi.mocked(shell.platform.notifications.show).mockRejectedValueOnce(new Error('blocked'));
+    await user.click(screen.getByRole('button', { name: 'Send a test reminder' }));
+    expect(await screen.findByText(/^It couldn’t be sent/)).toBeInTheDocument();
   });
 
   it('signs out from its button, and says which way the account signs in', async () => {
@@ -213,7 +247,8 @@ describe('settings', () => {
     });
     expect(screen.getByText('Updates go here')).toBeInTheDocument();
     expect(screen.getByText('They come while BudgetMint is open (or in the tray).')).toBeInTheDocument();
-    expect(screen.getByText(/BudgetMint 0\.1\.0/)).toBeInTheDocument();
+    // Whatever version this is (a release changes it)
+    expect(screen.getByText(new RegExp(`BudgetMint ${APP_VERSION.replace(/\./g, '\\.')},`))).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Source and releases' })).toHaveAttribute(
       'href',
       'https://github.com/BeardedUnicorn/BudgetMint'

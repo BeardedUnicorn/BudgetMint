@@ -18,6 +18,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import { BalanceFlag } from '../../budget/BalanceFlag';
 import { useTheme } from '@mui/material/styles';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ForecastView, Flow } from '@budgetmint/contracts';
@@ -74,8 +75,12 @@ function BalanceChart({ view }: { view: ForecastView }) {
   const theme = useTheme();
   const compact = useCompactLayout();
   const data = view.days.map(day => ({ date: day.date, balance: day.closingCents / 100 }));
+  // The picture in words, for those who can't see it: where it starts, its lowest point, where it ends
+  const { lowest } = useCoreQuery('get_overview');
+  const last = view.days[view.days.length - 1];
+  const label = `The balance day by day: ${formatCents(view.days[0].closingCents)} today, lowest ${formatCents(lowest.cents)} on ${formatWeekday(lowest.date)}, ${formatCents(last.closingCents)} on ${formatDay(last.date)}`;
   return (
-    <Box sx={{ height: compact ? 240 : 320 }} role="img" aria-label="The balance day by day">
+    <Box sx={{ height: compact ? 240 : 320 }} role="img" aria-label={label}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={theme.palette.divider} strokeDasharray="3 3" />
@@ -220,7 +225,12 @@ export function ForecastPage() {
                           color: day.short ? 'error.main' : day.low ? 'warning.main' : undefined,
                         }}
                       >
-                        {index === day.flows.length - 1 ? formatCents(day.closingCents) : ''}
+                        {index === day.flows.length - 1 && (
+                          <>
+                            <BalanceFlag short={day.short} low={day.low} />
+                            {formatCents(day.closingCents)}
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

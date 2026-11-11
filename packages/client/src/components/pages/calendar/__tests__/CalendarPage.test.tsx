@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { CalendarDay } from '@budgetmint/contracts';
 import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
-import { describeDay, dayTotals } from '../DayCell';
+import { describeDay } from '../DayCell';
 import { keyTarget, weeksOf } from '../MonthGrid';
 
 const PAY = item({
@@ -22,6 +22,8 @@ async function calendar(seed: Parameters<typeof startBudget>[0] = {}) {
 const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   date: '2026-11-12',
   occurrences: [],
+  billsCents: 0,
+  incomeCents: 0,
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,
@@ -35,6 +37,9 @@ describe('the calendar', () => {
   it('shows the month’s days with what’s due and the balance they end on', async () => {
     await calendar({ items: [monthly('rent', 'Rent', 12, 150_000), PAY] });
     expect(screen.getByRole('heading', { name: 'November 2026' })).toBeInTheDocument();
+    // A phone's dots differ in shape as well as color: bills round, income a diamond
+    expect(document.querySelector('[data-dot="error"]')).toHaveStyle({ borderRadius: '50%' });
+    expect(document.querySelector('[data-dot="success"]')).toHaveStyle({ transform: 'rotate(45deg)' });
     expect(screen.getByText('Bills', { selector: 'div' }).nextSibling).toHaveTextContent('$1,500.00');
     expect(screen.getByText('Income', { selector: 'div' }).nextSibling).toHaveTextContent('$800.00');
     const rent = screen.getByRole('button', {
@@ -151,6 +156,7 @@ describe('the calendar', () => {
       expectedCents: 1_000,
       status: { state: 'open' as const },
       late: false,
+      amountCents: null,
       changed: false,
       note: null,
     };
@@ -160,10 +166,10 @@ describe('the calendar', () => {
         { ...bill, status: { state: 'done', on: '2026-11-12', amountCents: 900 } },
         { ...bill, status: { state: 'skipped' } },
       ],
+      billsCents: 1_900,
       closingCents: 50,
       low: true,
     });
-    expect(dayTotals(busy)).toEqual({ bills: 1_900, income: 0 });
     expect(describeDay(busy)).toBe('Thursday, November 12, 2026: bills $19.00; balance $0.50, low');
     expect(override).toBeDefined();
   });

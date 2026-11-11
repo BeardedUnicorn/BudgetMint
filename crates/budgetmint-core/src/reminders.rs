@@ -134,9 +134,11 @@ pub fn upcoming(
 
     if settings.reminders.low_balance {
         let projection = project(snapshot, taskmint, ctx, today + Duration::days(window));
+        // Without a balance the cash flow starts at an invented zero: no warning
         let low = projection
             .ahead()
             .iter()
+            .filter(|_| projection.has_balance)
             .find(|day| day.closing_cents < settings.low_balance_cents.max(0));
         // At the reminder hour, today's if it's still to come
         let next_at = |date: NaiveDate| ctx.at(date, at_hour);
@@ -382,6 +384,9 @@ mod tests {
             as_of: d(2026, 11, 10),
         });
         s.write(DocKey::Settings, Some(&low_now));
+        assert!(upcoming(&s, None, &ctx(), 10, 10, None).is_empty());
+        // Without a balance set there's nothing to warn about
+        s.write(DocKey::Settings, Some(&Settings::default()));
         assert!(upcoming(&s, None, &ctx(), 10, 10, None).is_empty());
     }
 

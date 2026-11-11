@@ -23,6 +23,13 @@ export interface ScheduledNotification {
 export interface Notifications {
   /** Whether notifications may be shown (asking for permission if it hasn't been yet). */
   request(): Promise<boolean>;
+  /**
+   * Whether they may be shown now, without asking. Only where asking needs
+   * the user's click (a browser): the app then offers the click.
+   */
+  granted?(): Promise<boolean>;
+  /** Shows one now: the test from Settings, to see that the system lets them through. */
+  show(title: string, body: string): Promise<void>;
   /** Replaces the reminders waiting to be shown with `list`. */
   schedule(list: ScheduledNotification[]): Promise<void>;
   /** They come even while the app is closed (Android); elsewhere only while it runs. */

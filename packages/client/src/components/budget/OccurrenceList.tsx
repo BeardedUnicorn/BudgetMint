@@ -40,8 +40,9 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
             itemId: occurrence.itemId,
             date: occurrence.scheduled,
             status: { state: 'done', on: today, amountCents: occurrence.expectedCents },
-            amountCents: null,
-            movedTo: null,
+            // Only its status changes: where it was moved and this time's amount stay
+            amountCents: occurrence.amountCents,
+            movedTo: occurrence.due === occurrence.scheduled ? null : occurrence.due,
             note: occurrence.note,
           },
         },

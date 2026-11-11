@@ -13,6 +13,8 @@ pub struct Recorded {
     /// Set for later, in order; a cancel doesn't remove one.
     pub scheduled: Vec<ScheduledNotification>,
     pub cancelled: Vec<i32>,
+    /// How many times everything set was taken back.
+    pub cancelled_all: usize,
     pub opened_urls: Vec<String>,
     pub windows_shown: usize,
     pub menus: Vec<TrayMenu>,
@@ -105,6 +107,12 @@ impl Platform for FakePlatform {
     fn cancel_notification(&self, id: i32) -> Result<(), String> {
         self.check("cancel")?;
         self.record(|r| r.cancelled.push(id));
+        Ok(())
+    }
+
+    fn cancel_all_notifications(&self) -> Result<(), String> {
+        self.check("cancel_all")?;
+        self.record(|r| r.cancelled_all += 1);
         Ok(())
     }
 

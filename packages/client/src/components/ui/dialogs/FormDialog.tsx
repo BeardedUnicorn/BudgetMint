@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: keep the two in step.
+// Adapted from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: a click outside doesn't close it.
 import React from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box } from '@mui/material';
 import { FormDialogProps } from '../../../types/ui';
@@ -14,7 +14,13 @@ export function FormDialog({ onClose, title, children, onSubmit }: FormDialogPro
   };
 
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open
+      // A click outside is too easy to make by accident to throw the form away: Escape and Cancel close it
+      onClose={(_event, reason) => reason !== 'backdropClick' && onClose()}
+      maxWidth="sm"
+      fullWidth
+    >
       {/* noValidate: dialogs do their own validation and render MUI helper
           text; native constraint bubbles would block submit before it runs. */}
       <form onSubmit={handleSubmit} noValidate>

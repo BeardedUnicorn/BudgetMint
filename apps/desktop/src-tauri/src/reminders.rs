@@ -33,6 +33,8 @@ struct Waiting {
     list: Vec<Reminder>,
     /// Shown already (this run): not shown again when the list comes again.
     shown: BTreeSet<u32>,
+    /// A list has come this run.
+    started: bool,
 }
 
 #[derive(Debug, Default)]
@@ -61,6 +63,11 @@ impl Scheduler {
         waiting.list = list;
         self.changed.notify_all();
         gone
+    }
+
+    /// Whether this is the run's first list (true once).
+    pub fn starting(&self) -> bool {
+        !std::mem::replace(&mut self.lock().started, true)
     }
 
     /// The reminders due by `now_ms` not yet shown, taken as shown.
@@ -121,9 +128,16 @@ pub fn schedule(
     platform: &dyn Platform,
     list: Vec<Reminder>,
 ) -> Result<(), String> {
+    let starting = scheduler.starting();
     let gone = scheduler.replace(list.clone());
     if !platform.is_mobile() {
         return Ok(());
+    }
+    // The system still holds what an earlier run set, and this run doesn't
+    // know which of it is gone (paid or deleted since): all of it goes, and
+    // this list is set afresh
+    if starting {
+        platform.cancel_all_notifications()?;
     }
     for id in gone {
         platform.cancel_notification(id as i32)?;
@@ -216,12 +230,22 @@ mod tests {
         schedule(&scheduler, &platform, vec![reminder(2, 2_000)]).unwrap();
         let recorded = platform.recorded();
         assert_eq!(recorded.cancelled, vec![1]);
+        // What an earlier run left with the system went first, once
+        assert_eq!(recorded.cancelled_all, 1);
         assert_eq!(recorded.scheduled.len(), 3);
         assert_eq!(recorded.scheduled[2].at_ms, 2_000);
         platform.fail("schedule");
         assert!(schedule(&scheduler, &platform, vec![reminder(3, 1)]).is_err());
         platform.fail("cancel");
         assert!(schedule(&scheduler, &platform, vec![]).is_err());
+        // A run that can't clear the earlier one's says so
+        let fresh = FakePlatform::mobile();
+        fresh.fail("cancel_all");
+        assert!(schedule(&Scheduler::default(), &fresh, vec![]).is_err());
+        // A desktop sets nothing with the system, so clears nothing
+        let desk = FakePlatform::default();
+        schedule(&Scheduler::default(), &desk, vec![reminder(1, 1)]).unwrap();
+        assert_eq!(desk.recorded().cancelled_all, 0);
     }
 
     #[test]

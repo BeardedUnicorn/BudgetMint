@@ -3,11 +3,11 @@
 //! and the TypeScript `CommandMap` (packages/contracts, from
 //! tests/contracts.rs).
 
-use crate::docs::{DocsApplied, IncomingDoc, Snapshot};
+use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::model::{Balance, Cents, Repeat, Settings};
-use crate::plan::{self, ItemInput, OccurrenceInput, Planned};
+use crate::plan::{self, ItemInput, OccurrenceInput, Planned, ScheduleChange};
 use crate::reminders::{self, Reminder};
 use crate::time::Ctx;
 use crate::views::{self, ForecastView, ItemView, MonthView, OccurrenceView, Overview};
@@ -42,6 +42,7 @@ pub enum Command {
     SetOccurrence(SetOccurrenceArgs),
     SetBalance(SetBalanceArgs),
     SaveSettings(SaveSettingsArgs),
+    Undo(UndoArgs),
 }
 
 macro_rules! command_types {
@@ -94,6 +95,7 @@ command_types! {
     "set_occurrence": SetOccurrenceArgs => Planned,
     "set_balance": SetBalanceArgs => Planned,
     "save_settings": SaveSettingsArgs => Planned,
+    "undo": UndoArgs => Vec<DocWrite>,
 }
 
 /// `reply` read as a `T` and written back.
@@ -207,6 +209,10 @@ pub struct SettingsView {
 #[serde(rename_all = "camelCase")]
 pub struct SaveItemArgs {
     pub item: ItemInput,
+    /// With it, the schedule also changes from a date on (plan::save_item_from).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub change: Option<ScheduleChange>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,6 +259,14 @@ pub struct SetBalanceArgs {
 #[serde(rename_all = "camelCase")]
 pub struct SaveSettingsArgs {
     pub settings: Settings,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct UndoArgs {
+    /// The change to take back, as its command returned it.
+    pub planned: Planned,
 }
 
 impl Command {
@@ -323,7 +337,9 @@ pub fn execute(
             settings: snapshot.settings(),
             saved: snapshot.settings.is_some(),
         }),
-        Command::SaveItem(args) => to_value(plan::save_item(snapshot, args.item, ctx)?),
+        Command::SaveItem(args) => {
+            to_value(plan::save_item_from(snapshot, args.item, args.change, ctx)?)
+        }
         Command::ChangeSchedule(args) => to_value(plan::change_schedule(
             snapshot,
             &args.item_id,
@@ -344,6 +360,7 @@ pub fn execute(
         }
         Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
+        Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
     })
 }
 

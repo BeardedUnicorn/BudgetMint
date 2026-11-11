@@ -74,6 +74,8 @@ export interface BudgetStore {
   signOut(): Promise<void>;
   /** Deletes the signed-in user's account (Firebase may ask them to sign in again first). */
   deleteUser(): Promise<void>;
+  /** Whether they signed in recently enough for Firebase to delete the account. */
+  signedInRecently(): Promise<boolean>;
   /** BudgetMint's epoch for the account; null when it has none yet. */
   account(uid: string): Promise<number | null>;
   /** Starts BudgetMint's data for the account on its first epoch. */

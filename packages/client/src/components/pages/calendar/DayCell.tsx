@@ -11,6 +11,7 @@
 import { ReactNode } from 'react';
 import { Box, ButtonBase, Typography } from '@mui/material';
 import { alpha, Theme } from '@mui/material/styles';
+import { BalanceFlag } from '../../budget/BalanceFlag';
 import { CallMade as BillIcon, CallReceived as IncomeIcon, Savings as WithdrawalIcon } from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
 import { HOVER, PHONE } from '../../../theme/media';
@@ -26,22 +27,9 @@ type Tone = 'error' | 'success' | 'secondary';
 const toneText = (tone: Tone) => (theme: Theme) =>
   theme.palette.mode === 'dark' ? theme.palette[tone].light : theme.palette[tone].dark;
 
-/** What a day's bills and income come to. */
-export function dayTotals(day: CalendarDay) {
-  let bills = 0;
-  let income = 0;
-  for (const occurrence of day.occurrences) {
-    if (occurrence.status.state === 'skipped') continue;
-    const cents = occurrence.status.state === 'done' ? occurrence.status.amountCents : occurrence.expectedCents;
-    if (occurrence.kind === 'bill') bills += cents;
-    else income += cents;
-  }
-  return { bills, income };
-}
-
 /** The day in words, for screen readers. */
 export function describeDay(day: CalendarDay): string {
-  const { bills, income } = dayTotals(day);
+  const { billsCents: bills, incomeCents: income } = day;
   const parts: string[] = [];
   if (bills > 0) parts.push(`bills ${formatCents(bills)}`);
   if (income > 0) parts.push(`income ${formatCents(income)}`);
@@ -94,13 +82,21 @@ function Badge({
   );
 }
 
+/** A dot's shape says what it is too, not only its color: bills round, income a diamond, withdrawals square. */
+const DOT_SHAPES = {
+  error: { borderRadius: '50%' },
+  success: { borderRadius: '1px', transform: 'rotate(45deg)' },
+  secondary: { borderRadius: '1px' },
+} as const;
+
 function Dot({ tone, hollow = false }: { tone: Tone; hollow?: boolean }) {
   return (
     <Box
+      data-dot={tone}
       sx={theme => ({
         width: 7,
         height: 7,
-        borderRadius: '50%',
+        ...DOT_SHAPES[tone],
         bgcolor: hollow ? 'transparent' : theme.palette[tone].main,
         border: `1.5px solid ${theme.palette[tone].main}`,
       })}
@@ -118,7 +114,7 @@ export interface DayCellProps {
 }
 
 export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellProps) {
-  const { bills, income } = dayTotals(day);
+  const { billsCents: bills, incomeCents: income } = day;
   const uncertain = day.withdrawalUncertainCents > 0;
   const busy = bills > 0 || income > 0 || day.withdrawalCents > 0;
 
@@ -203,6 +199,7 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
               [PHONE]: { display: 'none' },
             }}
           >
+            <BalanceFlag short={day.short} low={day.low} hidden />
             <Box component="span" sx={{ [WIDE]: { display: 'none' } }}>
               {formatWholeCents(day.closingCents)}
             </Box>

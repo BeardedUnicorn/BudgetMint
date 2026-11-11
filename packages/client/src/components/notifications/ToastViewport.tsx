@@ -57,7 +57,8 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
   const theme = useTheme();
   const color = theme.palette[toast.severity].main;
   const Icon = ICONS[toast.severity];
-  // Errors and warnings interrupt a screen reader; the rest wait their turn
+  // Errors and warnings interrupt a screen reader (an alert is read when it
+  // appears); the rest wait their turn, read by the viewport's live region
   const urgent = toast.severity === 'error' || toast.severity === 'warning';
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -70,8 +71,7 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
   return (
     <Paper
       elevation={8}
-      role={urgent ? 'alert' : 'status'}
-      aria-live={urgent ? 'assertive' : 'polite'}
+      {...(urgent ? { role: 'alert', 'aria-live': 'assertive' } : { role: 'group' })}
       aria-atomic="true"
       tabIndex={-1}
       // A mouse resting on it holds it; a tap mustn't hold it until the
@@ -156,6 +156,11 @@ export function ToastViewport({ toasts, ...handlers }: ToastViewportProps) {
     <Stack
       component="section"
       aria-label="Notifications"
+      // The live region is here, always in the page: a screen reader reads
+      // what's added to a region it already knows, but often not a region
+      // that arrives together with its text (as each toast would be)
+      aria-live="polite"
+      aria-relevant="additions"
       spacing={0}
       sx={{
         position: 'fixed',

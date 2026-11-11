@@ -4,6 +4,7 @@ import type { ApplyDocsArgs } from "./ApplyDocsArgs";
 import type { ApplyForecastArgs } from "./ApplyForecastArgs";
 import type { ArchiveItemArgs } from "./ArchiveItemArgs";
 import type { ChangeScheduleArgs } from "./ChangeScheduleArgs";
+import type { DocWrite } from "./DocWrite";
 import type { DocsApplied } from "./DocsApplied";
 import type { ForecastStatus } from "./ForecastStatus";
 import type { ForecastView } from "./ForecastView";
@@ -22,6 +23,7 @@ import type { SaveSettingsArgs } from "./SaveSettingsArgs";
 import type { SetBalanceArgs } from "./SetBalanceArgs";
 import type { SetOccurrenceArgs } from "./SetOccurrenceArgs";
 import type { SettingsView } from "./SettingsView";
+import type { UndoArgs } from "./UndoArgs";
 
 /** Every command's arguments (`void` for none) and reply. */
 export interface CommandMap {
@@ -42,6 +44,7 @@ export interface CommandMap {
   set_occurrence: { args: SetOccurrenceArgs; reply: Planned };
   set_balance: { args: SetBalanceArgs; reply: Planned };
   save_settings: { args: SaveSettingsArgs; reply: Planned };
+  undo: { args: UndoArgs; reply: Array<DocWrite> };
 }
 
 export type CommandName = keyof CommandMap;

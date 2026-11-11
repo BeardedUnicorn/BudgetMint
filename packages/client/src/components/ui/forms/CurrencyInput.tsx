@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/components/ui/forms/CurrencyInput.tsx @ 1623bee: keep the two in step.
+// Adapted from TaskMint packages/client/src/components/ui/forms/CurrencyInput.tsx @ 1623bee: it takes a ref to its input.
 import React from 'react';
 import { TextField, InputAdornment } from '@mui/material';
 import { CurrencyInputProps } from '../../../types/ui';
@@ -35,6 +35,7 @@ export function CurrencyInput({
   sx,
   onBlur,
   onKeyDown,
+  inputRef,
 }: CurrencyInputProps) {
   return (
     <TextField
@@ -43,6 +44,7 @@ export function CurrencyInput({
       onChange={(event: React.ChangeEvent<HTMLInputElement>) => onChange(cleanAmount(event.target.value))}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
+      inputRef={inputRef}
       placeholder="0.00"
       error={error}
       helperText={helperText}

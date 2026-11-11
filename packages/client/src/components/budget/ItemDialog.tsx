@@ -1,15 +1,15 @@
 /**
  * Adding or editing a bill (or income): what it is, how much, and how often.
  * Editing the amount or the schedule asks from when: what's before keeps
- * its occurrences (core's change_schedule), unless it hasn't started yet.
+ * its occurrences (core's save_item with a change), unless it hasn't started yet.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
-import type { Item, ItemKind, Repeat } from '@budgetmint/contracts';
+import type { ItemKind, ItemView, Repeat } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
-import { currentSegment, ordinal } from '../../utils/describe';
+import { ordinal } from '../../utils/describe';
 import { centsToInput, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
@@ -25,7 +25,10 @@ const EVERY_LABELS: Record<Every, string> = {
 };
 
 /** The reminder choices: days before it's due. */
-export const LEAD_CHOICES = [0, 1, 2, 3, 5, 7, 14];
+const LEAD_CHOICES = [0, 1, 2, 3, 5, 7, 14];
+
+/** The choices, with the one set now when it isn't among them (core allows any up to 30). */
+export const leadChoices = (current: number) => [...new Set([...LEAD_CHOICES, current])].sort((a, b) => a - b);
 
 export const leadLabel = (days: number) =>
   days === 0 ? 'On the day' : days === 1 ? '1 day before' : `${days} days before`;
@@ -52,17 +55,19 @@ export function sameRepeat(a: Repeat, b: Repeat): boolean {
 
 export interface ItemDialogProps {
   kind: ItemKind;
-  /** The one being edited; none to add one. */
-  item?: Item;
+  /** The one being edited, as core lists it; none to add one. */
+  view?: ItemView;
   today: string;
   /** Lead days a new item's reminder starts with. */
   defaultLeadDays: number;
   onClose: () => void;
 }
 
-export function ItemDialog({ kind, item, today, defaultLeadDays, onClose }: ItemDialogProps) {
+export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: ItemDialogProps) {
   const change = useBudgetChange();
-  const segment = item ? currentSegment(item.schedule, today) : null;
+  const item = view?.item;
+  // The part of its schedule in force today (core's)
+  const segment = view?.current ?? null;
   const [name, setName] = useState(item?.name ?? '');
   const [amount, setAmount] = useState(centsToInput(segment?.amountCents ?? null));
   const [every, setEvery] = useState<Every>(segment?.repeat.every ?? 'months');
@@ -73,40 +78,65 @@ export function ItemDialog({ kind, item, today, defaultLeadDays, onClose }: Item
   const [category, setCategory] = useState(item?.category ?? '');
   const [autopay, setAutopay] = useState(item?.autopay ?? false);
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
-  const [lead, setLead] = useState(item?.reminder?.leadDays[0] ?? defaultLeadDays);
+  const firstLead = item?.reminder?.leadDays[0] ?? defaultLeadDays;
+  const [lead, setLead] = useState(firstLead);
   const [note, setNote] = useState(item?.note ?? '');
   const [problem, setProblem] = useState<string | null>(null);
+  /** A field left wrong: said under it, and focus goes to it. */
+  const [wrong, setWrong] = useState<{ field: 'amount' | 'changeFrom'; message: string } | null>(null);
+  const amountInput = useRef<HTMLInputElement>(null);
+  const changeFromInput = useRef<HTMLInputElement>(null);
+  const refuse = (field: 'amount' | 'changeFrom', message: string) => {
+    setProblem(null);
+    setWrong({ field, message });
+    (field === 'amount' ? amountInput : changeFromInput).current?.focus();
+  };
 
   const cents = parseDollars(amount);
   const repeat = repeatOf(every, Number(n), day);
   // Started already: a change applies from a date, and what's before stays
-  const started = item !== undefined && item.schedule[0].from <= today;
+  const started = view?.started ?? false;
   const scheduleChanged =
     segment !== null &&
     (cents !== segment.amountCents || !sameRepeat(repeat, segment.repeat) || (!started && from !== segment.from));
 
   const submit = () => {
     if (cents === null) {
-      setProblem('Enter the amount');
+      refuse('amount', 'Enter the amount');
       return;
     }
+    setWrong(null);
     const base = {
       id: item?.id ?? crypto.randomUUID(),
       kind,
       name,
       category: category || null,
       autopay,
-      reminder: reminded ? { leadDays: [lead] } : null,
+      // Left as it was, the reminder keeps every day it had (another device may have set several)
+      reminder: reminded ? { leadDays: item?.reminder && lead === firstLead ? item.reminder.leadDays : [lead] } : null,
       archived: item?.archived ?? false,
       note: note || null,
     };
     const newSchedule = [{ from, until: null, repeat, amountCents: cents }];
+    const saved = `${name.trim()} ${item ? 'saved' : 'added'}`;
     try {
       if (item && scheduleChanged && started) {
-        change('save_item', { item: { ...base, schedule: item.schedule } });
-        change('change_schedule', { itemId: item.id, from: changeFrom, repeat, amountCents: cents });
+        if (!changeFrom) {
+          refuse('changeFrom', 'Choose the date the change starts on');
+          return;
+        }
+        // One change: the item's fields and its schedule from that date, or neither
+        change(
+          'save_item',
+          { item: { ...base, schedule: item.schedule }, change: { from: changeFrom, repeat, amountCents: cents } },
+          saved
+        );
       } else {
-        change('save_item', { item: { ...base, schedule: scheduleChanged || !item ? newSchedule : item.schedule } });
+        change(
+          'save_item',
+          { item: { ...base, schedule: scheduleChanged || !item ? newSchedule : item.schedule } },
+          saved
+        );
       }
     } catch (error) {
       setProblem((error as Error).message);
@@ -126,8 +156,16 @@ export function ItemDialog({ kind, item, today, defaultLeadDays, onClose }: Item
           autoFocus
           slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NAME } }}
         />
-        <CurrencyInput label="Amount" value={amount} onChange={setAmount} error={false} />
-        <Stack direction="row" spacing={2}>
+        <CurrencyInput
+          label="Amount"
+          value={amount}
+          onChange={setAmount}
+          error={wrong?.field === 'amount'}
+          helperText={wrong?.field === 'amount' ? wrong.message : undefined}
+          inputRef={amountInput}
+        />
+        {/* One under the other on a phone, where "Every how many months" doesn't fit beside it */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
           <TextField
             select
             label="Repeats"
@@ -176,7 +214,13 @@ export function ItemDialog({ kind, item, today, defaultLeadDays, onClose }: Item
             type="date"
             value={changeFrom}
             onChange={event => setChangeFrom(event.target.value)}
-            helperText={`Before then, it stays as it was.${every === 'weeks' ? ' It repeats on that day of the week.' : ''}`}
+            inputRef={changeFromInput}
+            error={wrong?.field === 'changeFrom'}
+            helperText={
+              wrong?.field === 'changeFrom'
+                ? wrong.message
+                : `Before then, it stays as it was.${every === 'weeks' ? ' It repeats on that day of the week.' : ''}`
+            }
             slotProps={{ inputLabel: { shrink: true } }}
           />
         )}
@@ -204,7 +248,7 @@ export function ItemDialog({ kind, item, today, defaultLeadDays, onClose }: Item
               onChange={event => setLead(Number(event.target.value))}
               sx={{ minWidth: 180 }}
             >
-              {LEAD_CHOICES.map(value => (
+              {leadChoices(lead).map(value => (
                 <MenuItem key={value} value={value}>
                   {leadLabel(value)}
                 </MenuItem>

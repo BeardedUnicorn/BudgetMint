@@ -160,6 +160,7 @@ export class BudgetSession {
 
   /** Deletes the account's BudgetMint data, here and on every device. */
   async deleteData(): Promise<void> {
+    this.needsCloud();
     const { uid, epoch } = this.linked!;
     this.deletingTo = epoch + 1;
     try {
@@ -177,10 +178,20 @@ export class BudgetSession {
    */
   async deleteAccount(): Promise<void> {
     const { uid } = this.view.user!;
-    if (await this.store.hasTaskMintData(uid)) {
+    this.needsCloud();
+    // Everything that can refuse comes first: once the data is deleted there's no going back
+    const [shared, recent] = await Promise.all([this.store.hasTaskMintData(uid), this.store.signedInRecently()]).catch(
+      error => {
+        throw new Error(cloudErrorMessage(error));
+      }
+    );
+    if (shared) {
       throw new Error(
         'This is also your TaskMint account. Delete the account from TaskMint, or delete BudgetMint’s data here.'
       );
+    }
+    if (!recent) {
+      throw new Error('Sign out and in again, then delete the account. Nothing was deleted.');
     }
     try {
       if (this.linked) await this.deleteData();
@@ -191,6 +202,11 @@ export class BudgetSession {
   }
 
   // ---- Inside ---------------------------------------------------------------
+
+  /** Deleting waits for the cloud's answer, which offline never comes. */
+  private needsCloud(): void {
+    if (this.view.offline) throw new Error('You’re offline. Connect, then delete it.');
+  }
 
   private set(changes: Partial<SessionView>): void {
     this.view = { ...this.view, ...changes };

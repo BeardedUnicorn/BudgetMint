@@ -76,6 +76,42 @@ describe('the web shell', () => {
     expect(FakeNotification.shown.map(n => n.title)).toEqual(['Reminder 1']);
   });
 
+  it('shows a test notification at once, when allowed', async () => {
+    const { notifications } = createWebShell().platform;
+    await notifications.show('A test', 'It works');
+    expect(FakeNotification.shown.map(n => [n.title, n.options.body])).toEqual([['A test', 'It works']]);
+    FakeNotification.permission = 'denied';
+    await notifications.show('Another', 'Blocked');
+    expect(FakeNotification.shown).toHaveLength(1);
+    vi.unstubAllGlobals();
+    await createWebShell().platform.notifications.show('None', 'No notifications here');
+  });
+
+  it('says whether notifications are allowed without asking', async () => {
+    FakeNotification.requestPermission.mockClear();
+    const { notifications } = createWebShell().platform;
+    expect(await notifications.granted!()).toBe(true);
+    FakeNotification.permission = 'default';
+    expect(await notifications.granted!()).toBe(false);
+    expect(FakeNotification.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('shows a reminder on time after the computer slept through its timer', async () => {
+    let now = NOW;
+    const { notifications } = createWebShell(() => now).platform;
+    await notifications.schedule([reminder(1, NOW + 60_000)]);
+    // Asleep for an hour: the clock moved on, the timer didn't
+    now += 3_600_000;
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(0);
+    expect(FakeNotification.shown).toHaveLength(0);
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(0);
+    expect(FakeNotification.shown.map(n => n.title)).toEqual(['Reminder 1']);
+  });
+
   it('waits in steps for a reminder further off than a timer can wait', async () => {
     let now = NOW;
     const { notifications } = createWebShell(() => now).platform;

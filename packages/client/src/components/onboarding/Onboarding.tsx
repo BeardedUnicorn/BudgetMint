@@ -4,7 +4,7 @@
  * Saving the settings is what ends it, so it comes once per account.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -17,6 +17,7 @@ import {
   Switch,
   TextField,
   Typography,
+  Link,
 } from '@mui/material';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
@@ -24,7 +25,7 @@ import { formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
 import { Wordmark } from '../ui/display/Wordmark';
 
 export function Onboarding() {
-  const { view } = useBudget();
+  const { session, view } = useBudget();
   const { settings } = useCoreQuery('get_settings');
   const overview = useCoreQuery('get_overview');
   const change = useBudgetChange();
@@ -33,13 +34,18 @@ export function Onboarding() {
   const [useTaskMint, setUseTaskMint] = useState(true);
   const [delay, setDelay] = useState(settings.taskmint.arrivalDelayHours);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Started with a balance that isn't an amount: said under it, and focus goes to it. */
+  const [wrong, setWrong] = useState(false);
+  const balanceInput = useRef<HTMLInputElement>(null);
   const connected = view.taskmint.state === 'ready';
   const next = overview.nextWithdrawal;
 
   const start = (withBalance: boolean) => {
     const cents = parseDollars(amount);
+    setWrong(withBalance && cents === null);
     if (withBalance && cents === null) {
-      setProblem('Enter your balance, or start without one');
+      setProblem(null);
+      balanceInput.current?.focus();
       return;
     }
     try {
@@ -83,6 +89,9 @@ export function Onboarding() {
                 label="Balance"
                 value={amount}
                 onChange={event => setAmount(event.target.value)}
+                inputRef={balanceInput}
+                error={wrong}
+                helperText={wrong ? 'Enter your balance, or start without one' : undefined}
                 sx={{ flex: 1 }}
                 slotProps={{
                   input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
@@ -145,6 +154,12 @@ export function Onboarding() {
               Starting from {formatCents(parseDollars(amount)!)}
             </Typography>
           )}
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+            Signed in as {view.user?.email ?? 'you'}. Not the account you meant?{' '}
+            <Link component="button" type="button" variant="caption" onClick={() => void session.signOut()}>
+              Sign out
+            </Link>
+          </Typography>
         </Stack>
       </Paper>
     </Box>

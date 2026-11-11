@@ -130,6 +130,16 @@ impl Snapshot {
         self.settings.clone().unwrap_or_default()
     }
 
+    /// Whether a newer BudgetMint wrote `key`'s document (it's held, not read).
+    pub fn is_held(&self, key: &DocKey) -> bool {
+        self.held.contains(&key.doc_id())
+    }
+
+    /// Whether `write`'s document is still exactly what it wrote.
+    pub fn holds(&self, write: &DocWrite) -> bool {
+        self.json.get(&write.doc_id) == write.json.as_ref()
+    }
+
     /// Takes the documents the client read, in order.
     pub fn apply(&mut self, docs: Vec<IncomingDoc>) -> DocsApplied {
         let mut applied = 0;

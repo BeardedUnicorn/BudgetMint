@@ -13,9 +13,7 @@ import { formatCents } from '../utils/money';
 
 export function trayLines(overview: Overview): string[] {
   const lines = [`Today: ${formatCents(overview.todayCents)}`];
-  const next = overview.upcoming
-    .flatMap(day => day.occurrences)
-    .find(occurrence => occurrence.kind === 'bill' && occurrence.status.state === 'open');
+  const next = overview.nextBill;
   if (next)
     lines.push(
       `Next: ${next.name} · ${formatCents(next.expectedCents)} · ${formatRelativeDay(next.due, overview.today)}`
@@ -34,4 +32,13 @@ export function useTrayStatus(): void {
       .platform.tray?.setStatus(JSON.parse(key))
       .catch(error => console.warn('Failed to update the tray:', error));
   }, [key]);
+  // Signed out (or the data unreachable): the tray stops showing the account's balance
+  useEffect(
+    () => () => {
+      getShell()
+        .platform.tray?.setStatus([])
+        .catch(error => console.warn('Failed to clear the tray:', error));
+    },
+    []
+  );
 }

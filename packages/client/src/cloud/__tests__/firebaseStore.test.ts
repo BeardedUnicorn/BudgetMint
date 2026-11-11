@@ -133,9 +133,15 @@ describe('the Firebase store', () => {
     expect(auth.signInWithPopup).toHaveBeenCalledWith(sdk.auth, expect.any(auth.GoogleAuthProvider));
     await store.signOut();
     expect(auth.signOut).toHaveBeenCalledWith(sdk.auth);
-    sdk.auth.currentUser = { uid: 'cal' };
+    const signedInAt = (ms: number) => ({ authTime: new Date(Date.now() - ms).toUTCString() });
+    const getIdTokenResult = vi.fn(async () => signedInAt(60_000));
+    sdk.auth.currentUser = { uid: 'cal', getIdTokenResult };
     await store.deleteUser();
-    expect(auth.deleteUser).toHaveBeenCalledWith({ uid: 'cal' });
+    expect(auth.deleteUser).toHaveBeenCalledWith(sdk.auth.currentUser);
+    // A minute ago is recent enough to delete the account; ten aren't
+    expect(await store.signedInRecently()).toBe(true);
+    getIdTokenResult.mockResolvedValueOnce(signedInAt(10 * 60_000));
+    expect(await store.signedInRecently()).toBe(false);
   });
 
   it('reads, starts and watches BudgetMint’s epoch (the server’s word only)', async () => {

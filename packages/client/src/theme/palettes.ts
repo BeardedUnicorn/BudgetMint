@@ -1,7 +1,8 @@
-// Copied from TaskMint packages/client/src/theme/palettes.ts @ 1623bee: keep the two in step.
+// Copied from TaskMint packages/client/src/theme/palettes.ts @ 8ca16f2: keep the two in step.
 /**
- * The light and dark palettes. Shared brand colors; light-mode text colors
- * are dark enough to read on white (4.5:1, checked by palettes.test).
+ * The light and dark palettes. Shared brand colors; each mode's text colors
+ * read on its surfaces, and the text on a filled chip or button reads on its
+ * fill (4.5:1, checked by palettes.test).
  */
 
 import type { PaletteOptions } from '@mui/material/styles';
@@ -33,12 +34,15 @@ export const palettes: Record<ColorMode, PaletteOptions> = {
   dark: {
     mode: 'dark',
     ...brand,
+    // The brand teal is too dark to read on a dark surface: its light shade stands in
+    secondary: { main: '#4DB6AC', dark: '#0D7377', light: '#80CBC4', contrastText: '#000000' },
     background: { default: '#121212', paper: '#1e1e1e' },
     text: { primary: '#FAFAFA', secondary: '#b0b0b0' },
-    error: { main: '#FF5C5C', contrastText: '#ffffff' },
+    // These are bright: dark text reads on them, white doesn't
+    error: { main: '#FF5C5C', contrastText: '#000000' },
     warning: { main: '#FFD700', contrastText: '#000000' },
-    info: { main: '#2196f3', contrastText: '#ffffff' },
-    success: { main: '#32CD32', contrastText: '#ffffff' },
+    info: { main: '#2196f3', contrastText: '#000000' },
+    success: { main: '#32CD32', contrastText: '#000000' },
     divider: 'rgba(255, 255, 255, 0.12)',
   },
 };

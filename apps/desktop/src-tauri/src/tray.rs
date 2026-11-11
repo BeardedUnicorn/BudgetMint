@@ -23,6 +23,10 @@ pub struct TrayMenu(pub Vec<TrayItem>);
 /// The Open item's id.
 pub const OPEN: &str = "open";
 
+/// The Quit item's id where it's an ordinary item (Linux: GTK greys out the
+/// system's own Quit item, and closing the window only hides it in the tray).
+pub const QUIT: &str = "quit";
+
 /// The menu for `lines`.
 pub fn menu(lines: &[String]) -> TrayMenu {
     let mut items: Vec<TrayItem> = lines.iter().cloned().map(TrayItem::Label).collect();
