@@ -213,6 +213,11 @@ pub struct SaveItemArgs {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub change: Option<ScheduleChange>,
+    /// An edit to an item already there, refused once it's been deleted
+    /// (on another device); without it, the item is added.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub edit: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -337,9 +342,13 @@ pub fn execute(
             settings: snapshot.settings(),
             saved: snapshot.settings.is_some(),
         }),
-        Command::SaveItem(args) => {
-            to_value(plan::save_item_from(snapshot, args.item, args.change, ctx)?)
-        }
+        Command::SaveItem(args) => to_value(plan::save_item_from(
+            snapshot,
+            args.item,
+            args.change,
+            args.edit.unwrap_or(false),
+            ctx,
+        )?),
         Command::ChangeSchedule(args) => to_value(plan::change_schedule(
             snapshot,
             &args.item_id,

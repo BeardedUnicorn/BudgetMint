@@ -102,6 +102,20 @@ describe('the overview', () => {
     expect(await screen.findByText('Nothing to withdraw yet')).toBeInTheDocument();
   });
 
+  it('says why TaskMint’s withdrawals aren’t there, and when its logs are old', async () => {
+    const { store } = await startBudget();
+    expect(screen.getByText('TaskMint isn’t connected')).toBeInTheDocument();
+    store.publishForecast({ ...forecastDoc({ asOfMs: TEST_NOW }), schema: 2 });
+    expect(await screen.findByText('Update BudgetMint to read TaskMint')).toBeInTheDocument();
+    store.publishForecast({ ...forecastDoc({ asOfMs: TEST_NOW }), json: '{' });
+    expect(await screen.findByText('TaskMint’s forecast can’t be read')).toBeInTheDocument();
+    // Imported more than three days ago: its numbers may be old
+    store.publishForecast(forecastDoc({ asOfMs: TEST_NOW, lastImportMs: TEST_NOW - 4 * 86_400_000 }));
+    expect(
+      await screen.findByText(/work logs were last imported .*: its withdrawals may be out of date/)
+    ).toBeInTheDocument();
+  });
+
   it('asks for a balance, and takes it', async () => {
     const { user, store } = await startBudget({ settings: { horizonDays: 30 } });
     expect(screen.getByText('Until you set your balance, the forecast starts from $0.')).toBeInTheDocument();

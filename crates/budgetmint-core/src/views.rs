@@ -10,7 +10,7 @@ use crate::forecast::ForecastStatus;
 use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Segment, Settings, TaskMintPlan};
 use crate::occur::{item_occurrences, occurrences, Occurrence};
 use crate::project::{project, settled_through, DayRow, FlowKind, FlowStatus, Projection};
-use crate::time::Ctx;
+use crate::time::{in_calendar, into_calendar, Ctx};
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 
@@ -303,7 +303,9 @@ pub fn month(
     month: &str,
     ctx: &Ctx,
 ) -> Option<MonthView> {
-    let first = NaiveDate::parse_from_str(&format!("{}-01", month), "%Y-%m-%d").ok()?;
+    let first = NaiveDate::parse_from_str(&format!("{}-01", month), "%Y-%m-%d")
+        .ok()
+        .filter(|first| in_calendar(*first))?;
     let last = first
         + Duration::days(i64::from(crate::recur::days_in_month(first.year(), first.month())) - 1);
     let today = ctx.today();
@@ -522,6 +524,7 @@ pub fn history(
     let item = snapshot.items.get(item_id)?;
     let today = ctx.today();
     let settled = settled_through(&snapshot.settings(), today);
+    let (from, to) = (into_calendar(from), into_calendar(to));
     let mut found: Vec<OccurrenceView> = item_occurrences(snapshot, item, from, to)
         .iter()
         .map(|occurrence| occurrence_view(occurrence, today, settled))
@@ -689,6 +692,8 @@ mod tests {
         assert_eq!(december.income_cents, 30_000);
         assert!(month(&s, None, "2026-13", &ctx()).is_none());
         assert!(month(&s, None, "nope", &ctx()).is_none());
+        // Outside core's calendar (a year typed with a digit too many)
+        assert!(month(&s, None, "1899-12", &ctx()).is_none());
         // Far ahead: occurrences, but no balance past what's projected
         let far = month(&s, None, "2029-01", &ctx()).unwrap();
         assert!(far.days[0].closing_cents.is_none());
@@ -745,6 +750,9 @@ mod tests {
         assert_eq!(rent.len(), 2);
         assert_eq!(rent[0].scheduled, d(2026, 11, 9));
         assert!(history(&s, "nope", d(2026, 10, 1), d(2026, 11, 30), &ctx()).is_none());
+        // A window past the calendar's ends is taken to them
+        let all = history(&s, "rent", NaiveDate::MIN, NaiveDate::MAX, &ctx()).unwrap();
+        assert!(all.len() >= rent.len());
     }
 
     #[test]

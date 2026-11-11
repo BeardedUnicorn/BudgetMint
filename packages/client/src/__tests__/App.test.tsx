@@ -117,6 +117,15 @@ describe('the app', () => {
     expect(screen.getByText('Your next withdrawal: $50.00, in the bank Nov 11.')).toBeInTheDocument();
   });
 
+  it('says it’s still checking TaskMint while onboarding, until the cloud says', async () => {
+    const store = createFakeStore();
+    // TaskMint's forecast not heard of yet
+    vi.mocked(store.watchForecast).mockImplementation(() => () => undefined);
+    store.setUser(cal());
+    unstarted(store).session.start();
+    expect(await screen.findByText('Checking TaskMint…')).toBeInTheDocument();
+  });
+
   it('says TaskMint has nothing to withdraw yet while onboarding', async () => {
     const { forecastDoc } = await import('./setup/budget');
     await startBudget({ settings: null, forecast: forecastDoc({ asOfMs: TEST_NOW }) });

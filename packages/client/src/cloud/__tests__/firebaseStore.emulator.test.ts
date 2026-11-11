@@ -6,7 +6,7 @@
  * nothing outside `budgetmint/`.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { DocWrite } from '@budgetmint/contracts';
 import { createFirebaseStore } from '../firebaseStore';
 import type { CloudUser, DocsSnapshot } from '../types';
@@ -37,6 +37,32 @@ const signedIn = () =>
         resolve(user);
       }
     });
+  });
+
+/** The emulator's REST API, as its owner (past the rules). */
+const owner = (path: string, init: RequestInit = {}) =>
+  fetch(`http://${HOST}:8085/v1/projects/${PROJECT}/databases/(default)/documents${path}`, {
+    ...init,
+    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+  });
+
+/** Every snapshot `listen` gives until each source has answered. */
+const firstSnapshots = (uid: string, epoch: number) =>
+  new Promise<DocsSnapshot[]>((resolve, reject) => {
+    const snapshots: DocsSnapshot[] = [];
+    const stop = store.listen(
+      uid,
+      epoch,
+      '2026-10-01',
+      snapshot => {
+        snapshots.push(snapshot);
+        if (new Set(snapshots.map(s => s.source)).size === 3) {
+          stop();
+          resolve(snapshots);
+        }
+      },
+      reject
+    );
   });
 
 /** The top-level collections in the emulator, as its owner sees them. */
@@ -92,21 +118,7 @@ describe("BudgetMint's store on TaskMint's rules", () => {
     expect(new Set([...writes, ...paid].map(w => w.kind))).toEqual(new Set(['settings', 'item', 'occ']));
 
     // They read back, and TaskMint's forecast reads as none, not a refusal
-    const seen = await new Promise<DocsSnapshot[]>((resolve, reject) => {
-      const snapshots: DocsSnapshot[] = [];
-      const stop = store.listen(
-        uid,
-        '2026-10-01',
-        snapshot => {
-          snapshots.push(snapshot);
-          if (new Set(snapshots.map(s => s.source)).size === 3) {
-            stop();
-            resolve(snapshots);
-          }
-        },
-        reject
-      );
-    });
+    const seen = await firstSnapshots(uid, 1);
     expect(seen.flatMap(s => s.docs).map(d => d.docId)).toEqual(
       expect.arrayContaining(['settings~account', 'item~rent', 'occ~2026-11-01~rent'])
     );
@@ -129,6 +141,20 @@ describe("BudgetMint's store on TaskMint's rules", () => {
       code: 'permission-denied',
     });
     await store.write(uid, writes, { deviceId: 'emulator', epoch: 2 });
+
+    // A delete cut short (the epoch moved on, the documents left): they read
+    // as deleted, and are deleted again
+    await owner(`/budgetmint/${uid}?updateMask.fieldPaths=epoch`, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: { epoch: { integerValue: '3' } } }),
+    });
+    const left = (await firstSnapshots(uid, 3)).flatMap(s => s.docs);
+    expect(left.map(d => d.docId)).toEqual(expect.arrayContaining(['settings~account', 'item~rent']));
+    expect(left.every(d => d.json === null)).toBe(true);
+    await vi.waitFor(async () => {
+      const listed = (await (await owner(`/budgetmint/${uid}/data`)).json()) as { documents?: unknown[] };
+      expect(listed.documents ?? []).toHaveLength(0);
+    });
 
     // Nothing outside budgetmint/
     expect(await topLevelCollections()).toEqual(['budgetmint']);

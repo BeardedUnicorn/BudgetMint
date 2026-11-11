@@ -84,4 +84,59 @@ mod tests {
         };
         assert_eq!(settings, serde_json::to_value(expected).unwrap());
     }
+
+    #[test]
+    fn refuses_an_edit_to_an_item_deleted_meanwhile() {
+        let mut host = JsonHost::new("UTC");
+        let now = 1_794_279_600_000.0;
+        let save = |edit: &str| {
+            format!(
+                r#"{{"item":{{"id":"rent","kind":"bill","name":"Rent","schedule":[
+                    {{"from":"2026-11-01","repeat":{{"every":"once"}},"amountCents":100}}]}}{}}}"#,
+                edit
+            )
+        };
+        assert_eq!(
+            host.call("save_item", &save(r#","edit":true"#), now),
+            Err("That bill isn't there any more (deleted on another device?)".into())
+        );
+        assert!(host.call("save_item", &save(""), now).is_ok());
+        assert!(host
+            .call("save_item", &save(r#","edit":true"#), now)
+            .is_ok());
+    }
+
+    #[test]
+    fn no_clock_or_argument_makes_it_panic() {
+        let mut host = JsonHost::new("Pacific/Kiritimati");
+        let now = 1_794_279_600_000.0;
+        let item = r#"{"item":{"id":"rent","kind":"bill","name":"Rent","schedule":[
+            {"from":"2199-12-31","repeat":{"every":"days","n":1},"amountCents":100}]}}"#;
+        host.call("save_item", item, now).unwrap();
+        host.call(
+            "set_balance",
+            r#"{"balance":{"cents":-5,"asOf":"2026-11-10"}}"#,
+            now,
+        )
+        .unwrap();
+        let queries = [
+            ("get_overview", "{}"),
+            ("get_forecast", "{}"),
+            ("get_items", "{}"),
+            ("get_month", r#"{"month":"2199-12"}"#),
+            (
+                "get_item_history",
+                r#"{"itemId":"rent","from":"-262143-01-01","to":"+262142-12-31"}"#,
+            ),
+            (
+                "get_reminders",
+                r#"{"windowDays":65535,"max":65535,"missedSinceMs":-9223372036854775808}"#,
+            ),
+        ];
+        for now in [f64::MAX, f64::MIN, f64::NAN, 0.0, 7_258_118_400_000.0] {
+            for (name, args) in queries {
+                assert!(host.call(name, args, now).is_ok(), "{} at {}", name, now);
+            }
+        }
+    }
 }

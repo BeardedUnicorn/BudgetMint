@@ -10,6 +10,7 @@ import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing
 import { ThemeProvider } from '@mui/material';
 import type { CalendarDay } from '@budgetmint/contracts';
 import { ErrorBoundary } from '../components/layout/ErrorBoundary';
+import { CoreStopped } from '../core';
 import { createAppTheme } from '../theme';
 import { cloudErrorMessage } from '../cloud/errors';
 import { getShell, setShell } from '../shell';
@@ -212,6 +213,20 @@ describe('changes to data changed elsewhere', () => {
     await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
     expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
   });
+
+  it('refuse an edit to a bill deleted meanwhile, instead of bringing it back', async () => {
+    const { user, core, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    await user.type(within(dialog).getByLabelText('Name'), '!');
+    core.call('apply_docs', { docs: [{ docId: 'item~rent', json: null, schema: 1 }] });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(
+      await within(dialog).findByText("That bill isn't there any more (deleted on another device?)")
+    ).toBeInTheDocument();
+    expect(store.writes).toHaveLength(0);
+  });
 });
 
 describe('undo', () => {
@@ -272,6 +287,33 @@ describe('an error while showing a page', () => {
     broken = false;
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(screen.getByText('Back again')).toBeInTheDocument();
+    quiet.mockRestore();
+  });
+
+  it('offers a reload instead when core itself stopped', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const Page = () => {
+      throw new CoreStopped();
+    };
+    const user = (await import('@testing-library/user-event')).default.setup();
+    const reload = vi.fn();
+    const { unmount } = render(
+      <ErrorBoundary reload={reload}>
+        <Page />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText(/Reload to start it again: what you saved is still saved/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(reload).toHaveBeenCalled();
+    unmount();
+    // Without one given, the page's own (jsdom only says it can't navigate)
+    render(
+      <ErrorBoundary>
+        <Page />
+      </ErrorBoundary>
+    );
+    await user.click(screen.getByRole('button', { name: 'Reload' }));
     quiet.mockRestore();
   });
 });
@@ -496,6 +538,15 @@ describe('the pieces', () => {
 
   it('word errors that aren’t Errors, and other bits copied from TaskMint', () => {
     expect(cloudErrorMessage('plain words')).toBe('plain words');
+    expect(cloudErrorMessage({ code: 'resource-exhausted' })).toMatch(/limit for today is used up/);
+    // Reading words where there are some, and the usual ones elsewhere
+    expect(cloudErrorMessage({ code: 'unavailable' }, { reading: true })).toBe(
+      'Can’t reach the cloud. Check the connection and try again.'
+    );
+    expect(cloudErrorMessage({ code: 'unauthenticated' }, { reading: true })).toBe(
+      'Your sign-in has run out. Sign out and in again.'
+    );
+    expect(cloudErrorMessage({ code: 'nope' }, { reading: true })).toBe('[object Object]');
     expect(formatDateTime(new Date(2026, 10, 30, 9, 5))).toMatch(/2026/);
     render(
       <PageContainer fill>

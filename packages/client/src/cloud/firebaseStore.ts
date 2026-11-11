@@ -58,6 +58,22 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
     json: typeof json === 'string' ? json : null,
     schema: Number(schema ?? 1),
   });
+  /**
+   * Commits `fill`'s writes a batch at a time, every batch at once: offline,
+   * Firestore keeps each until it can send it (one awaited before the next
+   * was queued would leave the rest unsent), and it sends them in order.
+   */
+  const inBatches = <T>(items: T[], fill: (batch: ReturnType<typeof fs.writeBatch>, item: T) => void) => {
+    const commits: Promise<void>[] = [];
+    for (let start = 0; start < items.length; start += BATCH_SIZE) {
+      const batch = fs.writeBatch(db);
+      for (const item of items.slice(start, start + BATCH_SIZE)) fill(batch, item);
+      commits.push(batch.commit());
+    }
+    return Promise.all(commits);
+  };
+  type Ref = ReturnType<typeof fs.doc>;
+  const deleteRefs = (refs: Ref[]) => inBatches(refs, (batch, ref) => batch.delete(ref));
 
   return {
     onUser(listener) {
@@ -110,12 +126,27 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
       );
     },
 
-    listen(uid, occurrencesFrom, onDocs, onError) {
+    listen(uid, epoch, occurrencesFrom, onDocs, onError) {
       const report = (
         source: DocsSource,
         docs: IncomingDoc[],
         metadata: { fromCache: boolean; hasPendingWrites: boolean }
       ) => onDocs({ source, docs, fromCache: metadata.fromCache, pendingWrites: metadata.hasPendingWrites });
+      /**
+       * A document from an epoch before this one outlived a delete cut short
+       * (here or on another device): it reads as deleted, and is deleted
+       * again. Tried again at every start, so a failure here is let go.
+       */
+      const read = (doc: { id: string; ref: Ref; get(field: string): unknown }, leftovers: Ref[]) => {
+        if (Number(doc.get('epoch')) < epoch) {
+          leftovers.push(doc.ref);
+          return incoming(doc.id, null, doc.get('schema'));
+        }
+        return incoming(doc.id, doc.get('json'), doc.get('schema'));
+      };
+      const sweep = (leftovers: Ref[]) => {
+        if (leftovers.length > 0) void deleteRefs(leftovers).catch(() => undefined);
+      };
       const sets = [
         ['items', range(uid, 'item~', 'item~')],
         ['occurrences', range(uid, `occ~${occurrencesFrom}`, 'occ~')],
@@ -124,28 +155,30 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
         fs.onSnapshot(
           fs.doc(data(uid), 'settings~account'),
           { includeMetadataChanges: true },
-          snapshot =>
-            report(
-              'settings',
-              [incoming(snapshot.id, snapshot.get('json'), snapshot.get('schema'))],
-              snapshot.metadata
-            ),
+          snapshot => {
+            const leftovers: Ref[] = [];
+            report('settings', [read(snapshot, leftovers)], snapshot.metadata);
+            sweep(leftovers);
+          },
           onError
         ),
         ...sets.map(([source, query]) =>
           fs.onSnapshot(
             query,
             { includeMetadataChanges: true },
-            snapshot =>
+            snapshot => {
+              const leftovers: Ref[] = [];
               report(
                 source,
                 snapshot
                   .docChanges()
                   .map(({ type, doc }) =>
-                    incoming(doc.id, type === 'removed' ? null : doc.get('json'), doc.get('schema'))
+                    type === 'removed' ? incoming(doc.id, null, doc.get('schema')) : read(doc, leftovers)
                   ),
                 snapshot.metadata
-              ),
+              );
+              sweep(leftovers);
+            },
             onError
           )
         ),
@@ -175,36 +208,29 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
     },
 
     async write(uid, writes: DocWrite[], meta: WriteMeta) {
-      for (let start = 0; start < writes.length; start += BATCH_SIZE) {
-        const batch = fs.writeBatch(db);
-        for (const write of writes.slice(start, start + BATCH_SIZE)) {
-          const ref = fs.doc(data(uid), write.docId);
-          if (write.json === null) {
-            batch.delete(ref);
-          } else {
-            batch.set(ref, {
-              kind: write.kind,
-              json: write.json,
-              schema: write.schema,
-              deviceId: meta.deviceId,
-              epoch: meta.epoch,
-              updatedAt: fs.serverTimestamp(),
-            });
-          }
+      await inBatches(writes, (batch, write) => {
+        const ref = fs.doc(data(uid), write.docId);
+        if (write.json === null) {
+          batch.delete(ref);
+        } else {
+          batch.set(ref, {
+            kind: write.kind,
+            json: write.json,
+            schema: write.schema,
+            deviceId: meta.deviceId,
+            epoch: meta.epoch,
+            updatedAt: fs.serverTimestamp(),
+          });
         }
-        await batch.commit();
-      }
+      });
     },
     async deleteAll(uid, epoch) {
       const next = epoch + 1;
-      // Writes from devices still on the old epoch are refused from here on
+      // Writes from devices still on the old epoch are refused from here on,
+      // and what's left of the old one reads as deleted (listen) if this is cut short
       await fs.updateDoc(accountDoc(uid), { epoch: next });
       const all = await fs.getDocs(data(uid));
-      for (let start = 0; start < all.docs.length; start += BATCH_SIZE) {
-        const batch = fs.writeBatch(db);
-        for (const doc of all.docs.slice(start, start + BATCH_SIZE)) batch.delete(doc.ref);
-        await batch.commit();
-      }
+      await deleteRefs(all.docs.map(doc => doc.ref));
       return next;
     },
     async hasTaskMintData(uid) {

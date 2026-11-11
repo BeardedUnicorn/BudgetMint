@@ -56,7 +56,8 @@ describe('the session', () => {
     await waitFor(() => expect(session.getView().phase).toBe('ready'));
     expect(store.createAccount).toHaveBeenCalledWith('cal');
     // Occurrences from 400 days back
-    expect(vi.mocked(store.listen).mock.calls[0][1]).toBe('2025-10-06');
+    // The account's epoch, and the occurrences from a year and a bit back
+    expect(vi.mocked(store.listen).mock.calls[0].slice(1, 3)).toEqual([1, '2025-10-06']);
     expect(core.call('get_items')[0].item.id).toBe('rent');
     expect(seen).toHaveBeenCalled();
     unsubscribe();
@@ -186,7 +187,7 @@ describe('the session', () => {
     store.failListen({ code: 'permission-denied' });
     expect(session.getView()).toMatchObject({
       phase: 'error',
-      error: 'The cloud refused that change. Sign out and in again.',
+      error: 'The cloud won’t let this account read its data. Sign out and in again.',
     });
     // A late answer for the failed attempt changes nothing
     store.failListen(new Error('again'));

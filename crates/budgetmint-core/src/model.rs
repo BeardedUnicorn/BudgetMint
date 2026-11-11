@@ -4,6 +4,7 @@
 //! calendar dates in the user's zone, and every field a later version adds
 //! has a default, so older documents keep reading.
 
+use crate::time::in_calendar;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -250,6 +251,39 @@ impl Default for Settings {
             taskmint: TaskMintPlan::default(),
             reminders: ReminderSettings::default(),
         }
+    }
+}
+
+// Whether each document's dates are all in core's calendar (crate::time):
+// one with a date outside it doesn't read.
+
+impl Item {
+    pub fn in_calendar(&self) -> bool {
+        self.schedule
+            .iter()
+            .all(|segment| in_calendar(segment.from) && segment.until.is_none_or(in_calendar))
+    }
+}
+
+impl OccStatus {
+    pub fn in_calendar(&self) -> bool {
+        match self {
+            OccStatus::Done { on, .. } => in_calendar(*on),
+            OccStatus::Open | OccStatus::Skipped => true,
+        }
+    }
+}
+
+impl Override {
+    pub fn in_calendar(&self) -> bool {
+        in_calendar(self.date) && self.moved_to.is_none_or(in_calendar) && self.status.in_calendar()
+    }
+}
+
+impl Settings {
+    pub fn in_calendar(&self) -> bool {
+        self.balance
+            .is_none_or(|balance| in_calendar(balance.as_of))
     }
 }
 

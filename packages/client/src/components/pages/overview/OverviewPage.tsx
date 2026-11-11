@@ -17,8 +17,9 @@ import type { UpcomingDay } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { PHONE } from '../../../theme/media';
-import { formatDay, formatRelativeDay, formatWeekday } from '../../../utils/dates';
+import { formatDay, formatMoment, formatRelativeDay, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents } from '../../../utils/money';
+import { importIsStale, WITHDRAWALS_NOTE } from '../../../utils/taskmint';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { OccurrenceList } from '../../budget/OccurrenceList';
@@ -71,7 +72,7 @@ function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
   );
 }
 
-export function OverviewPage() {
+export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
   const overview = useCoreQuery('get_overview');
   const { settings } = useCoreQuery('get_settings');
   const items = useCoreQuery('get_items');
@@ -89,9 +90,9 @@ export function OverviewPage() {
     ? nextWithdrawal.opensNow
       ? `Open now, in the bank ${formatDay(nextWithdrawal.arrivesOn)}`
       : `${formatWeekday(nextWithdrawal.arrivesOn)}, in the bank`
-    : overview.taskmint.state === 'ready'
-      ? 'Nothing to withdraw yet'
-      : 'TaskMint isn’t connected';
+    : WITHDRAWALS_NOTE[overview.taskmint.state];
+  const { taskmint } = overview;
+  const staleImport = taskmint.state === 'ready' && settings.taskmint.useForecast && importIsStale(taskmint, nowMs);
 
   return (
     <PageContainer>
@@ -139,6 +140,13 @@ export function OverviewPage() {
             {formatCents(firstLow.cents)}.
           </Alert>
         )
+      )}
+
+      {staleImport && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          TaskMint’s work logs were last imported {formatMoment(taskmint.lastImportMs!)}: its withdrawals may be out of
+          date until you import again.
+        </Alert>
       )}
 
       <Paper component="section" aria-label="Balance today" sx={SECTION}>

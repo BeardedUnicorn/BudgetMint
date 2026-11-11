@@ -128,13 +128,21 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, onClose }: Item
         // One change: the item's fields and its schedule from that date, or neither
         change(
           'save_item',
-          { item: { ...base, schedule: item.schedule }, change: { from: changeFrom, repeat, amountCents: cents } },
+          {
+            item: { ...base, schedule: item.schedule },
+            change: { from: changeFrom, repeat, amountCents: cents },
+            edit: true,
+          },
           saved
         );
       } else {
         change(
           'save_item',
-          { item: { ...base, schedule: scheduleChanged || !item ? newSchedule : item.schedule } },
+          // An edit is refused if the item was deleted (on another device) meanwhile
+          {
+            item: { ...base, schedule: scheduleChanged || !item ? newSchedule : item.schedule },
+            edit: item !== undefined,
+          },
           saved
         );
       }

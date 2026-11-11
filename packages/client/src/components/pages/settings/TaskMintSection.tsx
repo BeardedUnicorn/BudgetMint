@@ -11,11 +11,9 @@ import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
+import { importIsStale } from '../../../utils/taskmint';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
-
-/** After this long without an import, TaskMint's numbers may be out of date (as TaskMint says). */
-export const STALE_IMPORT_MS = 3 * 24 * 60 * 60 * 1000;
 
 const DELAYS = [0, 12, 24, 48, 72, 120];
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -33,7 +31,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
   const status = view.taskmint;
   const setPlan = (patch: Partial<typeof plan>) =>
     save(current => ({ ...current, taskmint: { ...current.taskmint, ...patch } }));
-  const stale = status.lastImportMs !== null && nowMs - status.lastImportMs > STALE_IMPORT_MS;
+  const stale = importIsStale(status, nowMs);
   const policy: 'open' | 'weekly' = plan.policy.kind === 'weekly' ? 'weekly' : 'open';
   const weekly = plan.policy.kind === 'weekly' ? plan.policy : { kind: 'weekly' as const, weekday: 4, hour: 9 };
   const future = plan.future;
@@ -48,9 +46,13 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
           sx={{ ml: 1 }}
           color={status.state === 'ready' ? 'success' : 'default'}
           label={
-            { ready: 'Connected', missing: 'Not connected', newer: 'Update BudgetMint', unreadable: 'Can’t read it' }[
-              status.state
-            ]
+            {
+              checking: 'Checking…',
+              ready: 'Connected',
+              missing: 'Not connected',
+              newer: 'Update BudgetMint',
+              unreadable: 'Can’t read it',
+            }[status.state]
           }
         />
       }

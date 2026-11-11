@@ -347,4 +347,94 @@ mod tests {
         assert_eq!(days_in_month(2026, 12), 31);
         assert_eq!(days_in_month(2026, 4), 30);
     }
+
+    /// Every schedule of each kind from many first dates (leap days and
+    /// month ends among them), over windows split at many points: the dates
+    /// are the schedule's, in order, and asking for a window in two parts
+    /// gives exactly what asking for it whole does (the windows skip ahead
+    /// to where they start, so that's where an off-by-one would show).
+    #[test]
+    fn every_window_agrees_with_the_schedule_and_with_its_parts() {
+        let repeats = [
+            Repeat::Once,
+            Repeat::Days { n: 1 },
+            Repeat::Days { n: 3 },
+            Repeat::Days { n: 45 },
+            Repeat::Weeks { n: 1 },
+            Repeat::Weeks { n: 3 },
+            Repeat::Months { n: 1, day: 1 },
+            Repeat::Months { n: 1, day: 29 },
+            Repeat::Months { n: 1, day: 31 },
+            Repeat::Months { n: 2, day: 30 },
+            Repeat::Months { n: 3, day: 15 },
+            Repeat::Months { n: 12, day: 31 },
+            Repeat::Years { n: 1 },
+            Repeat::Years { n: 4 },
+        ];
+        let window = (d(2026, 1, 1), d(2029, 12, 31));
+        let mut checked = 0;
+        // First dates from 2023 into 2028, every 37 days and each month's last day
+        let mut starts: Vec<NaiveDate> = (0..60)
+            .map(|k| d(2023, 1, 5) + Duration::days(37 * k))
+            .collect();
+        starts.extend((0..72).map(|k| {
+            let month = d(2023, 1, 1).checked_add_months(Months::new(k)).unwrap();
+            month
+                .with_day(days_in_month(month.year(), month.month()))
+                .unwrap()
+        }));
+        starts.push(d(2024, 2, 29));
+        for start in starts {
+            for repeat in repeats {
+                let segment = seg(start, repeat);
+                let whole = segment_dates(&segment, None, window.0, window.1);
+                assert!(
+                    whole.windows(2).all(|pair| pair[0] < pair[1]),
+                    "{:?}",
+                    segment
+                );
+                for date in &whole {
+                    assert!(*date >= start.max(window.0) && *date <= window.1);
+                    assert!(on_schedule(&segment, *date), "{:?} on {}", segment, date);
+                }
+                // Split anywhere: the same dates
+                for split in (0..=1460).step_by(53) {
+                    let at = window.0 + Duration::days(split);
+                    let mut parts = segment_dates(&segment, None, window.0, at);
+                    parts.extend(segment_dates(
+                        &segment,
+                        None,
+                        at + Duration::days(1),
+                        window.1,
+                    ));
+                    assert_eq!(parts, whole, "{:?} split at {}", segment, at);
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 50_000);
+    }
+
+    /// Whether `date` is one of `segment`'s, worked out from its first date
+    /// alone (not as segment_dates steps to it).
+    fn on_schedule(segment: &Segment, date: NaiveDate) -> bool {
+        let start = segment.from;
+        let months = |date: NaiveDate| date.year() * 12 + date.month() as i32;
+        match segment.repeat {
+            Repeat::Once => date == start,
+            Repeat::Days { n } => (date - start).num_days() % i64::from(n) == 0,
+            Repeat::Weeks { n } => (date - start).num_days() % (7 * i64::from(n)) == 0,
+            Repeat::Months { n, day } => {
+                let apart = months(date) - months(start);
+                apart % i32::from(n) == 0
+                    && date.day() == u32::from(day).min(days_in_month(date.year(), date.month()))
+            }
+            Repeat::Years { n } => {
+                let apart = date.year() - start.year();
+                date.month() == start.month()
+                    && apart % i32::from(n) == 0
+                    && date.day() == start.day().min(days_in_month(date.year(), date.month()))
+            }
+        }
+    }
 }

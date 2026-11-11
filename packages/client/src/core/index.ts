@@ -21,14 +21,35 @@ export function deviceZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
+/**
+ * Core stopped (its WebAssembly trapped): nothing it holds can be trusted
+ * any more, and every later call would fail too. Reloading starts it again
+ * from what's saved.
+ */
+export class CoreStopped extends Error {
+  constructor() {
+    super(
+      'BudgetMint ran into a problem it can’t carry on from. Reload to start it again: what you saved is still saved.'
+    );
+    this.name = 'CoreStopped';
+  }
+}
+
 /** Core over a loaded wasm `Core`, with the time from `clock`. */
 export function coreClient(core: Pick<Core, 'call' | 'setZone'>, clock: () => number = Date.now): CoreClient {
+  let stopped = false;
   return {
     call(command, ...args) {
+      if (stopped) throw new CoreStopped();
       let reply: string;
       try {
         reply = core.call(command, JSON.stringify(args[0] ?? {}), clock());
       } catch (message) {
+        if (message instanceof WebAssembly.RuntimeError) {
+          stopped = true;
+          console.error('BudgetMint’s core stopped:', message);
+          throw new CoreStopped();
+        }
         throw new Error(String(message));
       }
       return JSON.parse(reply);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { startBudget } from '../../../__tests__/setup/budget';
 
 describe('the app’s frame', () => {
@@ -28,5 +28,16 @@ describe('the app’s frame', () => {
       .click(screen.getByRole('button', { name: 'OK' }));
     expect(screen.queryByText(/deleted on another device/)).not.toBeInTheDocument();
     await session.write([{ docId: 'item~x', kind: 'item', json: null, schema: 1 }]);
+  });
+
+  it('says when some of the data can’t be read, and how much', async () => {
+    const { store } = await startBudget();
+    store.putDoc('item~broken', '{');
+    expect(await screen.findByText(/One of your records can’t be read here, so it’s left out/)).toBeInTheDocument();
+    store.putDoc('item~torn', '[');
+    expect(await screen.findByText(/2 of your records can’t be read here, so they’re left out/)).toBeInTheDocument();
+    store.putDoc('item~broken', null);
+    store.putDoc('item~torn', null);
+    await waitFor(() => expect(screen.queryByText(/can’t be read here/)).not.toBeInTheDocument());
   });
 });

@@ -35,6 +35,8 @@ export interface SessionView {
   saving: boolean;
   /** Documents from a newer BudgetMint, left alone. */
   held: number;
+  /** Documents that don't read as BudgetMint's (damaged): left out. */
+  unreadable: number;
   /** The data was deleted on another device, so this one started over. */
   resetElsewhere: boolean;
   taskmint: ForecastStatus;
@@ -51,8 +53,9 @@ export const SESSION_OPTIONS: SessionOptions = { historyDays: 400, clock: Date.n
 
 const SOURCES: DocsSource[] = ['settings', 'items', 'occurrences'];
 
+/** Before the cloud has said what TaskMint published (core's state then too). */
 const NO_FORECAST: ForecastStatus = {
-  state: 'missing',
+  state: 'checking',
   appVersion: null,
   publishedAtMs: null,
   asOfMs: null,
@@ -76,6 +79,7 @@ export class BudgetSession {
     offline: false,
     saving: false,
     held: 0,
+    unreadable: 0,
     resetElsewhere: false,
     taskmint: NO_FORECAST,
   };
@@ -135,6 +139,12 @@ export class BudgetSession {
 
   /** The notice that the data was deleted elsewhere has been seen. */
   dismissReset = () => this.set({ resetElsewhere: false });
+
+  /** The user is in another time zone now: core moves, and the pages ask it again ("today" may differ). */
+  moveTo = (zone: string) => {
+    this.core.setZone(zone);
+    this.changed();
+  };
 
   // ---- Changes --------------------------------------------------------------
 
@@ -226,14 +236,14 @@ export class BudgetSession {
   private fail(error: unknown, generation: number): void {
     if (generation !== this.generation) return;
     this.detach();
-    this.set({ phase: 'error', error: cloudErrorMessage(error) });
+    this.set({ phase: 'error', error: cloudErrorMessage(error, { reading: true }) });
   }
 
   private async userChanged(user: CloudUser | null, resetElsewhere: boolean): Promise<void> {
     const generation = ++this.generation;
     this.detach();
     this.core.call('reset_docs');
-    const fresh = { held: 0, offline: false, saving: false, taskmint: NO_FORECAST, error: null };
+    const fresh = { held: 0, unreadable: 0, offline: false, saving: false, taskmint: NO_FORECAST, error: null };
     if (!user) {
       this.changed({ ...fresh, phase: 'signedOut', user: null, resetElsewhere: false });
       return;
@@ -267,6 +277,7 @@ export class BudgetSession {
       ),
       this.store.listen(
         uid,
+        epoch,
         from,
         snapshot => this.received(snapshot),
         error => this.fail(error, generation)
@@ -287,6 +298,7 @@ export class BudgetSession {
     this.changed({
       phase: SOURCES.every(source => this.sources.has(source)) ? 'ready' : 'starting',
       held: applied.held.length,
+      unreadable: applied.unreadable.length,
       offline: all.some(source => source.fromCache),
       saving: all.some(source => source.pendingWrites),
     });

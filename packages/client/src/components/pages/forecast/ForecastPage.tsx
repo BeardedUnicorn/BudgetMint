@@ -27,6 +27,7 @@ import { useNavigation } from '../../../contexts/NavigationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { formatDay, formatMoment, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
+import { LEFT_OUT } from '../../../utils/taskmint';
 import { formattingLocale } from '../../../utils/locale';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
@@ -48,6 +49,8 @@ function flowLabel(flow: Flow): string {
 export function assumptions(view: ForecastView): string[] {
   const { plan } = view;
   if (!plan.useForecast) return ['TaskMint’s withdrawals aren’t counted.'];
+  const leftOut = LEFT_OUT[view.taskmint.state];
+  if (leftOut) return [leftOut];
   const lines = [
     plan.policy.kind === 'asSoonAsOpen'
       ? 'You withdraw as soon as the site allows'

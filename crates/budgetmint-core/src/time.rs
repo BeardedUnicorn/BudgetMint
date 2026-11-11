@@ -10,6 +10,28 @@ use chrono_tz::Tz;
 pub const HOUR_MS: i64 = 3_600_000;
 pub const DAY_MS: i64 = 24 * HOUR_MS;
 
+/// The years core's calendar covers. A date outside them is a mistake (a
+/// year typed with a digit too many): refused when given, unreadable when
+/// stored. That keeps every date core works out well within what chrono
+/// can hold, so its date arithmetic can't overflow.
+pub const FIRST_YEAR: i32 = 1900;
+pub const LAST_YEAR: i32 = 2199;
+/// 2200-01-01T00:00:00Z: no instant core takes as now, or reads from
+/// TaskMint, comes later.
+pub const MAX_MS: i64 = 7_258_118_400_000;
+
+/// Whether `date` is in core's calendar.
+pub fn in_calendar(date: NaiveDate) -> bool {
+    (FIRST_YEAR..=LAST_YEAR).contains(&date.year())
+}
+
+/// `date`, or the calendar's nearer end when it's outside it.
+pub fn into_calendar(date: NaiveDate) -> NaiveDate {
+    let first = NaiveDate::from_ymd_opt(FIRST_YEAR, 1, 1).expect("the calendar's first day");
+    let last = NaiveDate::from_ymd_opt(LAST_YEAR, 12, 31).expect("the calendar's last day");
+    date.clamp(first, last)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ctx {
     pub now: DateTime<Utc>,
@@ -17,10 +39,11 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    /// At `now_ms`, in `zone` (UTC when it isn't a zone core knows).
+    /// At `now_ms`, in `zone` (UTC when it isn't a zone core knows). A
+    /// clock before 1970 or after 2199 is taken as the nearer end of that.
     pub fn new(now_ms: i64, zone: &str) -> Ctx {
         Ctx {
-            now: instant(now_ms),
+            now: instant(now_ms.clamp(0, MAX_MS)),
             zone: zone.parse().unwrap_or(Tz::UTC),
         }
     }
@@ -128,6 +151,15 @@ mod tests {
         assert_eq!(instant(i64::MAX), DateTime::<Utc>::MAX_UTC);
         assert_eq!(instant(i64::MIN), DateTime::<Utc>::MIN_UTC);
         assert_eq!(hour(25), NaiveTime::MIN);
+        // A clock far off is taken as the calendar's nearer end
+        assert_eq!(Ctx::new(i64::MAX, "UTC").today(), date(2200, 1, 1));
+        assert_eq!(Ctx::new(-1, "UTC").now_ms(), 0);
+        assert!(in_calendar(date(1900, 1, 1)) && in_calendar(date(2199, 12, 31)));
+        assert!(!in_calendar(date(1899, 12, 31)) && !in_calendar(date(2200, 1, 1)));
+        assert_eq!(instant(MAX_MS).to_rfc3339(), "2200-01-01T00:00:00+00:00");
+        assert_eq!(into_calendar(NaiveDate::MIN), date(1900, 1, 1));
+        assert_eq!(into_calendar(NaiveDate::MAX), date(2199, 12, 31));
+        assert_eq!(into_calendar(date(2026, 11, 11)), date(2026, 11, 11));
     }
 
     #[test]

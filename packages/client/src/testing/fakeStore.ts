@@ -91,26 +91,35 @@ export function createFakeStore(): FakeStore {
       epochWatchers.add(watcher);
       return () => epochWatchers.delete(watcher);
     }),
-    listen: vi.fn((_uid: string, from: string, onDocs: (s: DocsSnapshot) => void, onError: (e: unknown) => void) => {
-      const open = { onDocs, onError, from };
-      listening.add(open);
-      // The first answer: what's there, per source
-      for (const source of ['settings', 'items', 'occurrences'] as const) {
-        const found = [...docs]
-          .filter(([docId]) => sourceOf(docId) === source && !(source === 'occurrences' && docId < `occ~${from}`))
-          .map(([docId, doc]) => ({ docId, json: doc.json, schema: doc.schema }));
-        onDocs({
-          source,
-          docs:
-            source === 'settings' && found.length === 0
-              ? [{ docId: 'settings~account', json: null, schema: 1 }]
-              : found,
-          fromCache: store.offline,
-          pendingWrites: false,
-        });
+    // Every document here is the epoch's: a delete is never cut short
+    listen: vi.fn(
+      (
+        _uid: string,
+        _epoch: number,
+        from: string,
+        onDocs: (s: DocsSnapshot) => void,
+        onError: (e: unknown) => void
+      ) => {
+        const open = { onDocs, onError, from };
+        listening.add(open);
+        // The first answer: what's there, per source
+        for (const source of ['settings', 'items', 'occurrences'] as const) {
+          const found = [...docs]
+            .filter(([docId]) => sourceOf(docId) === source && !(source === 'occurrences' && docId < `occ~${from}`))
+            .map(([docId, doc]) => ({ docId, json: doc.json, schema: doc.schema }));
+          onDocs({
+            source,
+            docs:
+              source === 'settings' && found.length === 0
+                ? [{ docId: 'settings~account', json: null, schema: 1 }]
+                : found,
+            fromCache: store.offline,
+            pendingWrites: false,
+          });
+        }
+        return () => listening.delete(open);
       }
-      return () => listening.delete(open);
-    }),
+    ),
     watchForecast: vi.fn((_uid: string, listener: (doc: ForecastDoc | null) => void, onError: (e: unknown) => void) => {
       const watcher = { listener, onError };
       forecastWatchers.add(watcher);

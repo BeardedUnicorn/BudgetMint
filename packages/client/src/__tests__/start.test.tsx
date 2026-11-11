@@ -37,8 +37,10 @@ describe('starting the app', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Continue with Google' }));
     expect(shell.platform.googleSignIn).toHaveBeenCalled();
     expect(store.signInWithGoogle).toHaveBeenCalledWith('google-id-token');
-    // The user may have moved: the zone follows on focus
+    // The user may have moved: the zone follows on focus, and the pages ask again
+    const before = session!.getView().version;
     window.dispatchEvent(new Event('focus'));
+    expect(session!.getView().version).toBe(before + 1);
     session!.stop();
   });
 

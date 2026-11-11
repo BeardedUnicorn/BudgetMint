@@ -84,10 +84,12 @@ export interface BudgetStore {
   watchAccount(uid: string, listener: (epoch: number | null) => void, onError: (error: unknown) => void): Unsubscribe;
   /**
    * The settings, every item, and the occurrences from `occurrencesFrom`
-   * (YYYY-MM-DD) on, as they change.
+   * (YYYY-MM-DD) on, as they change. A document from before `epoch` (the
+   * account's now) is what a delete cut short left: it reads as deleted.
    */
   listen(
     uid: string,
+    epoch: number,
     occurrencesFrom: string,
     onDocs: (snapshot: DocsSnapshot) => void,
     onError: (error: unknown) => void

@@ -120,7 +120,9 @@ export function Onboarding() {
               </Typography>
             ) : (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Not connected yet: turn on cloud sync in TaskMint with this account, and its withdrawals show up here.
+                {view.taskmint.state === 'checking'
+                  ? 'Checking TaskMint…'
+                  : 'Not connected yet: turn on cloud sync in TaskMint with this account, and its withdrawals show up here.'}
               </Typography>
             )}
             <FormControlLabel

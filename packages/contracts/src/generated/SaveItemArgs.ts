@@ -6,4 +6,9 @@ export type SaveItemArgs = { item: ItemInput,
 /**
  * With it, the schedule also changes from a date on (plan::save_item_from).
  */
-change?: ScheduleChange, };
+change?: ScheduleChange, 
+/**
+ * An edit to an item already there, refused once it's been deleted
+ * (on another device); without it, the item is added.
+ */
+edit?: boolean, };
