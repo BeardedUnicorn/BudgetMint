@@ -68,6 +68,8 @@ pub fn run() {
         // Updates from GitHub's latest release (plugins.updater in
         // tauri.conf.json); the webview asks before installing one
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // The save dialog, for the files the webview makes (platform/os.rs)
+        .plugin(tauri_plugin_dialog::init())
         // Open at login, as a launch agent on macOS (the webview turns it on)
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

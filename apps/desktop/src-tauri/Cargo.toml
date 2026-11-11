@@ -45,6 +45,8 @@ tauri-plugin-updater = "2.14"
 tauri-plugin-autostart = "2.7"
 # The window's size and position, kept between launches
 tauri-plugin-window-state = "2.5"
+# The save dialog (Settings → Your data's backup and spreadsheet)
+tauri-plugin-dialog = "2.8"
 
 # Only a phone or tablet sets notifications for the system to show later: the
 # time one fires at, as the notification plugin takes it (platform/os.rs)

@@ -26,7 +26,7 @@ describe('the Tauri shell', () => {
 
   it('on a desktop: notifications while it runs, the tray, and Google in the browser with a client', async () => {
     const shell = createTauriShell({ runtime: 'desktop' }, { clientId: 'id', clientSecret: 'secret' });
-    const { notifications, tray, autostart, googleSignIn, systemBars, splashScreen } = shell.platform;
+    const { notifications, tray, autostart, googleSignIn, systemBars, splashScreen, saveFile } = shell.platform;
     expect(notifications.firesWhenClosed).toBe(false);
     await notifications.request();
     await notifications.schedule([{ id: 1, atMs: 2, title: 'Rent', body: '$1' }]);
@@ -36,6 +36,8 @@ describe('the Tauri shell', () => {
     await autostart!.setEnabled(true);
     mockInvoke.mockResolvedValueOnce({ idToken: 'token' });
     expect(await googleSignIn!()).toBe('token');
+    mockInvoke.mockResolvedValueOnce(true);
+    expect(await saveFile!('budget.json', '{}', 'application/json')).toBe(true);
     expect(sent()).toEqual([
       { command: 'request_notifications', args: {} },
       { command: 'schedule_reminders', args: { reminders: [{ id: 1, atMs: 2, title: 'Rent', body: '$1' }] } },
@@ -44,6 +46,7 @@ describe('the Tauri shell', () => {
       { command: 'get_autostart', args: {} },
       { command: 'set_autostart', args: { enabled: true } },
       { command: 'google_sign_in', args: { clientId: 'id', clientSecret: 'secret' } },
+      { command: 'save_file', args: { name: 'budget.json', text: '{}' } },
     ]);
     expect(systemBars).toBeUndefined();
     expect(splashScreen).toBeUndefined();
@@ -59,6 +62,8 @@ describe('the Tauri shell', () => {
     expect(platform.googleSignIn).toBeUndefined();
     expect(platform.systemBars).toBeUndefined();
     expect(platform.splashScreen).toBeUndefined();
+    // No save dialog: the client says to save the files elsewhere
+    expect(platform.saveFile).toBeUndefined();
   });
 
   it("on Android: the status bar, the launch screen and Google's account picker", async () => {

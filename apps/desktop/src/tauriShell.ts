@@ -5,7 +5,8 @@
  * written in the webview on every platform.
  *
  * - A desktop has the tray, and shows reminders while the app runs (closing
- *   the window keeps it in the tray); it can open at login, in the tray.
+ *   the window keeps it in the tray); it can open at login, in the tray,
+ *   and saves the files the client makes through the system's dialog.
  * - A phone or tablet (runtime 'mobile') has no tray; the system keeps its
  *   reminders as alarms, which come with the app closed. On Android it also
  *   has the status bar, the launch screen and Google's account picker, which
@@ -126,6 +127,8 @@ export function createTauriShell(capabilities: Capabilities, google?: GoogleDesk
               isEnabled: () => command<boolean>('get_autostart'),
               setEnabled: enabled => command<void>('set_autostart', { enabled }),
             },
+            // The system's save dialog (Settings → Your data); false when it's cancelled
+            saveFile: (name, text) => command<boolean>('save_file', { name, text }),
           }),
       ...googleSignIn(capabilities.runtime, google),
     },

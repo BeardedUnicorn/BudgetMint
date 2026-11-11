@@ -2,6 +2,7 @@
 //! no data behind it (that's the cloud's, in the webview): every command is
 //! the shell's own.
 
+use crate::files;
 use crate::google_sign_in::{sign_in_with_google, GoogleClient};
 use crate::logs;
 use crate::reminders::{self, Reminder};
@@ -26,6 +27,7 @@ pub const COMMANDS: &[&str] = &[
     "install_update",
     "log",
     "open_logs_folder",
+    "save_file",
 ];
 
 #[derive(Deserialize)]
@@ -47,6 +49,12 @@ struct AutostartArgs {
 #[derive(Deserialize)]
 struct TrayArgs {
     lines: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct SaveArgs {
+    name: String,
+    text: String,
 }
 
 #[derive(Deserialize)]
@@ -106,6 +114,10 @@ pub fn run(state: &AppState, command: &str, value: Value) -> Result<Value, Strin
             platform.open_logs_folder()?;
             Ok(Value::Null)
         }
+        "save_file" => {
+            let SaveArgs { name, text } = args(command, value)?;
+            Ok(json!(platform.save_file(&files::to_save(&name, text)?)?))
+        }
         _ => Err(format!("Unknown command: {}", command)),
     }
 }
@@ -147,7 +159,7 @@ mod tests {
             run(&phone.state, "nope", Value::Null),
             Err("Unknown command: nope".to_string())
         );
-        assert_eq!(COMMANDS.len(), 12);
+        assert_eq!(COMMANDS.len(), 13);
     }
 
     #[test]
@@ -294,6 +306,38 @@ mod tests {
             run(&f.state, "open_logs_folder", json!({})),
             Err("open_logs_folder failed".to_string())
         );
+    }
+
+    #[test]
+    fn saves_a_file_where_the_user_picks() {
+        let f = fixture();
+        let save = |name: &str| json!({ "name": name, "text": "{}" });
+        assert_eq!(
+            run(&f.state, "save_file", save("budgetmint-2026-11-10.json")),
+            Ok(json!(true))
+        );
+        let saved = &f.platform.recorded().saved[0];
+        assert_eq!(
+            (saved.kind.as_str(), saved.contents.as_str()),
+            ("BudgetMint backup", "{}")
+        );
+        // Cancelled: nothing saved, and not an error
+        *f.platform.cancels_saving.lock().unwrap() = true;
+        assert_eq!(run(&f.state, "save_file", save("a.csv")), Ok(json!(false)));
+        assert_eq!(f.platform.recorded().saved.len(), 1);
+        // A name with a folder in it, a failed write, no name at all
+        assert_eq!(
+            run(&f.state, "save_file", save("../a.json")),
+            Err("Can't save a file named \"../a.json\"".to_string())
+        );
+        f.platform.fail("save_file");
+        assert_eq!(
+            run(&f.state, "save_file", save("a.json")),
+            Err("save_file failed".to_string())
+        );
+        assert!(run(&f.state, "save_file", json!({}))
+            .unwrap_err()
+            .starts_with("Invalid arguments for save_file"));
     }
 
     /// The webview's view: an app on the mock runtime, managing `state`.

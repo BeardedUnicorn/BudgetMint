@@ -8,6 +8,7 @@
 mod app;
 pub mod dispatch;
 pub mod events;
+pub mod files;
 pub mod google_sign_in;
 pub mod logs;
 pub mod menu;
