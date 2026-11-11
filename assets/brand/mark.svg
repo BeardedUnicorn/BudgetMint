@@ -1,9 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- BudgetMint's mark: TaskMint's leaf, with a dollar sign for the check -->
+  <!-- BudgetMint's mark: TaskMint's leaf, with a dollar sign for the check.
+       As TaskMint's check, the dollar sits where it has the most room in the
+       leaf (its centre at 258,246). The vein is TaskMint's, traced from its
+       mark.png, and runs behind the dollar. -->
   <path d="M104 410 L44 470" stroke="#18D281" stroke-width="44" stroke-linecap="round"/>
   <path fill="#18D281" d="M96 418 C20 330 40 170 170 92 C270 32 390 40 490 16 C502 130 490 260 420 340 C330 444 190 470 96 418 Z"/>
-  <path fill="#0B9E5A" d="M296 196 C330 140 380 100 444 72 C396 116 344 156 296 196 Z"/>
-  <g fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" transform="translate(232 292) scale(1.12) translate(-515 -384)">
+  <path fill="#0B9E5A" d="M253 200 C258 168 325 110 435 75 C375 118 315 160 253 200 Z"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="44" stroke-linecap="round" transform="translate(258 246) translate(-515 -384)">
     <path d="M590 334 C568 316 540 310 512 312 C474 314 448 330 450 352 C452 372 478 380 516 386 C556 392 590 400 590 424 C590 446 556 458 518 456 C482 455 456 446 440 430"/>
     <path d="M518 290 V478"/>
   </g>
