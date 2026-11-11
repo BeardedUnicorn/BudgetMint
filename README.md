@@ -219,9 +219,12 @@ Before a public release it needs its own registrations in `taskmint-f9a05`
    certificates. Then put their `appId`s in `apps/web/src/firebaseConfig.ts`
    and `apps/desktop/src/firebaseConfig.ts`.
 2. **Auth:** add `budgetmint.web.app` and `budgetmint.firebaseapp.com` to the
-   authorized domains, and create a "Desktop app" OAuth client for the
-   desktop's Google sign-in (`.env` and the repository secrets
-   `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET`).
+   authorized domains. The desktop's Google sign-in uses BudgetMint's own
+   "Desktop app" OAuth client, "BudgetMint desktop" (Google Cloud console →
+   APIs & Services → Credentials), from `.env` locally and the repository
+   secrets `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET` in a release. A build
+   without them hides Continue with Google (a development build says so in
+   the console), and a release tag's build stops.
 3. **Deploys:** a Workload Identity Federation provider that trusts only this
    repository's `v*` tags, and a service account with Firebase Hosting Admin
    only (it must not be able to deploy rules). Set the repository variables

@@ -23,16 +23,24 @@ export const DESKTOP_FIREBASE: CloudConfig['firebase'] = {
 };
 
 /**
- * The "Desktop app" OAuth client for Google sign-in (Google Cloud console →
- * Credentials), from the build's environment: repo secrets in CI, the
- * repo-root .env locally. Without one, the desktop signs in by email only.
+ * BudgetMint's "Desktop app" OAuth client for Google sign-in (Google Cloud
+ * console → Credentials, "BudgetMint desktop"), from the build's
+ * environment: repo secrets in CI, the repo-root .env locally. Without one,
+ * the desktop signs in by email only, and a development build says so.
  */
 export function googleDesktopClient(env: {
+  DEV?: boolean;
   VITE_GOOGLE_DESKTOP_CLIENT_ID?: string;
   VITE_GOOGLE_DESKTOP_CLIENT_SECRET?: string;
 }): GoogleDesktopClient | undefined {
   const { VITE_GOOGLE_DESKTOP_CLIENT_ID: clientId, VITE_GOOGLE_DESKTOP_CLIENT_SECRET: clientSecret } = env;
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
+  if (clientId && clientSecret) return { clientId, clientSecret };
+  if (env.DEV) {
+    console.warn(
+      'Google sign-in is off in this build: set VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET in the repo-root .env (see .env.example).'
+    );
+  }
+  return undefined;
 }
 
 /**

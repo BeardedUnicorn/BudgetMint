@@ -78,6 +78,20 @@ jobs:
             exit 1
           fi
 
+      # Without its OAuth client the desktop hides Google sign-in, so a
+      # release would quietly lose it
+      - name: The desktop can sign in with Google
+        if: github.ref_type == 'tag' && matrix.desktop
+        shell: bash
+        env:
+          VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID }}
+          VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
+        run: |
+          if [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_ID" ] || [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_SECRET" ]; then
+            echo "::error::The VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET secrets aren't both set, so the desktop would have no Google sign-in (the README's \"Firebase setup still to do\")"
+            exit 1
+          fi
+
       # Windows checks out LF line ends too, so every build has the same files
       - run: git config --global core.autocrlf false
 
