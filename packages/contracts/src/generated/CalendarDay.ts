@@ -10,6 +10,14 @@ export type CalendarDay = { date: string,
  */
 occurrences: Array<OccurrenceView>, 
 /**
+ * What the day's bills come to: paid ones at what was paid, skipped ones not at all.
+ */
+billsCents: number, 
+/**
+ * What its income comes to, likewise.
+ */
+incomeCents: number, 
+/**
  * TaskMint's money reaching the bank (recorded or projected).
  */
 withdrawalCents: number, withdrawalUncertainCents: number, 

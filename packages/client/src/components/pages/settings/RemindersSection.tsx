@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography } from '@mui/material';
+import { Alert, Button, FormControlLabel, MenuItem, Stack, Switch, TextField, Typography } from '@mui/material';
 import { NotificationsActive as RemindersIcon } from '@mui/icons-material';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
@@ -14,7 +14,7 @@ import { REMINDERS_ON_KEY } from '../../../hooks/useReminders';
 import { getShell } from '../../../shell';
 import type { Platform } from '../../../shell/types';
 import { formattingLocale } from '../../../utils/locale';
-import { LEAD_CHOICES, leadLabel } from '../../budget/ItemDialog';
+import { leadChoices, leadLabel } from '../../budget/ItemDialog';
 import { SettingsSection } from './SettingsSection';
 
 const hourName = (hour: number) =>
@@ -65,10 +65,18 @@ export function RemindersSection() {
   const [settings, save] = useSettings();
   const [on, setOn] = useLocalStorage(REMINDERS_ON_KEY, true);
   const [denied, setDenied] = useState(false);
-  const { notifications, autostart } = getShell().platform;
+  const { notifications, autostart, tray } = getShell().platform;
   const reminders = settings.reminders;
   const setReminders = (patch: Partial<typeof reminders>) =>
     save(current => ({ ...current, reminders: { ...current.reminders, ...patch } }));
+
+  /** A test was sent (or couldn't be): what to do if it didn't show. */
+  const [tested, setTested] = useState<'sent' | 'failed' | null>(null);
+  const test = () =>
+    notifications
+      .show('BudgetMint reminders', 'This is how a reminder looks.')
+      .then(() => setTested('sent'))
+      .catch(() => setTested('failed'));
 
   const toggle = async (next: boolean) => {
     setDenied(false);
@@ -94,8 +102,23 @@ export function RemindersSection() {
         <Typography variant="body2" color="text.secondary">
           {notifications.firesWhenClosed
             ? 'They come even while BudgetMint is closed.'
-            : 'They come while BudgetMint is open (or in the tray).'}
+            : tray
+              ? 'They come while BudgetMint is open (or in the tray).'
+              : 'They come while BudgetMint is open in a tab.'}
         </Typography>
+        {/* The app can't always tell that the system is hiding its notifications: a test shows it */}
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+          <Button variant="outlined" size="small" onClick={() => void test()}>
+            Send a test reminder
+          </Button>
+          {tested && (
+            <Typography variant="body2" color="text.secondary" role="status">
+              {tested === 'sent'
+                ? 'Sent. If nothing appeared, allow BudgetMint’s notifications in the system’s settings.'
+                : 'It couldn’t be sent. Allow BudgetMint’s notifications in the system’s settings.'}
+            </Typography>
+          )}
+        </Stack>
         {autostart && <OpenAtLogin autostart={autostart} />}
         <Stack direction="row" spacing={2}>
           <TextField
@@ -118,7 +141,7 @@ export function RemindersSection() {
             onChange={event => setReminders({ leadDays: Number(event.target.value) })}
             sx={{ minWidth: 200 }}
           >
-            {LEAD_CHOICES.map(days => (
+            {leadChoices(reminders.leadDays).map(days => (
               <MenuItem key={days} value={days}>
                 {leadLabel(days)}
               </MenuItem>

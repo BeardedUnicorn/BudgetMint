@@ -3,8 +3,8 @@
  * still to come; this time's amount, its due date, and a note.
  */
 
-import { useState } from 'react';
-import { Alert, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from '@mui/material';
+import { useRef, useState } from 'react';
+import { Alert, Checkbox, FormControlLabel, Radio, RadioGroup, Stack, TextField, Typography } from '@mui/material';
 import type { OccStatus, OccurrenceView } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
@@ -35,15 +35,31 @@ export function OccurrenceDialog({
     centsToInput(status.state === 'done' ? status.amountCents : occurrence.expectedCents)
   );
   const [expected, setExpected] = useState(centsToInput(occurrence.expectedCents));
+  /** Back to the schedule's amount: this time's own amount is dropped. */
+  const [usual, setUsual] = useState(false);
   const [due, setDue] = useState(occurrence.due);
   const [note, setNote] = useState(occurrence.note ?? '');
   const [problem, setProblem] = useState<string | null>(null);
+  /** The amount left wrong: said under it, and focus goes to it. */
+  const [wrong, setWrong] = useState<'paid' | 'expected' | null>(null);
+  const paidInput = useRef<HTMLInputElement>(null);
+  const expectedInput = useRef<HTMLInputElement>(null);
 
   const submit = () => {
     const paidCents = parseDollars(paid);
-    const expectedCents = parseDollars(expected);
-    if (expectedCents === null || (state === 'done' && paidCents === null)) {
-      setProblem('Enter the amount');
+    // Its field shows only while it's still to come: otherwise it stays as it was
+    const expectedCents = state === 'open' ? parseDollars(expected) : occurrence.expectedCents;
+    // Only the amount on show can be wrong: what was paid, or (still to come) what's expected this time
+    const missing =
+      state === 'done' && paidCents === null
+        ? 'paid'
+        : state === 'open' && !usual && expectedCents === null
+          ? 'expected'
+          : null;
+    setWrong(missing);
+    if (missing) {
+      setProblem(null);
+      (missing === 'paid' ? paidInput : expectedInput).current?.focus();
       return;
     }
     const next: OccStatus = state === 'done' ? { state, on: paidOn, amountCents: paidCents! } : { state };
@@ -55,8 +71,12 @@ export function OccurrenceDialog({
             itemId: occurrence.itemId,
             date: occurrence.scheduled,
             status: next,
-            // Only what differs from the schedule is kept
-            amountCents: expectedCents === occurrence.expectedCents && !occurrence.changed ? null : expectedCents,
+            // Only an amount of its own is kept: left as it was, it still follows the schedule
+            amountCents: usual
+              ? null
+              : expectedCents === occurrence.expectedCents
+                ? occurrence.amountCents
+                : expectedCents,
             movedTo: due === occurrence.scheduled ? null : due,
             note: note || null,
           },
@@ -93,7 +113,15 @@ export function OccurrenceDialog({
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
-            <CurrencyInput label="Amount" value={paid} onChange={setPaid} error={false} sx={{ flex: 1 }} />
+            <CurrencyInput
+              label="Amount"
+              value={paid}
+              onChange={setPaid}
+              error={wrong === 'paid'}
+              helperText={wrong === 'paid' ? 'Enter the amount' : undefined}
+              inputRef={paidInput}
+              sx={{ flex: 1 }}
+            />
           </Stack>
         )}
         {state === 'open' && (
@@ -106,8 +134,23 @@ export function OccurrenceDialog({
               sx={{ flex: 1 }}
               slotProps={{ inputLabel: { shrink: true } }}
             />
-            <CurrencyInput label="This time" value={expected} onChange={setExpected} error={false} sx={{ flex: 1 }} />
+            <CurrencyInput
+              label="This time"
+              value={usual ? '' : expected}
+              onChange={setExpected}
+              disabled={usual}
+              error={wrong === 'expected'}
+              helperText={wrong === 'expected' ? 'Enter the amount' : undefined}
+              inputRef={expectedInput}
+              sx={{ flex: 1 }}
+            />
           </Stack>
+        )}
+        {state === 'open' && occurrence.amountCents !== null && (
+          <FormControlLabel
+            control={<Checkbox checked={usual} onChange={event => setUsual(event.target.checked)} />}
+            label="Back to the usual amount"
+          />
         )}
         <TextField
           label="Note (optional)"

@@ -37,6 +37,10 @@ dueThisWeek: Totals,
  */
 incomeAheadCents: number, nextWithdrawal: ProjectedWithdrawal | null, 
 /**
+ * The next bill still to pay, within the upcoming days (the tray names it).
+ */
+nextBill: OccurrenceView | null, 
+/**
  * Bills past due, still owed.
  */
 overdue: Array<OccurrenceView>, 

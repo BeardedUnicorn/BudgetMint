@@ -5,9 +5,10 @@
 use crate::model::{Item, Repeat, Segment};
 use chrono::{Datelike, Duration, Months, NaiveDate};
 
-/// No schedule yields more dates than this in one window (a daily item over
-/// a year and a bit).
-const MAX_DATES: usize = 1000;
+/// No schedule yields more dates than this in one window: a daily item over
+/// ten years and a bit, far past any window the views or the cash flow ask
+/// for (even from a balance left for years).
+const MAX_DATES: usize = 4000;
 
 /// Days in `month` of `year`.
 pub fn days_in_month(year: i32, month: u32) -> u32 {
@@ -298,12 +299,12 @@ mod tests {
     fn stops_at_a_sane_number_of_dates() {
         let daily = seg(d(2020, 1, 1), Repeat::Days { n: 1 });
         assert_eq!(
-            segment_dates(&daily, None, d(2020, 1, 1), d(2030, 1, 1)).len(),
+            segment_dates(&daily, None, d(2020, 1, 1), d(2040, 1, 1)).len(),
             MAX_DATES
         );
         let monthly = seg(d(1900, 1, 1), Repeat::Months { n: 1, day: 1 });
         assert_eq!(
-            segment_dates(&monthly, None, d(1900, 1, 1), d(2100, 1, 1)).len(),
+            segment_dates(&monthly, None, d(1900, 1, 1), d(2300, 1, 1)).len(),
             MAX_DATES
         );
         let yearly = seg(d(-200_000, 1, 1), Repeat::Years { n: 1 });

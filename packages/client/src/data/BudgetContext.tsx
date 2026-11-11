@@ -90,9 +90,15 @@ export function useBudgetChange() {
       const failed = (error: Error) => showError(error.message, { title: 'Not saved' });
       session.write(planned.writes).catch(failed);
       if (done) {
-        showSuccess(done, {
-          actions: [{ label: 'Undo', onClick: () => session.write(planned.undo).catch(failed) }],
-        });
+        // Core gives the undo only while the change still stands: a later one isn't taken back with it
+        const undo = () => {
+          try {
+            session.write(core.call('undo', { planned })).catch(failed);
+          } catch (error) {
+            showError((error as Error).message, { title: 'Not undone' });
+          }
+        };
+        showSuccess(done, { actions: [{ label: 'Undo', onClick: undo }] });
       }
       return true;
     },

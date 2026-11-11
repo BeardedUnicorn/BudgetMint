@@ -57,7 +57,7 @@ export async function startClient(container: HTMLElement, options: StartOptions)
   try {
     loaded = await Promise.all([(options.loadStore ?? loadFirebase(cloud))(), loadCore(options.wasm ?? wasmUrl)]);
   } catch (error) {
-    root.render(<StartupError message={cloudErrorMessage(error)} />);
+    root.render(<StartupError message={cloudErrorMessage(error)} extensions={options.extensions} />);
     shell.platform.splashScreen?.hide();
     return null;
   }

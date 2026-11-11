@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { item, monthly, override, startBudget } from '../../../../__tests__/setup/budget';
+import { item, monthly, override, SETTLED, startBudget } from '../../../../__tests__/setup/budget';
 
 const docOf = (store: { docs: Map<string, { json: string }> }, id: string) =>
   JSON.parse(store.docs.get(`item~${id}`)!.json);
@@ -43,6 +43,8 @@ describe('bills and income', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add income' });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText('Enter the amount')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Amount')).toBeInvalid();
+    expect(within(dialog).getByLabelText('Amount')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Amount'), '800');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText('Give it a name')).toBeInTheDocument();
@@ -157,6 +159,69 @@ describe('bills and income', () => {
         { from: '2026-12-07', until: null, repeat: { every: 'days', n: 1 }, amountCents: 3_000 },
       ])
     );
+  });
+
+  it('saves a rename and a new amount together, or neither, and undoes both', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    await user.type(within(dialog).getByLabelText('Name'), ' (flat)');
+    const amount = within(dialog).getByLabelText('Amount');
+    await user.clear(amount);
+    await user.type(amount, '1300');
+    // Without the date the change starts on, nothing is saved: not the name either
+    fireEvent.change(within(dialog).getByLabelText('The change starts on'), { target: { value: '' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Choose the date the change starts on')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('The change starts on')).toBeInvalid();
+    expect(docOf(store, 'rent').name).toBe('Rent');
+
+    fireEvent.change(within(dialog).getByLabelText('The change starts on'), { target: { value: '2027-01-01' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Rent (flat) saved')).toBeInTheDocument();
+    await waitFor(() => expect(docOf(store, 'rent').schedule).toHaveLength(2));
+    expect(docOf(store, 'rent').name).toBe('Rent (flat)');
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(docOf(store, 'rent').name).toBe('Rent'));
+    expect(docOf(store, 'rent').schedule).toHaveLength(1);
+  });
+
+  it('keeps a reminder’s days set elsewhere, unless another is chosen here', async () => {
+    const rent = monthly('rent', 'Rent', 1, 120_000, { reminder: { leadDays: [4, 10] } });
+    const { user, store } = await startBudget({ items: [rent], settings: { ...SETTLED, reminders: { leadDays: 6 } } });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    let dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    // Not one of the usual choices, and still shown
+    expect(within(dialog).getByLabelText('When')).toHaveTextContent('4 days before');
+    await user.type(within(dialog).getByLabelText('Name'), '!');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').name).toBe('Rent!'));
+    expect(docOf(store, 'rent').reminder).toEqual({ leadDays: [4, 10] });
+
+    await user.click(screen.getByRole('button', { name: 'Edit Rent!' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Rent!' });
+    await user.click(within(dialog).getByLabelText('When'));
+    await user.click(screen.getByRole('option', { name: '1 day before' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').reminder).toEqual({ leadDays: [1] }));
+    // The settings' own choice shows too
+    await open(user, 'Settings');
+    expect(screen.getByLabelText('New bills remind')).toHaveTextContent('6 days before');
+  });
+
+  it('writes nothing when an edit changes nothing, and closes on Escape', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Edit Rent' })).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText('Rent saved')).not.toBeInTheDocument();
+    expect(store.writes).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('says the weekly change repeats on its day of the week', async () => {

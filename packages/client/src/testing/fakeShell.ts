@@ -17,6 +17,7 @@ export function createFakeShell(
     notifications: {
       request: vi.fn(async () => true),
       schedule: vi.fn(async () => undefined),
+      show: vi.fn(async () => undefined),
       firesWhenClosed: options.firesWhenClosed ?? false,
     },
     googleSignIn: vi.fn(async () => 'google-id-token'),

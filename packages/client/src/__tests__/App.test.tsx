@@ -6,6 +6,8 @@ import type { AppExtensions } from '../shell/types';
 import { BudgetSession } from '../cloud/session';
 import { setShell } from '../shell';
 import { cal, createFakeShell, createFakeStore, TEST_NOW, testCore } from '../testing';
+import { REMINDERS_ON_KEY } from '../hooks/useReminders';
+import { writeLocal } from '../utils/localStore';
 import { monthly, startBudget } from './setup/budget';
 import { setPhoneViewport } from './setup/viewport';
 
@@ -63,6 +65,8 @@ describe('the app', () => {
     expect(screen.getByText(/Not connected yet/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(screen.getByText('Enter your balance, or start without one')).toBeInTheDocument();
+    expect(screen.getByLabelText('Balance')).toBeInvalid();
+    expect(screen.getByLabelText('Balance')).toHaveFocus();
     await user.type(screen.getByLabelText('Balance'), '2,500');
     expect(screen.getByText('Starting from $2,500.00')).toBeInTheDocument();
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
@@ -76,6 +80,25 @@ describe('the app', () => {
       balance: { cents: 250_000, asOf: '2026-11-10' },
       taskmint: { arrivalDelayHours: 48 },
     });
+  });
+
+  it('lets the wrong account sign out of onboarding, and says when a newer BudgetMint has the settings', async () => {
+    const { user, store } = await startBudget({ settings: null });
+    expect(screen.getByText(/Signed in as cal@example.com/)).toBeInTheDocument();
+    // The settings exist, written by a newer BudgetMint: said, and not started over
+    store.putDoc('settings~account', '{}', 9);
+    expect(await screen.findByText(/Some of your data is from a newer BudgetMint/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start without a balance' }));
+    expect(await screen.findByText(/A newer BudgetMint changed this/)).toBeInTheDocument();
+    expect(store.docs.get('settings~account')).toMatchObject({ json: '{}', schema: 9 });
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
+  });
+
+  it('says “you” in onboarding for an account without an email', async () => {
+    const { store } = await startBudget({ settings: null });
+    store.setUser({ uid: 'cal', email: null, providers: ['google.com'] });
+    expect(await screen.findByText(/Signed in as you\./)).toBeInTheDocument();
   });
 
   it('onboards without a balance, saying when the date or amount is refused', async () => {
@@ -126,6 +149,87 @@ describe('the app', () => {
     ]);
   });
 
+  it('clears the reminders and the tray when the account signs out', async () => {
+    const { session, shell } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 50_000, { reminder: { leadDays: [1] } })],
+    });
+    await waitFor(() => expect(shell.platform.notifications.schedule).toHaveBeenLastCalledWith([expect.anything()]));
+    await session.signOut();
+    expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
+    // Nothing of the account's is left to show: no reminder later, no balance in the menu bar
+    expect(shell.platform.notifications.schedule).toHaveBeenLastCalledWith([]);
+    expect(shell.platform.tray.setStatus).toHaveBeenLastCalledWith([]);
+  });
+
+  it('only warns when the shell can’t clear them', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { session, shell } = await startBudget();
+    await waitFor(() => expect(shell.platform.tray.setStatus).toHaveBeenCalled());
+    vi.mocked(shell.platform.notifications.schedule).mockRejectedValue(new Error('no scheduler'));
+    vi.mocked(shell.platform.tray.setStatus).mockRejectedValue(new Error('no tray'));
+    await session.signOut();
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to clear the tray:', expect.any(Error)));
+    expect(warn).toHaveBeenCalledWith('Failed to clear reminders:', expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('offers to allow notifications in a browser that hasn’t, and names no shortcuts or tray there', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const shell = createFakeShell({ runtime: 'web', without: ['tray', 'autostart'] });
+    const granted = vi.fn(async () => false);
+    shell.platform.notifications.granted = granted;
+    const { user } = await startBudget({ shell });
+    expect(
+      await screen.findByText('Reminders are on, but this browser hasn’t allowed BudgetMint’s notifications.')
+    ).toBeInTheDocument();
+    expect(shell.platform.notifications.request).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Allow' }));
+    expect(shell.platform.notifications.request).toHaveBeenCalledTimes(1);
+    // The browser keeps ⌘1–⌘6 for its tabs: no hint of them
+    await user.hover(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('They come while BudgetMint is open in a tab.')).toBeInTheDocument();
+    expect(screen.queryByText(/⌘|Ctrl\+/)).not.toBeInTheDocument();
+    // Collapsed, the page's name still shows on hover
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+    await user.hover(screen.getByRole('button', { name: 'Bills' }));
+    expect(await screen.findByRole('tooltip', { name: 'Bills' })).toBeInTheDocument();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('asks nothing when notifications are allowed, or reminders are off, and only warns when it can’t tell', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const shell = createFakeShell({ runtime: 'web' });
+    const granted = vi.fn(async () => true);
+    shell.platform.notifications.granted = granted;
+    const first = await startBudget({ shell });
+    await waitFor(() => expect(granted).toHaveBeenCalled());
+    expect(screen.queryByText(/hasn’t allowed/)).not.toBeInTheDocument();
+    first.unmount();
+
+    granted.mockRejectedValueOnce(new Error('no answer'));
+    const second = await startBudget({ shell });
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to ask about notifications:', expect.any(Error)));
+    second.unmount();
+
+    granted.mockClear();
+    writeLocal(REMINDERS_ON_KEY, false, true);
+    await startBudget({ shell });
+    expect(granted).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('has the phone’s system ask at launch, where reminders come while the app is closed', async () => {
+    const shell = createFakeShell({ runtime: 'mobile', firesWhenClosed: true });
+    await startBudget({ shell });
+    await waitFor(() => expect(shell.platform.notifications.request).toHaveBeenCalledTimes(1));
+    // The desktop needs no asking
+    const desk = createFakeShell();
+    await startBudget({ shell: desk });
+    expect(desk.platform.notifications.request).not.toHaveBeenCalled();
+  });
+
   it('opens the sidebar from the top bar on a phone', async () => {
     setPhoneViewport();
     const { user } = await startBudget();
@@ -139,8 +243,10 @@ describe('the app', () => {
   it('says when it can’t start, and offers to try again', async () => {
     const reload = vi.fn();
     vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload });
-    render(<StartupError message="Firebase didn’t load" />);
+    // The shell's background (the desktop's update check) runs here too
+    render(<StartupError message="Firebase didn’t load" extensions={{ Background: () => <div>update check</div> }} />);
     expect(screen.getByRole('heading', { name: 'BudgetMint can’t start' })).toBeInTheDocument();
+    expect(screen.getByText('update check')).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
     expect(reload).toHaveBeenCalled();
     vi.restoreAllMocks();

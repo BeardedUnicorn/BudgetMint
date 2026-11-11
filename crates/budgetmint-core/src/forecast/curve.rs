@@ -139,6 +139,12 @@ fn earned(cents_per_hour: i64, ms: i64) -> i64 {
     ((cents + i128::from(HOUR_MS) / 2) / i128::from(HOUR_MS)) as i64
 }
 
+/// Now, in the zone of the device that built the forecast: its calendar
+/// days (release days, `recentDays`) are that zone's, wherever this device is.
+fn in_their_zone(forecast: &PayoutForecast, ctx: &Ctx) -> Ctx {
+    Ctx::new(ctx.now_ms(), &forecast.zone)
+}
+
 /// The curve from now, up to `until_ms` for assumed earnings.
 pub fn live_curve(
     forecast: &PayoutForecast,
@@ -147,6 +153,7 @@ pub fn live_curve(
     until_ms: i64,
 ) -> Curve {
     let now = ctx.now_ms();
+    let theirs = in_their_zone(forecast, ctx);
     let mut steps: Vec<CurveStep> = forecast
         .steps
         .iter()
@@ -160,7 +167,7 @@ pub fn live_curve(
             if let Some(open) = step.open {
                 amount.estimated_cents += earned(open.cents_per_hour, now - open.since_ms);
                 // Released the release days after it stops: after now, at the earliest
-                at_ms = at_ms.max(ctx.add_days(now, forecast.funds_release_days));
+                at_ms = at_ms.max(theirs.add_days(now, forecast.funds_release_days));
             }
             CurveStep {
                 at_ms,
@@ -179,7 +186,8 @@ pub fn assumed_per_day(forecast: &PayoutForecast, ctx: &Ctx, plan: &TaskMintPlan
         FutureEarnings::Weekly { cents } => (cents, 7),
         FutureEarnings::Trailing { weeks } => {
             let days = 7 * i64::from(weeks.max(1));
-            let today = ctx.today();
+            // Their days are named in their zone: today there isn't over yet
+            let today = in_their_zone(forecast, ctx).today();
             let first = today - Duration::days(days);
             let total = forecast
                 .recent_days
@@ -409,5 +417,45 @@ mod tests {
         assert_eq!(earned(1, HOUR_MS / 2), 1);
         assert_eq!(earned(1, HOUR_MS / 2 - 1), 0);
         assert_eq!(earned(6000, -5), 0);
+    }
+
+    #[test]
+    fn counts_days_in_taskmints_zone_not_the_devices() {
+        // The forecast was built in Chicago; this device is on UTC
+        let mut f = forecast();
+        f.zone = "America/Chicago".into();
+        // Oct 28, 2026, noon UTC (7 am in Chicago): the clocks go back there on Nov 1
+        let ctx = Ctx::new(1_793_188_800_000, "UTC");
+        f.steps = vec![Step {
+            at_ms: 0,
+            actual_cents: 0,
+            estimated_cents: 0,
+            past_due_cents: 0,
+            open: Some(Open {
+                since_ms: ctx.now_ms(),
+                cents_per_hour: 0,
+            }),
+        }];
+        let plan = |future| TaskMintPlan {
+            future,
+            ..TaskMintPlan::default()
+        };
+        // Released seven calendar days on, at 7 am in Chicago: an hour later by UTC
+        let off = plan(FutureEarnings::Off);
+        let curve = live_curve(&f, &ctx, &off, ctx.now_ms());
+        assert_eq!(curve.steps[0].at_ms, 1_793_797_200_000);
+
+        // Nov 10, 3 am UTC is still the 9th in Chicago: the 9th is today there, not yet a full day
+        let ctx = Ctx::new(1_794_279_600_000, "UTC");
+        let day = |day: &str, cents: i64| EarnedDay {
+            day: day.into(),
+            actual_cents: cents,
+            estimated_cents: 0,
+        };
+        f.recent_days = vec![day("2026-11-02", 700), day("2026-11-09", 1400)];
+        assert_eq!(
+            assumed_per_day(&f, &ctx, &plan(FutureEarnings::Trailing { weeks: 1 })),
+            100
+        );
     }
 }

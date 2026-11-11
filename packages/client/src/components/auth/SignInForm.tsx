@@ -5,7 +5,7 @@
  * data is the cloud's, and TaskMint's withdrawals come with the same one.
  */
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Stack, TextField, Typography } from '@mui/material';
 import { Google as GoogleIcon } from '@mui/icons-material';
 import { cloudErrorMessage } from '../../cloud/errors';
@@ -39,16 +39,33 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  /** The Google sign-in being waited for (it's finished in the browser); null when none is. */
+  const [googleAttempt, setGoogleAttempt] = useState<number | null>(null);
+  const attempts = useRef(0);
+
   const google = async () => {
+    const attempt = ++attempts.current;
     setBusy(true);
+    setGoogleAttempt(attempt);
     setProblem(null);
+    let problem: string | null = null;
     try {
       await engine.signInWithGoogle();
     } catch (error) {
-      setProblem(cloudErrorMessage(error));
-    } finally {
-      setBusy(false);
+      problem = cloudErrorMessage(error);
     }
+    // Given up on meanwhile: what became of it is no longer of interest
+    if (attempts.current !== attempt) return;
+    setProblem(problem);
+    setGoogleAttempt(null);
+    setBusy(false);
+  };
+
+  /** Gives up on the sign-in left in the browser (it may never come back), so another way can be tried. */
+  const cancelGoogle = () => {
+    attempts.current += 1;
+    setGoogleAttempt(null);
+    setBusy(false);
   };
 
   const switchTo = (next: FormMode) => {
@@ -133,6 +150,16 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
             <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={() => void google()}>
               Continue with Google
             </Button>
+            {googleAttempt !== null && (
+              <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary" role="status">
+                  Finish signing in in your browser.
+                </Typography>
+                <Button size="small" onClick={cancelGoogle}>
+                  Cancel
+                </Button>
+              </Stack>
+            )}
           </Box>
         )}
       </Stack>

@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/components/ui/display/StatsCard.tsx @ 1623bee: keep the two in step.
+// Adapted from TaskMint packages/client/src/components/ui/display/StatsCard.tsx @ 1623bee: a long figure wraps inside the card.
 import { Card, CardContent, Typography, Box } from '@mui/material';
 import { StatsCardProps } from '../../../types/ui';
 import { PHONE } from '../../../theme/media';
@@ -13,7 +13,8 @@ export function StatsCard({ title, value, subtitle, icon, color }: StatsCardProp
         <Box
           sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2, [PHONE]: { mb: 0 } }}
         >
-          <Box sx={{ flex: 1 }}>
+          {/* minWidth: a long figure wraps within the card (two to a row on a phone) instead of spilling out */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
               variant="h4"
               component="div"
@@ -22,6 +23,7 @@ export function StatsCard({ title, value, subtitle, icon, color }: StatsCardProp
                 fontWeight: 700,
                 mb: 0.5,
                 fontFamily: '"Roboto Mono", monospace',
+                overflowWrap: 'anywhere',
                 [PHONE]: { fontSize: '1.25rem' },
               }}
             >

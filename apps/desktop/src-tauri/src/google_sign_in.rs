@@ -43,10 +43,18 @@ pub const GOOGLE: Endpoints<'static> = Endpoints {
     listen: "127.0.0.1:0",
 };
 
-/// What the browser shows once it's back.
-const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>BudgetMint</title>\
-<body style=\"font:16px system-ui;margin:4em;text-align:center\">\
-<p>You're signed in. You can close this tab and go back to BudgetMint.</p>";
+/// What the browser shows once it's back: `message`, on a plain page. (The
+/// app finishes signing in after it, so the page promises nothing more.)
+fn done_page(message: &str) -> String {
+    format!(
+        "<!doctype html><meta charset=utf-8><title>BudgetMint</title>\
+         <body style=\"font:16px system-ui;margin:4em;text-align:center\"><p>{}</p>",
+        message
+    )
+}
+
+const BACK_PAGE: &str = "Google's part is done. Close this tab and go back to BudgetMint.";
+const FAILED_PAGE: &str = "Signing in didn't finish. Close this tab and try again from BudgetMint.";
 
 /// A random URL-safe text: 32 bytes of the system's randomness (v4 UUIDs).
 fn random_text() -> String {
@@ -137,7 +145,12 @@ pub fn sign_in(
         };
         match read_redirect(request.url(), &state) {
             Some(outcome) => {
-                let page = tiny_http::Response::from_string(DONE_PAGE).with_header(
+                let message = if outcome.is_ok() {
+                    BACK_PAGE
+                } else {
+                    FAILED_PAGE
+                };
+                let page = tiny_http::Response::from_string(done_page(message)).with_header(
                     "Content-Type: text/html; charset=utf-8"
                         .parse::<tiny_http::Header>()
                         .expect("a valid header"),
@@ -276,7 +289,7 @@ mod tests {
             assert!(come_back(&url, "code=c&state=forged").starts_with("HTTP/1.1 404"));
             let state = param(&url, "state");
             let page = come_back(&url, &format!("code=the-code&state={}", state));
-            assert!(page.contains("You're signed in"));
+            assert!(page.contains("go back to BudgetMint"));
         });
         assert_eq!(result, Ok(serde_json::json!({ "idToken": "eyJ.id.token" })));
         let request = endpoint.join().unwrap();
@@ -299,7 +312,8 @@ mod tests {
                     "" => format!("state={}", state),
                     error => format!("error={}&state={}", error, state),
                 };
-                come_back(&url, &query);
+                // The browser isn't told it worked
+                assert!(come_back(&url, &query).contains("Signing in didn't finish"));
             });
             assert_eq!(result, Err(message.to_string()));
         }

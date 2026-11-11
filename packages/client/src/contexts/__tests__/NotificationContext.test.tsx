@@ -23,11 +23,18 @@ describe('toasts', () => {
   it('show, then go after a while (longer for errors and ones with a button)', () => {
     vi.useFakeTimers();
     const { api } = mount();
+    // The region that announces them is there before any toast is
+    const region = screen.getByRole('region', { name: 'Notifications' });
+    expect(region).toHaveAttribute('aria-live', 'polite');
     act(() => {
       api().showSuccess('Saved', { title: 'Rent' });
       api().showError('Not saved');
     });
-    expect(screen.getByRole('status')).toHaveTextContent('RentSaved');
+    // A plain one is read by that region; an error interrupts as an alert of its own
+    const saved = screen.getByText('Saved').closest('[role="group"]')!;
+    expect(saved).toHaveTextContent('RentSaved');
+    expect(saved).not.toHaveAttribute('aria-live');
+    expect(region).toContainElement(saved as HTMLElement);
     expect(screen.getByRole('alert')).toHaveTextContent('Not saved');
     act(() => vi.advanceTimersByTime(TOAST_MS + 250));
     expect(screen.queryByText('Saved')).not.toBeInTheDocument();
@@ -42,7 +49,7 @@ describe('toasts', () => {
     act(() => {
       api().showInfo('Held');
     });
-    const held = screen.getByText('Held').closest('[role="status"]')!;
+    const held = screen.getByText('Held').closest('[role="group"]')!;
     fireEvent.pointerEnter(held, { pointerType: 'mouse' });
     // A finger doesn't hold it
     fireEvent.pointerEnter(held, { pointerType: 'touch' });

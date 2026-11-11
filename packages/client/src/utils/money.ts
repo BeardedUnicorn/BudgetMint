@@ -23,11 +23,30 @@ export function formatMaybeCents(cents: number, uncertain: boolean): string {
   return `${uncertain ? '~' : ''}${formatCents(cents)}`;
 }
 
-/** What the user typed ("1,200.5", "$40"), as cents; null when it isn't an amount. */
+/**
+ * What the user typed ("1,200.5", "$40", "1234,50"), as cents; null when it
+ * isn't an amount. Amounts are shown in the system's locale, so either mark
+ * may be the decimal one: with both, the later is; a lone comma is, unless
+ * exactly three digits follow it (then it groups thousands, as several
+ * points do). Anything that reads neither way is refused rather than guessed.
+ */
 export function parseDollars(text: string): number | null {
-  const cleaned = text.replace(/[$,\s]/g, '');
-  if (!/^-?\d+(\.\d{0,2})?$/.test(cleaned) && !/^-?\.\d{1,2}$/.test(cleaned)) return null;
-  return Math.round(Number(cleaned) * 100);
+  const typed = text.replace(/[$\s]/g, '');
+  const point = typed.lastIndexOf('.');
+  const comma = typed.lastIndexOf(',');
+  let decimal: '' | '.' | ',' = '';
+  if (point >= 0 && comma >= 0) decimal = point > comma ? '.' : ',';
+  else if (comma >= 0) decimal = /,\d{3}$/.test(typed) ? '' : ',';
+  else if (point >= 0 && typed.indexOf('.') === point) decimal = '.';
+  const at = decimal ? typed.lastIndexOf(decimal) : typed.length;
+  const whole = typed.slice(0, at);
+  const cents = typed.slice(at + 1);
+  // Without a decimal mark only one kind of mark is there, and it groups
+  const group = { '.': ',', ',': '\\.', '': '[.,]' }[decimal];
+  const grouped = new RegExp(`^-?(\\d*|\\d{1,3}(${group}\\d{3})+)$`);
+  if (!grouped.test(whole) || !/^\d{0,2}$/.test(cents) || !/\d/.test(typed)) return null;
+  const dollars = Number(`${whole.replace(/[^\d]/g, '') || 0}.${cents || 0}`);
+  return Math.round(dollars * 100) * (whole.startsWith('-') ? -1 : 1);
 }
 
 /** Cents as the amount field shows them ("1200.50"; "" for none). */

@@ -22,6 +22,8 @@ export interface CurrencyInputProps {
   sx?: SxProps<Theme>;
   onBlur?: () => void;
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void;
+  /** The input itself, to move focus to it (a refused amount). */
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
 /** An open dialog around a form, with Cancel and Save. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OccurrenceView } from '@budgetmint/contracts';
-import { currentSegment, describeRepeat, occurrenceLabel, ordinal } from '../describe';
+import { describeRepeat, occurrenceLabel, ordinal } from '../describe';
 
 function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
   return {
@@ -14,6 +14,7 @@ function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
     expectedCents: 100,
     status: { state: 'open' },
     late: false,
+    amountCents: null,
     changed: false,
     note: null,
     ...changes,
@@ -48,13 +49,6 @@ describe('schedules in words', () => {
     expect(describeRepeat({ every: 'months', n: 3, day: 31 }, from)).toBe('Every 3 months on the last day');
     expect(describeRepeat({ every: 'years', n: 1 }, from)).toBe('Yearly on Nov 6');
     expect(describeRepeat({ every: 'years', n: 2 }, from)).toBe('Every 2 years on Nov 6');
-  });
-
-  it('find the part of a schedule in force', () => {
-    const segment = (from: string) => ({ from, until: null, repeat: { every: 'once' as const }, amountCents: 1 });
-    const schedule = [segment('2026-01-01'), segment('2026-06-01'), segment('2027-01-01')];
-    expect(currentSegment(schedule, '2026-11-10').from).toBe('2026-06-01');
-    expect(currentSegment(schedule, '2025-01-01').from).toBe('2026-01-01');
   });
 
   it('label what became of an occurrence', () => {

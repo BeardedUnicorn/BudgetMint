@@ -12,6 +12,7 @@ import { AppExtensionsContext } from './app/extensions';
 import { AuthLayout } from './components/auth/AuthLayout';
 import { SignInForm } from './components/auth/SignInForm';
 import { BalanceFooter } from './components/layout/BalanceFooter';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { CompactTopBar } from './components/layout/CompactTopBar';
 import { Sidebar } from './components/layout/Sidebar';
 import { StatusNotices } from './components/layout/StatusNotices';
@@ -44,7 +45,8 @@ const PAGES: Record<SidebarView, ComponentType> = {
 };
 
 /** Firebase (or core) couldn't load when the app opened. */
-export function StartupError({ message }: { message: string }) {
+export function StartupError({ message, extensions = {} }: { message: string; extensions?: AppExtensions }) {
+  const { Background } = extensions;
   return (
     <ThemeProvider>
       <CssBaseline enableColorScheme />
@@ -56,6 +58,8 @@ export function StartupError({ message }: { message: string }) {
           </Button>
         </Stack>
       </AuthLayout>
+      {/* A release that can't start is the one that most needs the next: the shell's update check still runs */}
+      {Background && <Background />}
     </ThemeProvider>
   );
 }
@@ -117,7 +121,11 @@ function Ready() {
       <AppShell />
     </NavigationProvider>
   ) : (
-    <Onboarding />
+    <>
+      {/* Offline, or settings a newer BudgetMint wrote: said here too, before anything is started over them */}
+      <StatusNotices />
+      <Onboarding />
+    </>
   );
 }
 
@@ -186,7 +194,10 @@ export function App({ session, core, extensions = {} }: AppProps) {
       <NotificationProvider>
         <BudgetProvider session={session} core={core}>
           <AppExtensionsContext.Provider value={extensions}>
-            <Gate />
+            {/* A page that fails says so, and the shell's work below goes on */}
+            <ErrorBoundary>
+              <Gate />
+            </ErrorBoundary>
             {/* The shell's own work (the desktop's update check) runs whatever
                 the phase, so an update can reach an app that can't sign in */}
             {Background && <Background />}

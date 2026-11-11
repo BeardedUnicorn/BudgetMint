@@ -94,6 +94,28 @@ pub fn occurrences(
     all
 }
 
+/// The paid occurrences due outside [from, to], whenever they were paid:
+/// paid early or late enough, the money moved far from the due date.
+pub fn paid_outside(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> Vec<Occurrence<'_>> {
+    let mut found = Vec::new();
+    for over in snapshot.overrides.values() {
+        let due = over.moved_to.unwrap_or(over.date);
+        let paid = matches!(over.status, OccStatus::Done { .. });
+        let item = snapshot.items.get(&over.item_id);
+        if let Some(item) = item.filter(|_| paid && (due < from || due > to)) {
+            found.push(Occurrence {
+                item,
+                scheduled: over.date,
+                due,
+                expected_cents: over.amount_cents.unwrap_or(0),
+                status: over.status.clone(),
+                over: Some(over),
+            });
+        }
+    }
+    found
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -237,6 +259,36 @@ pub(crate) mod tests {
         assert_eq!(
             occurrences(&snapshot, d(2026, 11, 1), d(2026, 11, 10), true).len(),
             6
+        );
+    }
+
+    #[test]
+    fn finds_the_paid_ones_due_outside_a_window() {
+        let mut snapshot = Snapshot::default();
+        put_item(
+            &mut snapshot,
+            item("tax", ItemKind::Bill, d(2027, 3, 15), Repeat::Once, 500),
+        );
+        let paid = OccStatus::Done {
+            on: d(2026, 11, 10),
+            amount_cents: 450,
+        };
+        put_over(&mut snapshot, over("tax", d(2027, 3, 15), paid.clone()));
+        // Open ones, and ones whose item is gone, are nothing
+        put_over(&mut snapshot, over("tax", d(2027, 6, 15), OccStatus::Open));
+        put_over(&mut snapshot, over("gone", d(2027, 3, 15), paid.clone()));
+
+        let found = paid_outside(&snapshot, d(2026, 11, 1), d(2027, 1, 9));
+        let summary: Vec<_> = found.iter().map(|o| (o.scheduled, &o.status)).collect();
+        assert_eq!(summary, vec![(d(2027, 3, 15), &paid)]);
+        // Due inside the window: the window's own occurrences have it
+        assert_eq!(
+            paid_outside(&snapshot, d(2027, 3, 1), d(2027, 3, 31)).len(),
+            0
+        );
+        assert_eq!(
+            paid_outside(&snapshot, d(2027, 4, 1), d(2027, 4, 30)).len(),
+            1
         );
     }
 }

@@ -39,6 +39,31 @@ describe('the overview', () => {
     expect(await screen.findByText('Your balance goes below $100.00 on Thu, Nov 12, to $50.00.')).toBeInTheDocument();
   });
 
+  it('keeps a bill’s moved date and its own amount when it’s marked paid', async () => {
+    // The 20th's water, moved to the 12th, for $35 this time
+    const { user, store } = await startBudget({
+      items: [monthly('water', 'Water', 20, 3_000)],
+      overrides: [
+        override({
+          itemId: 'water',
+          date: '2026-11-20',
+          status: { state: 'open' },
+          movedTo: '2026-11-12',
+          amountCents: 3_500,
+          note: 'Asked to pay early',
+        }),
+      ],
+    });
+    await user.click(screen.getByRole('button', { name: 'Mark Water paid' }));
+    expect(await screen.findByText('Water marked paid')).toBeInTheDocument();
+    expect(JSON.parse(store.docs.get('occ~2026-11-20~water')!.json)).toMatchObject({
+      status: { state: 'done', on: '2026-11-10', amountCents: 3_500 },
+      movedTo: '2026-11-12',
+      amountCents: 3_500,
+      note: 'Asked to pay early',
+    });
+  });
+
   it('marks an overdue bill paid, and undoes it', async () => {
     // Due on the 9th, after the balance's day, and not paid: overdue
     const { user, store } = await startBudget({
@@ -85,6 +110,8 @@ describe('the overview', () => {
     const dialog = screen.getByRole('dialog', { name: 'Your balance' });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText(/Enter what the account holds/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Balance')).toBeInvalid();
+    expect(within(dialog).getByLabelText('Balance')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Balance'), '-25.50');
     fireEvent.change(within(dialog).getByLabelText('As of the end of'), { target: { value: '2030-01-01' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));

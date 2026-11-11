@@ -53,6 +53,7 @@ fn export_types(cfg: &Config) {
         SetOccurrenceArgs,
         SetBalanceArgs,
         SaveSettingsArgs,
+        UndoArgs,
         IncomingDoc,
         ForecastDoc,
         ItemInput,

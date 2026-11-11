@@ -13,6 +13,9 @@ import type { BudgetStore, CloudConfig, CloudUser, DocsSource, WriteMeta } from 
 /** Firestore takes at most 500 writes in a batch. */
 export const BATCH_SIZE = 400;
 
+/** Firebase deletes an account within five minutes of signing in: a minute less, for the deleting. */
+export const RECENT_SIGN_IN_MS = 4 * 60_000;
+
 /** Where BudgetMint keeps its data, and where TaskMint publishes its forecast. */
 export const ROOT = 'budgetmint';
 export const FORECAST_PATH = ['published', 'payoutForecast'] as const;
@@ -85,6 +88,10 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
     signOut: () => auth.signOut(session),
     async deleteUser() {
       await auth.deleteUser(session.currentUser!);
+    },
+    async signedInRecently() {
+      const { authTime } = await session.currentUser!.getIdTokenResult();
+      return Date.now() - Date.parse(authTime) < RECENT_SIGN_IN_MS;
     },
 
     account: async uid => epochOf(await fs.getDoc(accountDoc(uid))),

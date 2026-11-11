@@ -22,7 +22,7 @@ use crate::forecast::contract::PayoutForecast;
 use crate::forecast::curve::live_curve;
 use crate::forecast::series::{project_withdrawals, ProjectedWithdrawal};
 use crate::model::{Cents, ItemKind, OccStatus, Settings};
-use crate::occur::{occurrences, MOVE_DAYS};
+use crate::occur::{occurrences, paid_outside, MOVE_DAYS};
 use crate::time::{Ctx, HOUR_MS};
 use chrono::{Duration, NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
@@ -172,7 +172,12 @@ pub fn project(
     let mut overdue = Vec::new();
     let mut late_income = Vec::new();
     let earliest = overdue_after.min(base) - Duration::days(MOVE_DAYS);
-    for occurrence in occurrences(snapshot, earliest, end, true) {
+    // With the ones paid far from their due date: the money still moved
+    let paid_far = paid_outside(snapshot, earliest, end);
+    for occurrence in occurrences(snapshot, earliest, end, true)
+        .into_iter()
+        .chain(paid_far)
+    {
         let item = occurrence.item;
         // An archived item has stopped, but what was paid on it was paid
         if item.archived && !matches!(occurrence.status, OccStatus::Done { .. }) {
@@ -240,7 +245,8 @@ pub fn project(
                 ));
             }
         }
-        let until = ctx.at(end, NaiveTime::MIN) + 24 * HOUR_MS - 1 - delay;
+        // To the end of `end`, however long that day is (clock changes)
+        let until = ctx.at(end + Duration::days(1), NaiveTime::MIN) - 1 - delay;
         let curve = live_curve(forecast, ctx, plan, until);
         withdrawals = project_withdrawals(forecast, &curve, ctx, plan, until);
         for projected in &withdrawals {
@@ -581,5 +587,70 @@ mod tests {
                 .date,
             d(2026, 11, 10)
         );
+    }
+
+    #[test]
+    fn counts_what_was_paid_far_from_its_due_date() {
+        let ctx = ctx();
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 200_000, d(2026, 11, 9), 0);
+        // Insurance due in March, paid today; an old bill from June, paid today too
+        for (id, due, cents) in [
+            ("insurance", d(2027, 3, 15), 120_000),
+            ("old", d(2026, 6, 1), 10_000),
+        ] {
+            put_item(&mut s, item(id, ItemKind::Bill, due, Repeat::Once, cents));
+            let paid = OccStatus::Done {
+                on: d(2026, 11, 10),
+                amount_cents: cents,
+            };
+            put_over(&mut s, over(id, due, paid));
+        }
+        let p = project(&s, None, &ctx, d(2027, 1, 9));
+        assert_eq!(row(&p, d(2026, 11, 10)), (200_000, 70_000, false, false));
+        // The month it was due in says the same
+        let march = project(&s, None, &ctx, d(2027, 3, 31));
+        assert_eq!(
+            row(&march, d(2026, 11, 10)),
+            (200_000, 70_000, false, false)
+        );
+        assert_eq!(row(&march, d(2027, 3, 15)), (70_000, 70_000, false, false));
+    }
+
+    #[test]
+    fn a_short_day_takes_no_withdrawal_arriving_the_day_after() {
+        // Mar 13, 2027, noon in Chicago: the clocks go forward that night, so the 14th has 23 hours
+        let ctx = Ctx::new(1_804_960_800_000, "America/Chicago");
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 0, d(2027, 3, 12), 0);
+        let forecast = PayoutForecast {
+            schema: 1,
+            as_of_ms: ctx.now_ms(),
+            funds_release_days: 7,
+            withdrawal_interval_ms: 3 * DAY_MS,
+            last_import_ms: None,
+            // The last one three days before it opens again: in the balance already
+            cutoff: Some(Taken {
+                taken_at_ms: 1_805_002_200_000 - 3 * DAY_MS,
+                amount_cents: 1,
+            }),
+            recent_withdrawals: vec![],
+            // Open at 11:30 pm on the 13th: in the bank a day later, half past midnight on the 15th
+            next_allowed_at_ms: Some(1_805_002_200_000),
+            scheduled: None,
+            carried: Amount {
+                actual_cents: 500,
+                estimated_cents: 0,
+                past_due_cents: 0,
+            },
+            steps: vec![],
+            recent_days: vec![],
+            zone: "America/Chicago".into(),
+        };
+        let through = |end| project(&s, Some(&forecast), &ctx, end);
+        assert!(through(d(2027, 3, 14)).withdrawals.is_empty());
+        let next_day = through(d(2027, 3, 15));
+        assert_eq!(next_day.withdrawals[0].arrives_on, d(2027, 3, 15));
+        assert_eq!(row(&next_day, d(2027, 3, 15)), (0, 500, false, false));
     }
 }

@@ -4,8 +4,6 @@
  * takes, what's counted, and any earnings assumed ahead.
  */
 
-import { useState } from 'react';
-import type { SxProps, Theme } from '@mui/material/styles';
 import { FormControlLabel, MenuItem, Stack, Switch, TextField, Typography, Alert, Chip } from '@mui/material';
 import { Savings as TaskMintIcon } from '@mui/icons-material';
 import type { FutureEarnings, WithdrawPolicy } from '@budgetmint/contracts';
@@ -13,8 +11,7 @@ import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
-import { centsToInput, parseDollars } from '../../../utils/money';
-import { CurrencyInput } from '../../ui/forms/CurrencyInput';
+import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
 
 /** After this long without an import, TaskMint's numbers may be out of date (as TaskMint says). */
@@ -28,31 +25,6 @@ const weekdayName = (weekday: number) =>
   new Intl.DateTimeFormat(formattingLocale(), { weekday: 'long' }).format(new Date(2026, 10, 2 + weekday));
 const hourName = (hour: number) =>
   new Intl.DateTimeFormat(formattingLocale(), { hour: 'numeric' }).format(new Date(2026, 10, 2, hour));
-
-/** An amount that's saved once it's typed (on leaving the field), not at each key. */
-function AmountSetting({
-  label,
-  cents,
-  onSave,
-  sx,
-}: {
-  label: string;
-  cents: number;
-  onSave: (cents: number) => void;
-  sx?: SxProps<Theme>;
-}) {
-  const [text, setText] = useState(centsToInput(cents || null));
-  return (
-    <CurrencyInput
-      label={label}
-      value={text}
-      onChange={setText}
-      onBlur={() => onSave(parseDollars(text) ?? 0)}
-      error={false}
-      sx={sx}
-    />
-  );
-}
 
 export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
   const { view } = useBudget();

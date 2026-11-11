@@ -122,6 +122,12 @@
       "error": "That bill isn't there any more (deleted on another device?)"
     },
     { "call": "save_settings", "args": { "settings": { "horizonDays": 5 } }, "error": "Look 14 to 366 days ahead" },
+    {
+      "call": "undo",
+      "args": { "planned": { "writes": [{ "docId": "item~rent", "kind": "item", "json": "{}", "schema": 1 }], "undo": [] } },
+      "error": "It was changed again since, so it can't be undone."
+    },
+    { "call": "undo", "args": { "planned": { "writes": [], "undo": [] } }, "expect": [] },
     { "call": "reset_docs", "expect": null },
     { "call": "get_settings", "expect": { "saved": false } },
     { "call": "get_overview", "expect": { "todayCents": 0, "taskmint": { "state": "missing" } } }

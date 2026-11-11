@@ -35,7 +35,7 @@ import type { ItemKind, ItemView } from '@budgetmint/contracts';
 import { useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { useNotification } from '../../../contexts/NotificationContext';
 import { formatRelativeDay } from '../../../utils/dates';
-import { currentSegment, describeRepeat } from '../../../utils/describe';
+import { describeRepeat, occurrenceLabel } from '../../../utils/describe';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
@@ -96,12 +96,13 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
         <TableBody>
           {views.map(view => {
             const { item } = view;
-            const segment = currentSegment(item.schedule, today);
+            const segment = view.current;
             return (
               <TableRow key={item.id} hover>
                 <TableCell>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {/* A long name wraps (and its chips go under it) rather than widening the table */}
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
                       {item.name}
                     </Typography>
                     {item.category && <Chip size="small" label={item.category} />}
@@ -113,6 +114,8 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                 </TableCell>
                 <TableCell>{describeRepeat(segment.repeat, segment.from)}</TableCell>
                 <TableCell sx={{ color: view.next?.late ? 'error.main' : undefined }}>
+                  {/* Said in words too, not only in red */}
+                  {view.next?.late && `${occurrenceLabel(view.next)}: `}
                   {view.next ? formatRelativeDay(view.next.due, today) : '—'}
                 </TableCell>
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
@@ -180,7 +183,10 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   const { today } = useCoreQuery('get_overview');
   const { settings } = useCoreQuery('get_settings');
   const change = useBudgetChange();
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const { showError } = useNotification();
+  const [opened, setDialog] = useState<Dialog | null>(null);
+  // An item deleted (here or on another device) takes its dialog with it
+  const dialog = opened?.view && !all.some(view => view.item.id === opened.view?.item.id) ? null : opened;
   const words = WORDS[kind];
   const views = all.filter(view => view.item.kind === kind);
   const active = views.filter(view => !view.item.archived);
@@ -236,7 +242,7 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
       {dialog?.type === 'edit' && (
         <ItemDialog
           kind={kind}
-          item={dialog.view?.item}
+          view={dialog.view ?? undefined}
           today={today}
           defaultLeadDays={settings.reminders.leadDays}
           onClose={() => setDialog(null)}
@@ -248,7 +254,12 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
         onClose={() => setDialog(null)}
         onConfirm={() => {
           const { item } = dialog!.view!;
-          change('delete_item', { itemId: item.id }, `${item.name} deleted`);
+          try {
+            change('delete_item', { itemId: item.id }, `${item.name} deleted`);
+          } catch (error) {
+            // Refused (it's gone already): said in a toast, and the question closes
+            showError((error as Error).message);
+          }
         }}
         title={`Delete ${dialog?.view?.item.name ?? ''}?`}
         message="Its history goes too. Undo brings it back for a few seconds; after that it's gone."

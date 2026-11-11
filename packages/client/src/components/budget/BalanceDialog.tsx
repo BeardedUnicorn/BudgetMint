@@ -4,7 +4,7 @@
  * in it yet).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, InputAdornment, Stack, TextField, Typography } from '@mui/material';
 import type { Balance } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
@@ -24,11 +24,16 @@ export function BalanceDialog({
   const [amount, setAmount] = useState(centsToInput(balance?.cents ?? null));
   const [asOf, setAsOf] = useState(today);
   const [problem, setProblem] = useState<string | null>(null);
+  /** The balance isn't an amount: said under it, and focus goes to it. */
+  const [wrong, setWrong] = useState(false);
+  const balanceInput = useRef<HTMLInputElement>(null);
 
   const submit = () => {
     const cents = parseDollars(amount);
+    setWrong(cents === null);
     if (cents === null) {
-      setProblem('Enter what the account holds (a minus sign if it’s overdrawn)');
+      setProblem(null);
+      balanceInput.current?.focus();
       return;
     }
     try {
@@ -52,6 +57,9 @@ export function BalanceDialog({
           value={amount}
           onChange={event => setAmount(event.target.value)}
           autoFocus
+          inputRef={balanceInput}
+          error={wrong}
+          helperText={wrong ? 'Enter what the account holds (a minus sign if it’s overdrawn)' : undefined}
           slotProps={{
             input: { startAdornment: <InputAdornment position="start">$</InputAdornment> },
             htmlInput: { inputMode: 'decimal' },

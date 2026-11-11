@@ -58,6 +58,8 @@ pub trait Platform: Send + Sync {
     fn schedule_notification(&self, scheduled: &ScheduledNotification) -> Result<(), String>;
     /// Takes back the notification set with `id`, if it's still to come.
     fn cancel_notification(&self, id: i32) -> Result<(), String>;
+    /// Takes back every notification set and still to come (an earlier run's).
+    fn cancel_all_notifications(&self) -> Result<(), String>;
     /// Opens a web page in the system browser (Google sign-in).
     fn open_url(&self, url: &str) -> Result<(), String>;
     /// Shows and focuses the main window.

@@ -89,6 +89,11 @@ fn cancel_os_notification(app: &AppHandle, id: i32) -> Result<(), String> {
     app.notification().cancel(vec![id]).map_err(text)
 }
 
+#[cfg(mobile)]
+fn cancel_all_os_notifications(app: &AppHandle) -> Result<(), String> {
+    app.notification().cancel_all().map_err(text)
+}
+
 /// A desktop's reminders are timed by the app while it runs, so the system
 /// is never asked to set one.
 #[cfg(desktop)]
@@ -102,6 +107,11 @@ fn schedule_os_notification(
 /// Nothing is ever set on a desktop, so there's nothing to take back.
 #[cfg(desktop)]
 fn cancel_os_notification(_app: &AppHandle, _id: i32) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(desktop)]
+fn cancel_all_os_notifications(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
@@ -147,6 +157,15 @@ mod desktop {
                 Box::new(MenuItem::with_id(app, *id, *label, true, None::<&str>)?)
             }
             TrayItem::Separator => Box::new(PredefinedMenuItem::separator(app)?),
+            // GTK doesn't support the system's Quit item (it shows greyed out):
+            // Linux gets an ordinary one, which app.rs's menu handler quits on
+            TrayItem::Quit if cfg!(target_os = "linux") => Box::new(MenuItem::with_id(
+                app,
+                crate::tray::QUIT,
+                "Quit BudgetMint",
+                true,
+                None::<&str>,
+            )?),
             TrayItem::Quit => Box::new(PredefinedMenuItem::quit(app, Some("Quit BudgetMint"))?),
         })
     }
@@ -354,6 +373,10 @@ impl Platform for TauriPlatform {
 
     fn cancel_notification(&self, id: i32) -> Result<(), String> {
         cancel_os_notification(&self.app, id)
+    }
+
+    fn cancel_all_notifications(&self) -> Result<(), String> {
+        cancel_all_os_notifications(&self.app)
     }
 
     fn open_url(&self, url: &str) -> Result<(), String> {

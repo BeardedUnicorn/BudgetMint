@@ -115,6 +115,7 @@ export function createTauriShell(capabilities: Capabilities, google?: GoogleDesk
       notifications: {
         request: () => command<boolean>('request_notifications'),
         schedule: reminders => command<void>('schedule_reminders', { reminders }),
+        show: (title, body) => command<void>('show_notification', { title, body }),
         firesWhenClosed: mobile,
       },
       ...(mobile

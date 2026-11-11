@@ -10,9 +10,9 @@ import { LIMITS } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatDay } from '../../../utils/dates';
-import { centsToInput, formatCents, parseDollars } from '../../../utils/money';
+import { formatCents } from '../../../utils/money';
 import { BalanceDialog } from '../../budget/BalanceDialog';
-import { CurrencyInput } from '../../ui/forms/CurrencyInput';
+import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
 
 const HORIZONS = [30, 60, 90, 180, 365].filter(
@@ -23,7 +23,6 @@ export function ForecastSection() {
   const [settings, save] = useSettings();
   const { today } = useCoreQuery('get_overview');
   const [editing, setEditing] = useState(false);
-  const [low, setLow] = useState(centsToInput(settings.lowBalanceCents || null));
   const { balance } = settings;
 
   return (
@@ -54,13 +53,11 @@ export function ForecastSection() {
               </MenuItem>
             ))}
         </TextField>
-        <CurrencyInput
+        <AmountSetting
           label="Low balance mark"
-          value={low}
-          onChange={setLow}
-          onBlur={() => save(current => ({ ...current, lowBalanceCents: parseDollars(low) ?? 0 }))}
-          helperText="Days that end below it are flagged (and below $0, short)."
-          error={false}
+          cents={settings.lowBalanceCents}
+          onSave={lowBalanceCents => save(current => ({ ...current, lowBalanceCents }))}
+          helperText="Days that end below it are flagged (and below $0, short). Leave it empty for none."
           sx={{ maxWidth: 260 }}
         />
       </Stack>

@@ -80,6 +80,7 @@ export function createFakeStore(): FakeStore {
     signInWithGoogle: vi.fn(async () => store.setUser({ ...cal(), providers: ['google.com'] })),
     signOut: vi.fn(async () => store.setUser(null)),
     deleteUser: vi.fn(async () => store.setUser(null)),
+    signedInRecently: vi.fn(async () => true),
     account: vi.fn(async (uid: string) => epochs.get(uid) ?? null),
     createAccount: vi.fn(async (uid: string) => {
       epochs.set(uid, 1);

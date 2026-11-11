@@ -32,7 +32,12 @@ describe('the forecast', () => {
     expect(within(days).getByText('Rent (paid)')).toBeInTheDocument();
     expect(within(days).getByText('Gym (autopay)')).toBeInTheDocument();
     expect(within(days).getByText('-$490.00')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'The balance day by day' })).toBeInTheDocument();
+    // The chart says in words what it shows
+    expect(
+      screen.getByRole('img', {
+        name: /^The balance day by day: \$[\d,.]+ today, lowest -?\$[\d,.]+ on \w+, \w+ \d+, -?\$[\d,.]+ on \w+ \d+$/,
+      })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'TaskMint withdrawals ahead' })).not.toBeInTheDocument();
   });
 

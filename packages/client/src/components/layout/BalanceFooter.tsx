@@ -22,7 +22,12 @@ export function BalanceFooter({ collapsed }: { collapsed: boolean }) {
         <Typography
           role="img"
           aria-label={label}
+          // In the tab order, so the keyboard reaches its tooltip too
+          tabIndex={0}
           sx={{
+            // A large balance wraps within the narrow sidebar
+            overflowWrap: 'anywhere',
+            textAlign: 'center',
             fontFamily: MONO,
             fontWeight: 700,
             fontSize: '0.75rem',

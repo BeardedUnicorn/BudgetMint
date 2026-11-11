@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Reminder } from '@budgetmint/contracts';
+import { useNotification } from '../contexts/NotificationContext';
 import { useCoreQuery } from '../data/BudgetContext';
 import { getShell } from '../shell';
 import type { ScheduledNotification } from '../shell/types';
@@ -76,6 +77,27 @@ export function useReminders(): void {
     const timer = window.setInterval(ran, LAST_RAN_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, []);
+  // On, but never allowed: the system asks where it can on its own (Android);
+  // a browser asks only at a click, so a toast offers one
+  const { showWarning } = useNotification();
+  useEffect(() => {
+    if (!on) return;
+    const { notifications } = getShell().platform;
+    const failed = (error: unknown) => console.warn('Failed to ask about notifications:', error);
+    if (!notifications.granted) {
+      if (notifications.firesWhenClosed) notifications.request().catch(failed);
+      return;
+    }
+    notifications
+      .granted()
+      .then(granted => {
+        if (granted) return;
+        showWarning('Reminders are on, but this browser hasn’t allowed BudgetMint’s notifications.', {
+          actions: [{ label: 'Allow', onClick: () => notifications.request().catch(failed) }],
+        });
+      })
+      .catch(failed);
+  }, [on, showWarning]);
   const reminders = useCoreQuery('get_reminders', {
     windowDays: REMINDER_WINDOW_DAYS,
     max: MAX_SCHEDULED,
@@ -89,4 +111,13 @@ export function useReminders(): void {
       .platform.notifications.schedule(JSON.parse(key))
       .catch(error => console.warn('Failed to schedule reminders:', error));
   }, [key]);
+  // Signed out (or the data unreachable): the account's reminders go with it
+  useEffect(
+    () => () => {
+      getShell()
+        .platform.notifications.schedule([])
+        .catch(error => console.warn('Failed to clear reminders:', error));
+    },
+    []
+  );
 }

@@ -136,8 +136,14 @@ pub fn run() {
 fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
     use crate::{reminders, tray};
     let menu_state = state.clone();
-    app.on_menu_event(move |_app, event| {
-        tray::clicked(menu_state.platform.as_ref(), event.id().as_ref())
+    app.on_menu_event(move |app, event| {
+        let id = event.id().as_ref();
+        // Linux's Quit is an ordinary item (see platform/os.rs's menu_item)
+        if id == tray::QUIT {
+            app.exit(0);
+            return;
+        }
+        tray::clicked(menu_state.platform.as_ref(), id)
     });
     if let Err(e) = state.platform.render_tray(&tray::menu(&[])) {
         log::error!("Failed to create the tray icon: {}", e);

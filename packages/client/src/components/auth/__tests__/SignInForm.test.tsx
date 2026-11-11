@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SignInForm, type SignInActions } from '../SignInForm';
 
@@ -45,6 +45,22 @@ describe('signing in', () => {
     expect(
       await screen.findByText('If cal@example.com has an account, a reset link is on its way.')
     ).toBeInTheDocument();
+  });
+
+  it('can give up on a Google sign-in left in the browser, and try another way', async () => {
+    let fail: (error: unknown) => void = () => undefined;
+    const engine = actions({ signInWithGoogle: vi.fn(() => new Promise<void>((_, reject) => (fail = reject))) });
+    render(<SignInForm engine={engine} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    expect(screen.getByText('Finish signing in in your browser.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled();
+    // The abandoned attempt timing out later says nothing
+    await act(async () => fail(new Error('Google sign-in timed out. Try again.')));
+    expect(screen.queryByText(/timed out/)).not.toBeInTheDocument();
   });
 
   it('signs in with Google, and says when it was closed', async () => {

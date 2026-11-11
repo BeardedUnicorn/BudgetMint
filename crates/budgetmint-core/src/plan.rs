@@ -44,6 +44,20 @@ impl Planned {
     }
 }
 
+/// What an undo that came too late is refused with.
+pub const CHANGED_SINCE: &str = "It was changed again since, so it can't be undone.";
+
+/// The writes that undo `planned`, while every document it wrote is still as
+/// it wrote it. Changed again since (here or on another device), undoing
+/// would take that later change back too: refused instead.
+pub fn undo(snapshot: &Snapshot, planned: Planned) -> Result<Vec<DocWrite>, CoreError> {
+    if planned.writes.iter().all(|write| snapshot.holds(write)) {
+        Ok(planned.undo)
+    } else {
+        Err(invalid(CHANGED_SINCE))
+    }
+}
+
 /// An item as the user edits it (core keeps its times).
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -148,7 +162,21 @@ fn check_reminder(reminder: Option<ItemReminder>) -> Result<Option<ItemReminder>
     Ok(Some(reminder))
 }
 
+/// What a change to a document a newer BudgetMint wrote is refused with.
+pub const NEWER: &str =
+    "A newer BudgetMint changed this. Update BudgetMint on this device to change it here.";
+
+/// A document a newer BudgetMint wrote isn't this version's to change: it
+/// would write back what it last read, without what the newer one added.
+fn ours(snapshot: &Snapshot, key: &DocKey) -> Result<(), CoreError> {
+    if snapshot.is_held(key) {
+        return Err(invalid(NEWER));
+    }
+    Ok(())
+}
+
 fn item<'a>(snapshot: &'a Snapshot, id: &str) -> Result<&'a Item, CoreError> {
+    ours(snapshot, &DocKey::Item(id.to_string()))?;
     snapshot.items.get(id).ok_or_else(|| {
         CoreError::NotFound("That bill isn't there any more (deleted on another device?)".into())
     })
@@ -160,17 +188,54 @@ fn write_item(snapshot: &mut Snapshot, item: &Item) -> Planned {
     planned
 }
 
+/// A change to an item's schedule from a date on.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleChange {
+    pub from: NaiveDate,
+    pub repeat: Repeat,
+    pub amount_cents: Cents,
+}
+
+/// `schedule` with `change` from its date on: what comes before stays as it was.
+fn rescheduled(mut schedule: Vec<Segment>, change: ScheduleChange) -> Vec<Segment> {
+    schedule.retain(|segment| segment.from < change.from);
+    schedule.push(Segment {
+        from: change.from,
+        until: None,
+        repeat: change.repeat,
+        amount_cents: change.amount_cents,
+    });
+    schedule
+}
+
 /// Adds an item, or saves an edit to one.
 pub fn save_item(
     snapshot: &mut Snapshot,
     input: ItemInput,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
+    save_item_from(snapshot, input, None, ctx)
+}
+
+/// Saves an item and, with `change`, changes its schedule from a date on:
+/// both or, when either is refused, neither.
+pub fn save_item_from(
+    snapshot: &mut Snapshot,
+    mut input: ItemInput,
+    change: Option<ScheduleChange>,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
     if !valid_id(&input.id) {
         return Err(invalid("An item's id is 1–64 letters, digits and dashes"));
     }
+    ours(snapshot, &DocKey::Item(input.id.clone()))?;
     let name =
         text(Some(input.name), MAX_NAME, "name")?.ok_or_else(|| invalid("Give it a name"))?;
+    if let Some(change) = change {
+        input.schedule = rescheduled(input.schedule, change);
+    }
     check_schedule(&input.schedule)?;
     let created_at = snapshot
         .items
@@ -210,16 +275,13 @@ pub fn change_schedule(
     amount_cents: Cents,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    check_repeat(repeat)?;
-    cents(amount_cents, "amount")?;
     let mut changed = item(snapshot, item_id)?.clone();
-    changed.schedule.retain(|segment| segment.from < from);
-    changed.schedule.push(Segment {
+    let change = ScheduleChange {
         from,
-        until: None,
         repeat,
         amount_cents,
-    });
+    };
+    changed.schedule = rescheduled(changed.schedule, change);
     check_schedule(&changed.schedule)?;
     changed.updated_at = ctx.now;
     Ok(write_item(snapshot, &changed))
@@ -250,12 +312,19 @@ pub fn delete_item(snapshot: &mut Snapshot, item_id: &str) -> Result<Planned, Co
         .filter(|(id, _)| id == item_id)
         .map(|(_, date)| *date)
         .collect();
-    let mut planned = Planned::default();
-    for date in dates {
-        let key = DocKey::Occ {
+    let keys: Vec<DocKey> = dates
+        .into_iter()
+        .map(|date| DocKey::Occ {
             date,
             item_id: item_id.to_string(),
-        };
+        })
+        .collect();
+    // All of it or none: checked before anything is written
+    for key in &keys {
+        ours(snapshot, key)?;
+    }
+    let mut planned = Planned::default();
+    for key in keys {
         planned.add(snapshot.write::<Override>(key, None));
     }
     planned.add(snapshot.write::<Item>(DocKey::Item(item_id.to_string()), None));
@@ -290,6 +359,7 @@ pub fn set_occurrence(
         date: input.date,
         item_id: input.item_id.clone(),
     };
+    ours(snapshot, &key)?;
     let existing = snapshot
         .overrides
         .contains_key(&(input.item_id.clone(), input.date));
@@ -354,6 +424,7 @@ pub fn set_balance(
     balance: Balance,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
+    ours(snapshot, &DocKey::Settings)?;
     let today = ctx.today();
     if balance.as_of > today {
         return Err(invalid("Set the balance as of today or a day before"));
@@ -377,6 +448,7 @@ pub fn set_balance(
 
 /// Saves the settings (the balance is set_balance's, and stays as it is).
 pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Planned, CoreError> {
+    ours(snapshot, &DocKey::Settings)?;
     if !(MIN_HORIZON_DAYS..=MAX_HORIZON_DAYS).contains(&settings.horizon_days) {
         return Err(invalid(format!(
             "Look {} to {} days ahead",
@@ -889,5 +961,128 @@ mod tests {
                 ..TaskMintPlan::default()
             }
         );
+    }
+
+    #[test]
+    fn leaves_what_a_newer_budgetmint_wrote_alone() {
+        use crate::docs::IncomingDoc;
+        let mut s = Snapshot::default();
+        let monthly = Repeat::Months { n: 1, day: 1 };
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 1), monthly, 100),
+        );
+        let paid = OccStatus::Done {
+            on: d(2026, 11, 2),
+            amount_cents: 100,
+        };
+        set_occurrence(
+            &mut s,
+            occurrence("rent", d(2026, 11, 1), paid.clone()),
+            &ctx(),
+        )
+        .unwrap();
+        set_balance(
+            &mut s,
+            Balance {
+                cents: 1,
+                as_of: d(2026, 11, 10),
+            },
+            &ctx(),
+        )
+        .unwrap();
+        let newer = |doc_id: &str| IncomingDoc {
+            doc_id: doc_id.into(),
+            json: Some("{}".into()),
+            schema: 2,
+        };
+        let refused = |result: Result<Planned, CoreError>| {
+            assert_eq!(result.unwrap_err().to_string(), NEWER);
+        };
+
+        // An occurrence a newer one wrote: not set, and its item not deleted
+        s.apply(vec![newer("occ~2026-11-01~rent")]);
+        refused(set_occurrence(
+            &mut s,
+            occurrence("rent", d(2026, 11, 1), OccStatus::Open),
+            &ctx(),
+        ));
+        refused(delete_item(&mut s, "rent"));
+        // Its other occurrences still are
+        set_occurrence(&mut s, occurrence("rent", d(2026, 12, 1), paid), &ctx()).unwrap();
+
+        // The item: not saved, rescheduled, archived or deleted, nor its occurrences set
+        s.apply(vec![newer("item~rent")]);
+        let mut edit = input("rent");
+        edit.name = "Flat".into();
+        refused(save_item(&mut s, edit, &ctx()));
+        refused(change_schedule(
+            &mut s,
+            "rent",
+            d(2027, 1, 1),
+            monthly,
+            200,
+            &ctx(),
+        ));
+        refused(archive_item(&mut s, "rent", true, &ctx()));
+        refused(delete_item(&mut s, "rent"));
+        refused(set_occurrence(
+            &mut s,
+            occurrence("rent", d(2027, 1, 1), OccStatus::Skipped),
+            &ctx(),
+        ));
+
+        // The settings: neither the balance nor the rest
+        s.apply(vec![newer("settings~account")]);
+        let balance = Balance {
+            cents: 2,
+            as_of: d(2026, 11, 10),
+        };
+        refused(set_balance(&mut s, balance, &ctx()));
+        refused(save_settings(&mut s, Settings::default()));
+        assert_eq!(s.settings().balance.unwrap().cents, 1);
+        assert_eq!(s.items["rent"].name, "RENT");
+    }
+
+    #[test]
+    fn saves_an_edit_and_a_schedule_change_as_one() {
+        let mut s = Snapshot::default();
+        save_item(&mut s, input("rent"), &ctx()).unwrap();
+        let mut edit = input("rent");
+        edit.name = "Flat".into();
+        let change = |amount_cents| ScheduleChange {
+            from: d(2027, 1, 1),
+            repeat: Repeat::Months { n: 1, day: 1 },
+            amount_cents,
+        };
+        // The change refused: the name isn't saved either
+        assert!(save_item_from(&mut s, edit.clone(), Some(change(-1)), &ctx()).is_err());
+        assert_eq!(s.items["rent"].name, "Rent");
+        // Both, in one write that one undo takes back
+        let planned = save_item_from(&mut s, edit, Some(change(130_000)), &ctx()).unwrap();
+        assert_eq!((planned.writes.len(), planned.undo.len()), (1, 1));
+        let saved = &s.items["rent"];
+        assert_eq!(saved.name, "Flat");
+        assert_eq!(saved.schedule.len(), 2);
+        assert_eq!(saved.schedule[1].amount_cents, 130_000);
+    }
+
+    #[test]
+    fn undoes_a_change_only_while_it_still_stands() {
+        let mut s = Snapshot::default();
+        save_item(&mut s, input("rent"), &ctx()).unwrap();
+        let archived = archive_item(&mut s, "rent", true, &ctx()).unwrap();
+        // Still as it left it: its undo, which brings the item back as it was
+        let writes = undo(&s, archived.clone()).unwrap();
+        assert_eq!(writes, archived.undo);
+        // Renamed since: undoing the archiving would take the new name back with it
+        let mut edit = input("rent");
+        edit.name = "Flat".into();
+        edit.archived = true;
+        save_item(&mut s, edit, &ctx()).unwrap();
+        assert_eq!(undo(&s, archived).unwrap_err().to_string(), CHANGED_SINCE);
+        // A deletion is undone while the item is still gone
+        let deleted = delete_item(&mut s, "rent").unwrap();
+        assert_eq!(undo(&s, deleted.clone()).unwrap(), deleted.undo);
     }
 }

@@ -11,9 +11,14 @@ export type OccurrenceView = { itemId: string, name: string, kind: ItemKind, cat
  */
 scheduled: string, due: string, expectedCents: number, status: OccStatus, 
 /**
- * Still open after its due day (and not on autopay).
+ * Still open after its due day, not on autopay, and not settled by the
+ * balance (which has taken what was due by its day as paid).
  */
 late: boolean, 
+/**
+ * This time's amount, when the user set one (else the schedule's).
+ */
+amountCents: number | null, 
 /**
  * The user changed something about this one (moved, amount, note).
  */

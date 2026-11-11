@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 
 import { VIEWS, VIEW_LABELS, type SidebarView } from '../../navigation/views';
+import { getShell } from '../../shell';
 import { HOVER } from '../../theme/media';
 import { Wordmark } from '../ui/display/Wordmark';
 
@@ -70,6 +71,7 @@ export function Sidebar({
   open = false,
   onClose,
 }: SidebarProps) {
+  const inBrowser = getShell().capabilities.runtime === 'web';
   // Remembered across launches
   const [collapsedSetting, setIsCollapsed] = useLocalStorage('sidebarCollapsed', false);
   const temporary = variant === 'temporary';
@@ -196,15 +198,15 @@ export function Sidebar({
             </ListItemButton>
           );
 
-          // No keyboard shortcuts to hint at on a phone
-          if (temporary) return listItemButton;
+          // No keyboard shortcuts to hint at on a phone, nor in a browser (which keeps them for its tabs)
+          if (temporary || (inBrowser && !isCollapsed)) return listItemButton;
 
           // The page's shortcut on hover; its name too when collapsed
           const shortcut = viewShortcut(item.id);
           return (
             <Tooltip
               key={item.id}
-              title={isCollapsed ? `${item.label}  ${shortcut}` : shortcut}
+              title={inBrowser ? item.label : isCollapsed ? `${item.label}  ${shortcut}` : shortcut}
               placement="right"
               enterDelay={isCollapsed ? 100 : 600}
               // The label already names the button; the shortcut is extra

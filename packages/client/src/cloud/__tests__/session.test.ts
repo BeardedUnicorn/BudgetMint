@@ -148,13 +148,37 @@ describe('the session', () => {
     await expect(session.deleteAccount()).rejects.toThrow('This is also your TaskMint account.');
     expect(store.deleteUser).not.toHaveBeenCalled();
 
+    // Signed in too long ago for Firebase to delete the account: nothing is deleted
     store.setTaskMintData('cal', false);
+    vi.mocked(store.signedInRecently).mockResolvedValueOnce(false);
+    await expect(session.deleteAccount()).rejects.toThrow(
+      'Sign out and in again, then delete the account. Nothing was deleted.'
+    );
+    expect(store.deleteAll).not.toHaveBeenCalled();
+    expect(store.deleteUser).not.toHaveBeenCalled();
+    // Why the checks themselves failed
+    vi.mocked(store.hasTaskMintData).mockRejectedValueOnce({ code: 'permission-denied' });
+    await expect(session.deleteAccount()).rejects.toThrow('The cloud refused that change.');
+
+    // Refused all the same
     vi.mocked(store.deleteUser).mockRejectedValueOnce({ code: 'auth/requires-recent-login' });
     await expect(session.deleteAccount()).rejects.toThrow('Sign in again first, then try once more.');
     await waitFor(() => expect(session.getView().phase).toBe('ready'));
     await session.deleteAccount();
     expect(store.deleteAll).toHaveBeenCalledTimes(2);
     expect(session.getView().phase).toBe('signedOut');
+  });
+
+  it('deletes nothing while offline (the cloud’s answer would never come)', async () => {
+    const { store, session } = await signedIn();
+    store.offline = true;
+    store.putDoc('item~rent', JSON.stringify(RENT));
+    await waitFor(() => expect(session.getView().offline).toBe(true));
+    const offline = 'You’re offline. Connect, then delete it.';
+    await expect(session.deleteData()).rejects.toThrow(offline);
+    await expect(session.deleteAccount()).rejects.toThrow(offline);
+    expect(store.deleteAll).not.toHaveBeenCalled();
+    expect(store.hasTaskMintData).not.toHaveBeenCalled();
   });
 
   it('says when the data can’t be read, and tries again', async () => {

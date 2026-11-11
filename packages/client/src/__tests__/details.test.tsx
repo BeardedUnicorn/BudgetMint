@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { ThemeProvider } from '@mui/material';
 import type { CalendarDay } from '@budgetmint/contracts';
+import { ErrorBoundary } from '../components/layout/ErrorBoundary';
 import { createAppTheme } from '../theme';
 import { cloudErrorMessage } from '../cloud/errors';
 import { getShell, setShell } from '../shell';
@@ -41,6 +42,8 @@ vi.mock('recharts', async importOriginal => {
 const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   date: '2026-11-12',
   occurrences: [],
+  billsCents: 0,
+  incomeCents: 0,
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,
@@ -51,6 +54,65 @@ const day = (changes: Partial<CalendarDay>): CalendarDay => ({
 });
 
 describe('an occurrence’s dialog', () => {
+  it('says under the amount that it’s missing, and puts the cursor there', async () => {
+    const { user } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    // Still to come, with this time's amount emptied
+    const expected = within(dialog).getByLabelText('This time');
+    await user.clear(expected);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(expected).toBeInvalid();
+    expect(expected).toHaveAccessibleDescription('Enter the amount');
+    expect(expected).toHaveFocus();
+    // Paid instead: the amount still to come no longer matters, the amount paid does
+    await user.click(within(dialog).getByRole('radio', { name: 'Paid' }));
+    const paid = within(dialog).getByLabelText('Amount');
+    await user.clear(paid);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(paid).toBeInvalid();
+    expect(paid).toHaveFocus();
+    await user.type(paid, '500');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('goes back to the usual amount, and stays open on a click outside it', async () => {
+    const { user, store } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 50_000)],
+      overrides: [override({ itemId: 'rent', date: '2026-11-12', status: { state: 'open' }, amountCents: 45_000 })],
+    });
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    expect(within(dialog).getByLabelText('This time')).toHaveValue('450.00');
+    // A click outside doesn't throw the form away; Escape would
+    await user.click(document.querySelector('.MuiBackdrop-root')!);
+    expect(dialog).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Back to the usual amount' }));
+    expect(within(dialog).getByLabelText('This time')).toBeDisabled();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    // Nothing of its own left: it follows the schedule again
+    await waitFor(() => expect(store.docs.has('occ~2026-11-12~rent')).toBe(false));
+    expect(await screen.findByText('−$500.00')).toBeInTheDocument();
+  });
+
+  it('leaves the amount following the schedule when only a note changes', async () => {
+    const { user, store } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 50_000)],
+      overrides: [override({ itemId: 'rent', date: '2026-11-12', status: { state: 'open' }, note: 'Ask first' })],
+    });
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    await user.type(within(dialog).getByLabelText('Note (optional)'), ', then pay');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json)).toMatchObject({
+        amountCents: null,
+        note: 'Ask first, then pay',
+      })
+    );
+  });
+
   it('marks it paid on a day for an amount, moves it, and opens it again', async () => {
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
     const details = () => screen.getByRole('button', { name: 'Rent on Nov 12: details' });
@@ -152,6 +214,68 @@ describe('changes to data changed elsewhere', () => {
   });
 });
 
+describe('undo', () => {
+  it('doesn’t take back a later change with the one it undoes', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Mark Rent paid' }));
+    expect(await screen.findByText('Rent marked paid')).toBeInTheDocument();
+    // A note added on another device, after it was marked paid here
+    const paid = JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json);
+    store.putDoc('occ~2026-11-12~rent', JSON.stringify({ ...paid, note: 'Receipt 42' }));
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByText("It was changed again since, so it can't be undone.")).toBeInTheDocument();
+    expect(JSON.parse(store.docs.get('occ~2026-11-12~rent')!.json).note).toBe('Receipt 42');
+  });
+});
+
+describe('a bill deleted on another device', () => {
+  it('closes its history instead of stopping the app', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: "Rent's history" }));
+    expect(screen.getByRole('dialog', { name: 'Rent' })).toBeInTheDocument();
+    store.putDoc('item~rent', null);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await screen.findByText('No bills yet')).toBeInTheDocument();
+  });
+
+  it('says so when deleting it here is refused, and closes the question', async () => {
+    const { user, core } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000, { archived: true })] });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: 'Delete Rent' }));
+    // Deleted elsewhere, the page not yet told
+    core.call('apply_docs', { docs: [{ docId: 'item~rent', json: null, schema: 1 }] });
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete Rent?' })).getByRole('button', { name: 'Delete' })
+    );
+    expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+describe('an error while showing a page', () => {
+  it('is said, with a way to try again, instead of a blank window', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let broken = true;
+    const Page = () => {
+      if (broken) throw new Error('The page broke');
+      return <p>Back again</p>;
+    };
+    const user = (await import('@testing-library/user-event')).default.setup();
+    render(
+      <ErrorBoundary>
+        <Page />
+      </ErrorBoundary>
+    );
+    expect(screen.getByRole('heading', { name: 'BudgetMint ran into a problem' })).toBeInTheDocument();
+    expect(screen.getByText('The page broke')).toBeInTheDocument();
+    broken = false;
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByText('Back again')).toBeInTheDocument();
+    quiet.mockRestore();
+  });
+});
+
 describe('the pages’ other buttons and states', () => {
   it('opens the balance and a first bill from the overview', async () => {
     const { user } = await startBudget();
@@ -183,9 +307,11 @@ describe('the pages’ other buttons and states', () => {
     const taskmint = screen.getByRole('heading', { name: 'TaskMint' }).closest('.MuiPaper-root') as HTMLElement;
     expect(within(taskmint).getByLabelText('On')).toHaveTextContent('Wednesday');
     expect(within(taskmint).getByLabelText('At')).toHaveTextContent('8 AM');
-    // An emptied low mark is none
+    // Not an amount yet: kept as typed, and nothing saved
+    await user.type(screen.getByLabelText('Low balance mark'), '.');
     fireEvent.blur(screen.getByLabelText('Low balance mark'));
-    await waitFor(() => expect(JSON.parse(store.docs.get('settings~account')!.json).lowBalanceCents).toBe(0));
+    expect(screen.getByLabelText('Low balance mark')).toHaveValue('.');
+    expect(JSON.parse(store.docs.get('settings~account')!.json).lowBalanceCents).toBeUndefined();
   });
 
   it('says who’s signed in with Google (or without an email)', async () => {
@@ -222,6 +348,8 @@ describe('the pages’ other buttons and states', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getByText('TaskMint withdrawal')).toBeInTheDocument();
+    // The low days are marked, not only colored
+    expect(screen.getAllByTitle('Low').length).toBeGreaterThan(0);
     expect(document.querySelector('.recharts-line')).not.toBeNull();
     expect(axisMoney(12.5)).toBe('$13');
     expect(tooltipMoney(-4)).toEqual(['-$4.00', 'Balance']);
@@ -252,7 +380,7 @@ describe('the last branches', () => {
     expect(screen.getByText('Call first')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Bills' }));
     // Water, unpaid since the 9th
-    expect(screen.getByText('Yesterday')).toBeInTheDocument();
+    expect(screen.getByText('Overdue: Yesterday')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     const minimum = screen.getByLabelText('Wait until there’s at least');
     await user.clear(minimum);

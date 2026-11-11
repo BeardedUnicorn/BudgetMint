@@ -2,7 +2,7 @@
  * Schedules and occurrences in words.
  */
 
-import type { OccurrenceView, Repeat, Segment } from '@budgetmint/contracts';
+import type { OccurrenceView, Repeat } from '@budgetmint/contracts';
 import { formatDay, parseDay } from './dates';
 import { formattingLocale } from './locale';
 
@@ -34,11 +34,6 @@ export function describeRepeat(repeat: Repeat, from: string): string {
     case 'years':
       return `${every(repeat.n, 'Yearly', 'years')} on ${formatDay(from)}`;
   }
-}
-
-/** The schedule in force on `today` (the first, before any starts). */
-export function currentSegment(schedule: Segment[], today: string): Segment {
-  return [...schedule].reverse().find(segment => segment.from <= today) ?? schedule[0];
 }
 
 /** What's become of an occurrence, for a chip: null for one still to come. */
