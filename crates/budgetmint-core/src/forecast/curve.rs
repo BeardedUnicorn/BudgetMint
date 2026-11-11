@@ -3,7 +3,8 @@
 //! now (they've earned since TaskMint measured them, and they're released
 //! the release days after they stop, so after now); what the user chose not
 //! to count is left out; and earnings still to come are added when the user
-//! assumes them, marked as assumed.
+//! assumes them, marked as assumed. Each step, and the carried money, keeps
+//! the work day it was earned on where TaskMint says (see [`super::earned`]).
 
 use super::contract::{Amount, PayoutForecast};
 use crate::model::{FutureEarnings, TaskMintPlan};
@@ -61,11 +62,15 @@ impl Sub for Money {
 pub struct CurveStep {
     pub at_ms: i64,
     pub money: Money,
+    /// The work day it was earned on, when known.
+    pub day: Option<NaiveDate>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Curve {
     pub carried: Money,
+    /// Of `carried`, what each work day earned, where TaskMint says.
+    pub carried_days: Vec<(NaiveDate, Money)>,
     /// Soonest first.
     pub steps: Vec<CurveStep>,
     /// What the curve holds once each step is in.
@@ -85,8 +90,17 @@ impl Curve {
             .collect();
         Curve {
             carried,
+            carried_days: Vec::new(),
             steps,
             sums,
+        }
+    }
+
+    /// The curve, with what each work day put in `carried`.
+    pub fn with_carried_days(self, carried_days: Vec<(NaiveDate, Money)>) -> Curve {
+        Curve {
+            carried_days,
+            ..self
         }
     }
 
@@ -172,11 +186,17 @@ pub fn live_curve(
             CurveStep {
                 at_ms,
                 money: counted(&amount, plan),
+                day: step.day,
             }
         })
         .collect();
     steps.extend(assumed_steps(forecast, ctx, plan, until_ms));
-    Curve::new(counted(&forecast.carried, plan), steps)
+    let carried_days = forecast
+        .carried_days
+        .iter()
+        .filter_map(|carried| Some((carried.day?, counted(&carried.amount, plan))))
+        .collect();
+    Curve::new(counted(&forecast.carried, plan), steps).with_carried_days(carried_days)
 }
 
 /// What a day is assumed to earn from tomorrow on: none when the user assumes nothing.
@@ -230,6 +250,7 @@ fn assumed_steps(
                 assumed_cents: per_day,
                 ..Money::default()
             },
+            day: Some(day),
         });
         day += Duration::days(1);
     }
@@ -258,6 +279,7 @@ mod tests {
                 estimated_cents: 0,
                 past_due_cents: 400,
             },
+            carried_days: vec![],
             steps: vec![],
             recent_days: vec![],
             zone: "UTC".into(),
@@ -274,6 +296,7 @@ mod tests {
             vec![
                 CurveStep {
                     at_ms: 10,
+                    day: None,
                     money: Money {
                         estimated_cents: 2,
                         ..Money::default()
@@ -281,6 +304,7 @@ mod tests {
                 },
                 CurveStep {
                     at_ms: 20,
+                    day: None,
                     money: Money {
                         assumed_cents: 4,
                         past_due_cents: 1,
@@ -310,6 +334,7 @@ mod tests {
         f.steps = vec![
             Step {
                 at_ms: since + 7 * DAY_MS,
+                day: None,
                 actual_cents: 0,
                 estimated_cents: 3000,
                 past_due_cents: 0,
@@ -320,6 +345,7 @@ mod tests {
             },
             Step {
                 at_ms: now + DAY_MS,
+                day: None,
                 actual_cents: 500,
                 estimated_cents: 0,
                 past_due_cents: 0,
@@ -428,6 +454,7 @@ mod tests {
         let ctx = Ctx::new(1_793_188_800_000, "UTC");
         f.steps = vec![Step {
             at_ms: 0,
+            day: None,
             actual_cents: 0,
             estimated_cents: 0,
             past_due_cents: 0,

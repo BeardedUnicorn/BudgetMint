@@ -1,8 +1,9 @@
 // Adapted from TaskMint packages/client/src/components/pages/calendar/DayCell.tsx @ 26aff93.
 /**
  * One day on the Calendar: its date, the balance at its end, and badges for
- * the bills due, the income and TaskMint's money coming in (dashed while
- * it's only projected). A button that opens the day.
+ * the bills due, the income, TaskMint's money coming in (dashed while it's
+ * only projected) and what the day's work earned in TaskMint that no
+ * withdrawal has taken yet (dotted). A button that opens the day.
  *
  * Narrow grids show whole dollars and dots; wider ones (a container query on
  * the grid, see MonthGrid) show cents and labelled badges.
@@ -12,7 +13,12 @@ import { ReactNode } from 'react';
 import { Box, ButtonBase, Typography } from '@mui/material';
 import { alpha, Theme } from '@mui/material/styles';
 import { BalanceFlag } from '../../budget/BalanceFlag';
-import { CallMade as BillIcon, CallReceived as IncomeIcon, Savings as WithdrawalIcon } from '@mui/icons-material';
+import {
+  CallMade as BillIcon,
+  CallReceived as IncomeIcon,
+  Savings as WithdrawalIcon,
+  WorkHistory as EarnedIcon,
+} from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
 import { focusColor } from '../../../theme/components';
 import { HOVER, PHONE } from '../../../theme/media';
@@ -39,6 +45,13 @@ export function describeDay(day: CalendarDay): string {
       `${day.withdrawalProjected ? 'TaskMint withdrawal expected' : 'TaskMint withdrawal'} ${formatCents(day.withdrawalCents)}`
     );
   }
+  if (day.earnedCents > 0) {
+    const about = day.earnedUncertainCents > 0 ? 'about ' : '';
+    const arrives = day.earnedArrivesOn
+      ? `in the bank ${formatLongDay(day.earnedArrivesOn)}`
+      : 'no withdrawal ahead takes it yet';
+    parts.push(`TaskMint earned, not withdrawn yet ${about}${formatCents(day.earnedCents)}, ${arrives}`);
+  }
   if (day.closingCents !== null)
     parts.push(`balance ${formatCents(day.closingCents)}${day.short ? ', below zero' : day.low ? ', low' : ''}`);
   return `${formatLongDay(day.date)}: ${parts.length > 0 ? parts.join('; ') : 'nothing due'}`;
@@ -47,14 +60,18 @@ export function describeDay(day: CalendarDay): string {
 function Badge({
   tone,
   dashed = false,
+  dotted = false,
   icon,
   children,
 }: {
   tone: Tone;
   dashed?: boolean;
+  /** Money not in the bank yet, nor on its way. */
+  dotted?: boolean;
   icon: ReactNode;
   children: ReactNode;
 }) {
+  const outlined = dashed || dotted;
   return (
     <Box
       sx={theme => ({
@@ -66,8 +83,8 @@ function Badge({
         px: 0.75,
         py: '1px',
         borderRadius: 1,
-        border: `1px ${dashed ? 'dashed' : 'solid'} ${alpha(theme.palette[tone].main, dashed ? 0.7 : 0)}`,
-        bgcolor: dashed ? 'transparent' : alpha(theme.palette[tone].main, 0.14),
+        border: `1px ${dotted ? 'dotted' : dashed ? 'dashed' : 'solid'} ${alpha(theme.palette[tone].main, outlined ? 0.7 : 0)}`,
+        bgcolor: outlined ? 'transparent' : alpha(theme.palette[tone].main, 0.14),
         color: toneText(tone)(theme),
         '& svg': { fontSize: 13, flexShrink: 0 },
       })}
@@ -83,21 +100,33 @@ function Badge({
   );
 }
 
-/** A dot's shape says what it is too, not only its color: bills round, income a diamond, withdrawals square. */
+/**
+ * A dot's shape says what it is too, not only its color: bills round, income
+ * a diamond, withdrawals square, earnings not withdrawn yet a bar.
+ */
 const DOT_SHAPES = {
   error: { borderRadius: '50%' },
   success: { borderRadius: '1px', transform: 'rotate(45deg)' },
   secondary: { borderRadius: '1px' },
+  earned: { width: 9, height: 3, alignSelf: 'center', borderRadius: '1px' },
 } as const;
 
-function Dot({ tone, hollow = false }: { tone: Tone; hollow?: boolean }) {
+function Dot({
+  tone,
+  shape = tone,
+  hollow = false,
+}: {
+  tone: Tone;
+  shape?: keyof typeof DOT_SHAPES;
+  hollow?: boolean;
+}) {
   return (
     <Box
-      data-dot={tone}
+      data-dot={shape}
       sx={theme => ({
         width: 7,
         height: 7,
-        ...DOT_SHAPES[tone],
+        ...DOT_SHAPES[shape],
         bgcolor: hollow ? 'transparent' : theme.palette[tone].main,
         border: `1.5px solid ${theme.palette[tone].main}`,
       })}
@@ -171,6 +200,7 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
             {bills > 0 && <Dot tone="error" />}
             {income > 0 && <Dot tone="success" />}
             {day.withdrawalCents > 0 && <Dot tone="secondary" hollow={day.withdrawalProjected} />}
+            {day.earnedCents > 0 && <Dot tone="secondary" shape="earned" />}
           </Box>
         </Box>
         {bills > 0 && (
@@ -186,6 +216,11 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
         {day.withdrawalCents > 0 && (
           <Badge tone="secondary" dashed={day.withdrawalProjected} icon={<WithdrawalIcon />}>
             {formatMaybeCents(day.withdrawalCents, uncertain)}
+          </Badge>
+        )}
+        {day.earnedCents > 0 && (
+          <Badge tone="secondary" dotted icon={<EarnedIcon />}>
+            {formatMaybeCents(day.earnedCents, day.earnedUncertainCents > 0)}
           </Badge>
         )}
         {day.closingCents !== null && (busy || isToday) && (

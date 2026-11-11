@@ -9,7 +9,9 @@ use crate::forecast::series::ProjectedWithdrawal;
 use crate::forecast::ForecastStatus;
 use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Segment, Settings, TaskMintPlan};
 use crate::occur::{item_occurrences, occurrences, Occurrence};
-use crate::project::{project, settled_through, DayRow, FlowKind, FlowStatus, Projection};
+use crate::project::{
+    project, recorded_arrivals, settled_through, DayRow, FlowKind, FlowStatus, Projection,
+};
 use crate::time::Ctx;
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -272,6 +274,13 @@ pub struct CalendarDay {
     pub withdrawal_uncertain_cents: Cents,
     /// The withdrawal is still ahead (not one TaskMint recorded).
     pub withdrawal_projected: bool,
+    /// What the day's work earned in TaskMint that no withdrawal has taken
+    /// yet (it's in no balance until one does).
+    pub earned_cents: Cents,
+    /// Of it, estimated or assumed.
+    pub earned_uncertain_cents: Cents,
+    /// When the last of it reaches the bank; null when no withdrawal ahead takes it.
+    pub earned_arrives_on: Option<NaiveDate>,
     /// The balance at the day's end, where the cash flow covers the day.
     pub closing_cents: Option<Cents>,
     pub short: bool,
@@ -314,6 +323,16 @@ pub fn month(
         .min(today + Duration::days(MAX_MONTH_DAYS_AHEAD));
     let projection: Projection = project(snapshot, taskmint, ctx, end);
     let all = occurrences(snapshot, first, last, true);
+    // Before the cash flow starts its balance has TaskMint's withdrawals, but
+    // the days still show them (as far back as TaskMint lists: 92 days, 12 at most)
+    let starts = projection.days[0].date;
+    let recorded_before: Vec<(NaiveDate, Cents)> = taskmint
+        .filter(|_| settings.taskmint.use_forecast)
+        .map(|forecast| recorded_arrivals(forecast, &settings.taskmint, ctx))
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|(date, _)| *date < starts)
+        .collect();
 
     let mut view = MonthView {
         month: first.format("%Y-%m").to_string(),
@@ -353,8 +372,17 @@ pub fn month(
             .flat_map(|row| &row.flows)
             .filter(|flow| flow.kind == FlowKind::Withdrawal)
             .collect();
-        let withdrawal_cents: Cents = withdrawals.iter().map(|flow| flow.amount_cents).sum();
+        let withdrawal_cents: Cents = withdrawals
+            .iter()
+            .map(|flow| flow.amount_cents)
+            .sum::<Cents>()
+            + recorded_before
+                .iter()
+                .filter(|(on, _)| *on == date)
+                .map(|(_, cents)| cents)
+                .sum::<Cents>();
         view.withdrawals_cents += withdrawal_cents;
+        let earned = projection.unwithdrawn.iter().find(|day| day.day == date);
         view.days.push(CalendarDay {
             date,
             occurrences,
@@ -365,6 +393,11 @@ pub fn month(
             withdrawal_projected: withdrawals
                 .iter()
                 .any(|flow| flow.status == FlowStatus::Projected),
+            earned_cents: earned.map_or(0, |earned| earned.money.total()),
+            earned_uncertain_cents: earned.map_or(0, |earned| {
+                earned.money.estimated_cents + earned.money.assumed_cents
+            }),
+            earned_arrives_on: earned.and_then(|earned| earned.arrives_on),
             closing_cents: row.map(|row| row.closing_cents),
             short: row.is_some_and(|row| row.short),
             low: row.is_some_and(|row| row.low),
@@ -832,6 +865,7 @@ mod tests {
                 actual_cents: 2_000,
                 ..Amount::default()
             },
+            carried_days: vec![],
             steps: vec![],
             recent_days: vec![],
             zone: "America/Chicago".into(),
@@ -852,6 +886,107 @@ mod tests {
         let view = forecast(&s, Some(&forecast_doc), &status, &ctx());
         assert_eq!(view.assumed_per_day_cents, 1_000);
         assert_eq!(view.withdrawals[0].total_cents, 2_000);
+    }
+
+    #[test]
+    fn the_calendar_shows_each_work_days_earnings_and_the_withdrawals_before_the_balance() {
+        use crate::forecast::contract::{Amount, CarriedDay, Step, Taken};
+        let mut s = budget();
+        let now = ctx().now_ms();
+        let cents = |actual_cents| Amount {
+            actual_cents,
+            ..Amount::default()
+        };
+        // Taken on Nov 7 (in the bank on the 8th, the balance's day) and on Oct 20
+        let last = Taken {
+            taken_at_ms: now - 3 * crate::time::DAY_MS,
+            amount_cents: 2_500,
+        };
+        let forecast_doc = PayoutForecast {
+            schema: 1,
+            as_of_ms: now,
+            funds_release_days: 7,
+            withdrawal_interval_ms: 3 * crate::time::DAY_MS,
+            last_import_ms: None,
+            cutoff: Some(last),
+            recent_withdrawals: vec![
+                last,
+                Taken {
+                    taken_at_ms: now - 21 * crate::time::DAY_MS,
+                    amount_cents: 1_800,
+                },
+            ],
+            next_allowed_at_ms: Some(now),
+            scheduled: None,
+            // The 3rd's and 4th's work released already, the 5th's on the 12th
+            carried: cents(1_500),
+            carried_days: vec![
+                CarriedDay {
+                    day: Some(d(2026, 11, 3)),
+                    amount: cents(1_000),
+                },
+                CarriedDay {
+                    day: Some(d(2026, 11, 4)),
+                    amount: Amount {
+                        estimated_cents: 200,
+                        ..cents(300)
+                    },
+                },
+            ],
+            steps: vec![Step {
+                at_ms: now + 2 * crate::time::DAY_MS - 3 * crate::time::HOUR_MS,
+                day: Some(d(2026, 11, 5)),
+                actual_cents: 700,
+                estimated_cents: 0,
+                past_due_cents: 0,
+                open: None,
+            }],
+            recent_days: vec![],
+            zone: "America/Chicago".into(),
+        };
+        let view = month(&s, Some(&forecast_doc), "2026-11", &ctx()).unwrap();
+        let day = |n: usize| &view.days[n - 1];
+        // Each work day's money, until the withdrawal that takes it: today's (in the bank
+        // tomorrow), then the one on the 13th (in on the 14th)
+        let earned = |n| {
+            let day = day(n);
+            (
+                day.earned_cents,
+                day.earned_uncertain_cents,
+                day.earned_arrives_on,
+            )
+        };
+        assert_eq!(earned(3), (1_000, 0, Some(d(2026, 11, 11))));
+        assert_eq!(earned(4), (500, 200, Some(d(2026, 11, 11))));
+        assert_eq!(earned(5), (700, 0, Some(d(2026, 11, 14))));
+        assert_eq!(earned(6), (0, 0, None));
+        assert_eq!(
+            (day(11).withdrawal_cents, day(14).withdrawal_cents),
+            (1_500, 700)
+        );
+        // Released on the 12th, it's in no balance until it arrives
+        assert_eq!(day(12).closing_cents, day(11).closing_cents);
+        // The one in the bank on the balance's day shows, recorded, before the cash flow starts
+        assert_eq!(
+            (
+                day(8).withdrawal_cents,
+                day(8).withdrawal_projected,
+                day(8).closing_cents
+            ),
+            (2_500, false, None)
+        );
+        assert_eq!(view.withdrawals_cents, 2_500 + 1_500 + 700);
+        // And October's
+        let october = month(&s, Some(&forecast_doc), "2026-10", &ctx()).unwrap();
+        assert_eq!(october.days[20].withdrawal_cents, 1_800);
+        assert_eq!(october.withdrawals_cents, 1_800);
+
+        // Not counting TaskMint: none of it
+        let mut off = s.settings();
+        off.taskmint.use_forecast = false;
+        s.write(DocKey::Settings, Some(&off));
+        let view = month(&s, Some(&forecast_doc), "2026-11", &ctx()).unwrap();
+        assert_eq!((view.withdrawals_cents, view.days[2].earned_cents), (0, 0));
     }
 
     #[test]
