@@ -387,7 +387,7 @@ dependencies = [
 name = "budgetmint"
 version = "1.5.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "log",
  "serde",
  "serde_json",
