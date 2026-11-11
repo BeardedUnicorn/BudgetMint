@@ -6,7 +6,7 @@ Every package is held to **100% coverage**:
 
 Each Rust crate is measured on its own tests. The desktop run ignores `crates/`, so the core can't be covered by accident through the shell.
 
-Integration tests count toward the total, including the desktop's IPC tests (through Tauri's mock runtime) and the Google sign-in flow against a local stand-in for Google. BudgetMint's writes are checked against TaskMint's rules on the emulator (`scripts/test-emulator.sh`); that has no coverage metric.
+Integration tests count toward the total, including the desktop's IPC tests (through Tauri's mock runtime) and the Google sign-in flow against a local stand-in for Google. BudgetMint's rules, and its store's reads and writes against its rules and TaskMint's, are checked on the emulator (`scripts/test-emulator.sh`); that has no coverage metric.
 
 ## Rules
 

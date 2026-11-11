@@ -1,14 +1,19 @@
 # Working in BudgetMint
 
-- **TaskMint owns the shared parts.** The Firestore rules and the payout
-  forecast contract live in TaskMint (`~/code/taskmint-app`). `firebase/`,
+- **Two Firebase projects** ([ADR 0003](docs/adr/0003-own-firebase-project.md)).
+  BudgetMint's own, `budgetmint`, holds its accounts and data under its rules
+  (`rules/firestore.rules`, deployed by its release). TaskMint's,
+  `taskmint-f9a05`, is signed in to alongside for the forecast only.
+- **TaskMint owns its parts.** Its Firestore rules and the payout forecast
+  contract live in TaskMint (`~/code/taskmint-app`). `firebase/`,
   `docs/taskmint/` and core's TaskMint fixtures are pinned copies
   (`firebase/UPSTREAM.json`): never edit them here. Change them in TaskMint,
   then `pnpm upstream:pull`.
-- **Never write under `users/`.** That's TaskMint's data. BudgetMint writes
-  only `budgetmint/{uid}` and its `data/` documents, and reads TaskMint's
-  `users/{uid}/published/payoutForecast`. `scripts/test-emulator.sh` checks
-  this against the rules.
+- **Write nothing in TaskMint's project.** BudgetMint writes only
+  `budgetmint/{uid}` and its `data/` documents, in its own project, and only
+  reads TaskMint's `users/{uid}/published/payoutForecast`. Never make a
+  TaskMint account. `scripts/test-emulator.sh` checks this against both
+  projects' rules.
 - **Rules live in core.** Every budget rule (recurrence, settlement, the
   withdrawal series, reminders) belongs in `crates/budgetmint-core`, which
   stays pure: no I/O, clock or randomness (`clippy.toml`). The client asks

@@ -573,7 +573,6 @@ describe('the pieces', () => {
     store.setEpoch('someone-else', 4);
     store.failListen(new Error('gone'));
     expect(session.getView().phase).toBe('error');
-    expect(await store.hasTaskMintData('nobody')).toBe(false);
     await session.deleteAccount();
     expect(store.deleteAll).not.toHaveBeenCalled();
     expect(store.deleteUser).toHaveBeenCalled();

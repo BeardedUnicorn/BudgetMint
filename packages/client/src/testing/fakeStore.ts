@@ -1,6 +1,8 @@
 /**
  * A BudgetStore in memory, for tests: the test signs users in and out, sets
  * epochs, puts documents in the "cloud" and publishes TaskMint forecasts.
+ * Signing in signs in to TaskMint too, as the same user (the accounts
+ * match), unless the test says otherwise with setTaskMintUser.
  * Like Firestore's cache, a write reaches the listeners at once (as pending
  * until `confirm`). Each method is a vi.fn, so a test can make one fail or
  * check its calls.
@@ -11,7 +13,10 @@ import type { DocWrite, ForecastDoc } from '@budgetmint/contracts';
 import type { BudgetStore, CloudUser, DocsSnapshot, DocsSource, WriteMeta } from '../cloud/types';
 
 export interface FakeStore extends BudgetStore {
+  /** Signs in (or out) of BudgetMint, and TaskMint as the same user. */
   setUser(user: CloudUser | null): void;
+  /** Who's signed in to TaskMint alone. */
+  setTaskMintUser(user: CloudUser | null): void;
   /** BudgetMint's epoch as the cloud has it (null: none), told to its watchers. */
   setEpoch(uid: string, epoch: number | null): void;
   /** Puts a document in the cloud (null JSON: deletes it) and tells the listeners, as the server. */
@@ -21,8 +26,6 @@ export interface FakeStore extends BudgetStore {
   /** Fails the open listeners. */
   failListen(error: unknown): void;
   failForecast(error: unknown): void;
-  /** Whether the account has TaskMint data. */
-  setTaskMintData(uid: string, has: boolean): void;
   /** The cloud's documents. */
   readonly docs: Map<string, { json: string; schema: number }>;
   readonly writes: { uid: string; writes: DocWrite[]; meta: WriteMeta }[];
@@ -40,8 +43,9 @@ const sourceOf = (docId: string): DocsSource =>
 export function createFakeStore(): FakeStore {
   let user: CloudUser | null = null;
   const userListeners = new Set<(user: CloudUser | null) => void>();
+  let taskmintUser: CloudUser | null = null;
+  const taskmintListeners = new Set<(user: CloudUser | null) => void>();
   const epochs = new Map<string, number>();
-  const taskmint = new Map<string, boolean>();
   const docs: FakeStore['docs'] = new Map();
   const epochWatchers = new Set<{ uid: string; listener: (epoch: number | null) => void }>();
   type Open = { onDocs: (snapshot: DocsSnapshot) => void; onError: (error: unknown) => void; from: string };
@@ -81,6 +85,14 @@ export function createFakeStore(): FakeStore {
     signOut: vi.fn(async () => store.setUser(null)),
     deleteUser: vi.fn(async () => store.setUser(null)),
     signedInRecently: vi.fn(async () => true),
+    onTaskMint: vi.fn((listener: (user: CloudUser | null) => void) => {
+      taskmintListeners.add(listener);
+      listener(taskmintUser);
+      return () => taskmintListeners.delete(listener);
+    }),
+    signInToTaskMint: vi.fn(async (email: string) => store.setTaskMintUser(cal(email.split('@')[0]))),
+    signInToTaskMintWithGoogle: vi.fn(async () => store.setTaskMintUser({ ...cal(), providers: ['google.com'] })),
+    signOutOfTaskMint: vi.fn(async () => store.setTaskMintUser(null)),
     account: vi.fn(async (uid: string) => epochs.get(uid) ?? null),
     createAccount: vi.fn(async (uid: string) => {
       epochs.set(uid, 1);
@@ -142,11 +154,15 @@ export function createFakeStore(): FakeStore {
       store.setEpoch(uid, epoch + 1);
       return epoch + 1;
     }),
-    hasTaskMintData: vi.fn(async (uid: string) => taskmint.get(uid) ?? false),
 
     setUser(next) {
       user = next;
       for (const listener of [...userListeners]) listener(next);
+      store.setTaskMintUser(next);
+    },
+    setTaskMintUser(next) {
+      taskmintUser = next;
+      for (const listener of [...taskmintListeners]) listener(next);
     },
     setEpoch(uid, epoch) {
       if (epoch === null) epochs.delete(uid);
@@ -167,9 +183,6 @@ export function createFakeStore(): FakeStore {
     },
     failForecast(error) {
       for (const watcher of [...forecastWatchers]) watcher.onError(error);
-    },
-    setTaskMintData(uid, has) {
-      taskmint.set(uid, has);
     },
   };
   return store;

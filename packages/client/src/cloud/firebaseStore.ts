@@ -1,13 +1,17 @@
 /**
  * The BudgetStore on Firebase's JavaScript SDK, loaded only once the app
- * starts (it's a large part of the bundle). Sign-in keeps the session in
- * the webview's IndexedDB (falling back to localStorage); the apps' webviews
- * pass no popup resolver, so nothing loads Google's sign-in iframe there.
- * Firestore's cache holds the account's data on the device, and its
- * unsent writes, so the app opens and works offline.
+ * starts (it's a large part of the bundle). Two Firebase apps: BudgetMint's
+ * own project, for its accounts and data, and TaskMint's, signed in to
+ * alongside with the same account, for its forecast. Each keeps its sign-in
+ * in the webview's IndexedDB (falling back to localStorage); the apps'
+ * webviews pass no popup resolver, so nothing loads Google's sign-in iframe
+ * there. Firestore's caches hold the data on the device, and its unsent
+ * writes, so the app opens and works offline.
  */
 
 import type { DocWrite, ForecastDoc, IncomingDoc } from '@budgetmint/contracts';
+import type { User, UserCredential } from 'firebase/auth';
+import { NO_TASKMINT_ACCOUNT } from './errors';
 import type { BudgetStore, CloudConfig, CloudUser, DocsSource, WriteMeta } from './types';
 
 /** Firestore takes at most 500 writes in a batch. */
@@ -29,22 +33,57 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
     import('firebase/auth'),
     import('firebase/firestore'),
   ]);
-  // The emulators' data gets an app (and a cache) of its own
-  const app = initializeApp(config.firebase, config.emulatorHost ? 'emulator' : undefined);
-  const session = auth.initializeAuth(app, {
-    persistence: [auth.indexedDBLocalPersistence, auth.browserLocalPersistence],
-    ...(config.popupSignIn ? { popupRedirectResolver: auth.browserPopupRedirectResolver } : {}),
+  /** A project's Auth and Firestore, in an app named `name` (undefined: the default one). */
+  const open = (firebase: CloudConfig['firebase'], name: string | undefined) => {
+    const app = initializeApp(firebase, name);
+    const session = auth.initializeAuth(app, {
+      persistence: [auth.indexedDBLocalPersistence, auth.browserLocalPersistence],
+      ...(config.popupSignIn ? { popupRedirectResolver: auth.browserPopupRedirectResolver } : {}),
+    });
+    const localCache = {
+      tabs: () => fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }),
+      single: () => fs.persistentLocalCache({ tabManager: fs.persistentSingleTabManager({}) }),
+      memory: () => fs.memoryLocalCache(),
+    }[config.cache]();
+    const db = fs.initializeFirestore(app, { localCache });
+    if (config.emulatorHost) {
+      auth.connectAuthEmulator(session, `http://${config.emulatorHost}:9099`, { disableWarnings: true });
+      fs.connectFirestoreEmulator(db, config.emulatorHost, 8085);
+    }
+    return { session, db };
+  };
+  // The emulators' data gets apps (and caches) of their own
+  const { session, db } = open(config.firebase, config.emulatorHost ? 'emulator' : undefined);
+  const taskmint = open(config.taskmint, config.emulatorHost ? 'taskmint-emulator' : 'taskmint');
+
+  const cloudUser = (user: User): CloudUser => ({
+    uid: user.uid,
+    email: user.email,
+    providers: user.providerData.map(provider => provider.providerId),
   });
-  const localCache = {
-    tabs: () => fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }),
-    single: () => fs.persistentLocalCache({ tabManager: fs.persistentSingleTabManager({}) }),
-    memory: () => fs.memoryLocalCache(),
-  }[config.cache]();
-  const db = fs.initializeFirestore(app, { localCache });
-  if (config.emulatorHost) {
-    auth.connectAuthEmulator(session, `http://${config.emulatorHost}:9099`, { disableWarnings: true });
-    fs.connectFirestoreEmulator(db, config.emulatorHost, 8085);
-  }
+  /**
+   * A Google sign-in to TaskMint. One that made an account (TaskMint had
+   * none for it) deletes it again at once and refuses: BudgetMint never
+   * makes TaskMint accounts.
+   */
+  const taskmintGoogle = async (signIn: () => Promise<UserCredential>) => {
+    const signedIn = await signIn();
+    if (auth.getAdditionalUserInfo(signedIn)?.isNewUser) {
+      await auth.deleteUser(signedIn.user);
+      throw Object.assign(new Error('TaskMint has no account for that Google account.'), {
+        code: NO_TASKMINT_ACCOUNT,
+      });
+    }
+  };
+  /**
+   * Signs in to TaskMint alongside BudgetMint. When it can't (no such
+   * account, another password), BudgetMint goes on without its forecast.
+   */
+  const alongside = (signIn: () => Promise<unknown>) =>
+    signIn().then(
+      () => undefined,
+      () => undefined
+    );
 
   const accountDoc = (uid: string) => fs.doc(db, ROOT, uid);
   const data = (uid: string) => fs.collection(db, ROOT, uid, 'data');
@@ -77,38 +116,58 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
 
   return {
     onUser(listener) {
-      return auth.onAuthStateChanged(session, user =>
-        listener(
-          user
-            ? ({
-                uid: user.uid,
-                email: user.email,
-                providers: user.providerData.map(provider => provider.providerId),
-              } satisfies CloudUser)
-            : null
-        )
-      );
+      return auth.onAuthStateChanged(session, user => listener(user ? cloudUser(user) : null));
     },
     async signIn(email, password) {
       await auth.signInWithEmailAndPassword(session, email, password);
+      await alongside(() => auth.signInWithEmailAndPassword(taskmint.session, email, password));
     },
     async signUp(email, password) {
       await auth.createUserWithEmailAndPassword(session, email, password);
+      await alongside(() => auth.signInWithEmailAndPassword(taskmint.session, email, password));
     },
     resetPassword: email => auth.sendPasswordResetEmail(session, email),
     async signInWithGoogle(idToken) {
-      await (idToken
-        ? auth.signInWithCredential(session, auth.GoogleAuthProvider.credential(idToken))
-        : auth.signInWithPopup(session, new auth.GoogleAuthProvider()));
+      const withToken = async (token: string) => {
+        const credential = auth.GoogleAuthProvider.credential(token);
+        await auth.signInWithCredential(session, credential);
+        return credential;
+      };
+      const inPopup = async () =>
+        auth.GoogleAuthProvider.credentialFromResult(
+          await auth.signInWithPopup(session, new auth.GoogleAuthProvider())
+        );
+      const credential = await (idToken ? withToken(idToken) : inPopup());
+      // The same Google account signs in to TaskMint: its project accepts BudgetMint's Google clients
+      if (credential) {
+        await alongside(() => taskmintGoogle(() => auth.signInWithCredential(taskmint.session, credential)));
+      }
     },
-    signOut: () => auth.signOut(session),
+    async signOut() {
+      await Promise.all([auth.signOut(session), auth.signOut(taskmint.session)]);
+    },
     async deleteUser() {
       await auth.deleteUser(session.currentUser!);
+      await auth.signOut(taskmint.session);
     },
     async signedInRecently() {
       const { authTime } = await session.currentUser!.getIdTokenResult();
       return Date.now() - Date.parse(authTime) < RECENT_SIGN_IN_MS;
     },
+
+    onTaskMint(listener) {
+      return auth.onAuthStateChanged(taskmint.session, user => listener(user ? cloudUser(user) : null));
+    },
+    async signInToTaskMint(email, password) {
+      await auth.signInWithEmailAndPassword(taskmint.session, email, password);
+    },
+    signInToTaskMintWithGoogle: idToken =>
+      taskmintGoogle(() =>
+        idToken
+          ? auth.signInWithCredential(taskmint.session, auth.GoogleAuthProvider.credential(idToken))
+          : auth.signInWithPopup(taskmint.session, new auth.GoogleAuthProvider())
+      ),
+    signOutOfTaskMint: () => auth.signOut(taskmint.session),
 
     account: async uid => epochOf(await fs.getDoc(accountDoc(uid))),
     async createAccount(uid) {
@@ -189,7 +248,7 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
     },
     watchForecast(uid, listener, onError) {
       return fs.onSnapshot(
-        fs.doc(db, 'users', uid, ...FORECAST_PATH),
+        fs.doc(taskmint.db, 'users', uid, ...FORECAST_PATH),
         snapshot => {
           if (!snapshot.exists()) {
             listener(null);
@@ -232,11 +291,6 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
       const all = await fs.getDocs(data(uid));
       await deleteRefs(all.docs.map(doc => doc.ref));
       return next;
-    },
-    async hasTaskMintData(uid) {
-      const taskmint = fs.collection(db, 'users', uid, 'data');
-      const live = await fs.getDocs(fs.query(taskmint, fs.where('deleted', '==', false), fs.limit(1)));
-      return !live.empty;
     },
   };
 }

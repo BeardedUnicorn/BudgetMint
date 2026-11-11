@@ -49,11 +49,19 @@ arrive, and when the balance would go short), at the hour you choose:
 
 ## How it fits with TaskMint
 
-Both apps use the Firebase project `taskmint-f9a05`, so one account signs in
-to both. TaskMint owns the shared parts, and BudgetMint keeps pinned copies:
+BudgetMint has its own Firebase project, `budgetmint`, for its accounts and
+data ([ADR 0003](docs/adr/0003-own-firebase-project.md)). Signing in also
+signs in to TaskMint's project, `taskmint-f9a05`, with the same email and
+password or Google account, only to read TaskMint's forecast. When the two
+accounts differ, Settings → TaskMint signs in to TaskMint alone. BudgetMint
+never makes a TaskMint account, and writes nothing in TaskMint's project.
 
-- **The Firestore rules** (`firebase/firestore.rules`) cover both apps.
-  TaskMint's release deploys them; BudgetMint's deploys only its Hosting site.
+BudgetMint's Firestore rules are its own (`rules/firestore.rules`), deployed
+by its release. TaskMint owns its parts, and BudgetMint keeps pinned copies
+for its tests:
+
+- **TaskMint's Firestore rules** (`firebase/firestore.rules`), which the
+  emulator test reads the forecast under.
 - **The forecast contract** (`docs/taskmint/payout-forecast.md`) and its
   fixtures (`crates/budgetmint-core/src/testkit/taskmint/`).
 
@@ -64,13 +72,12 @@ was edited here; `pnpm upstream:pull` copies them again from
 
 BudgetMint's data is at `budgetmint/{uid}` (its epoch) and
 `budgetmint/{uid}/data/{kind~id}`, one document per setting, item or
-occurrence you've acted on. It reads TaskMint's
-`users/{uid}/published/payoutForecast` and never writes under `users/`.
+occurrence you've acted on. In TaskMint's project it reads
+`users/{uid}/published/payoutForecast`, with TaskMint's uid.
 Deleting BudgetMint's data starts a new epoch, and the rules refuse writes
 from an older one, so another device that's still open starts over instead
-of writing the old data back. Deleting your account is TaskMint's to do while
-TaskMint has data on it; TaskMint's Delete account removes BudgetMint's data
-too.
+of writing the old data back. Deleting your BudgetMint account deletes its
+data too, and only signs out of TaskMint.
 
 ## Development
 
@@ -107,16 +114,17 @@ app's with `BUDGETMINT_DATA_DIR=/some/folder pnpm tauri dev`.
 
 **Emulators.** Copy `.env.example` to `.env` and set
 `VITE_FIREBASE_EMULATOR_HOST=127.0.0.1`, then start the Auth and Firestore
-emulators (the same ports as TaskMint's, so one set serves both apps):
+emulators (the same ports as TaskMint's, so one set serves both apps' projects,
+and one account signs in to both):
 
 ```bash
-pnpm firebase --config firebase.emulators.json emulators:start --project taskmint-f9a05
+pnpm firebase --config firebase.emulators.json emulators:start --project budgetmint
 ```
 
 **Gates.** `pnpm verify` runs every check CI does: the coverage policy,
 toolchain pins, the upstream pin, the generated contracts, Biome, the
-scripts' tests, BudgetMint's writes against TaskMint's rules on the emulator
-(`scripts/test-emulator.sh`), TypeScript, the builds, and the tests with
+scripts' tests, BudgetMint's rules and its store against both projects' rules
+on the emulator (`scripts/test-emulator.sh`), TypeScript, the builds, and the tests with
 100% coverage in every TypeScript package, `budgetmint-core` and the desktop
 shell. Exclusions are listed only in `coverage-policy.json`.
 
@@ -221,29 +229,37 @@ builds the macOS and Windows apps with their signed updates and
 
 ## Firebase setup still to do
 
-BudgetMint runs on the project now, as TaskMint's apps' Firebase web apps.
-Before a public release it needs its own registrations in `taskmint-f9a05`
-(each a one-time step in the Firebase or Google Cloud console):
+The project `budgetmint` exists, with the "BudgetMint web" and "BudgetMint
+desktop" apps, Firestore in nam5 and the Hosting site `budgetmint`. Before
+a release it needs these one-time steps, in the Firebase or Google Cloud
+console:
 
-1. **Apps:** "BudgetMint web" (linked to a new Hosting site `budgetmint`),
-   "BudgetMint desktop", and Android `com.budgetmint.android` with its signing
-   certificates. Then put their `appId`s in `apps/web/src/firebaseConfig.ts`
-   and `apps/desktop/src/firebaseConfig.ts`.
-2. **Auth:** add `budgetmint.web.app` and `budgetmint.firebaseapp.com` to the
-   authorized domains. The desktop's Google sign-in uses BudgetMint's own
-   "Desktop app" OAuth client, "BudgetMint desktop" (Google Cloud console →
-   APIs & Services → Credentials), from `.env` locally and the repository
-   secrets `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET` in a release. A build
-   without them hides Continue with Google (a development build says so in
-   the console), and a release tag's build stops.
-3. **Deploys:** a Workload Identity Federation provider that trusts only this
-   repository's `v*` tags, and a service account with Firebase Hosting Admin
-   only (it must not be able to deploy rules). Set the repository variables
-   `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT`; until
-   then a release skips the web deploy.
-4. **The Android app** (`pnpm tauri android init`, then MainActivity's
+1. **Auth in `budgetmint`:** turn on Email/Password and Google. In its
+   Google provider, safelist the "BudgetMint desktop" OAuth client ID. That
+   client is in `taskmint-f9a05`'s Credentials, and it's what the desktop
+   signs in to both projects with. Add `budgetmint.web.app` and
+   `budgetmint.firebaseapp.com` to the authorized domains.
+2. **Auth in `taskmint-f9a05`:** in its Google provider, safelist
+   `budgetmint`'s web client ID ("Web client (auto created by Google
+   Service)"), so the web's Google sign-in also signs in to TaskMint. Add
+   `budgetmint.web.app` and `budgetmint.firebaseapp.com` to its authorized
+   domains, for Settings' Google sign-in to TaskMint. The desktop's Google
+   sign-in uses BudgetMint's own "Desktop app" OAuth client, "BudgetMint
+   desktop", from `.env` locally and the repository secrets
+   `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET` in a release. A build without
+   them hides Continue with Google (a development build says so in the
+   console), and a release tag's build stops.
+3. **Deploys:** a Workload Identity Federation provider in `budgetmint` that
+   trusts only this repository's `v*` tags, and a service account with
+   Firebase Hosting Admin and Firebase Rules Admin only. Set the repository
+   variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and
+   `GCP_DEPLOY_SERVICE_ACCOUNT`; until then a release skips the web deploy.
+4. **The move** from `taskmint-f9a05`, once, when the first release on
+   `budgetmint` is out ([the runbook](docs/runbook.md#moving-from-taskmints-project)).
+5. **The Android app** (`pnpm tauri android init`, then MainActivity's
    bridges as TaskMint's: `BudgetMintSplash`, `BudgetMintSystemBars`,
-   `BudgetMintGoogleSignIn`) and its release keystore.
+   `BudgetMintGoogleSignIn`), registered in `budgetmint` with its signing
+   certificates, and its release keystore.
 
 ## Repository layout
 
@@ -254,7 +270,8 @@ packages/contracts/         TypeScript types generated from core
 packages/client/            the React app every shell runs
 apps/desktop/               the Tauri shell (desktop and Android) and its entry
 apps/web/                   the web app's entry, for Firebase Hosting
-firebase/                   TaskMint's rules, pinned (UPSTREAM.json)
+rules/                      BudgetMint's Firestore rules and their tests
+firebase/                   TaskMint's rules, pinned (UPSTREAM.json), for the tests
 docs/                       ADRs, and TaskMint's forecast contract (pinned)
 assets/brand/               the icon, mark, wordmark and tray icon masters
 scripts/                    verify, wasm build, contracts, upstream pin, brand, release

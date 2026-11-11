@@ -19,7 +19,7 @@ describe('signing in', () => {
     const engine = actions();
     render(<SignInForm engine={engine} />);
     const user = userEvent.setup();
-    expect(screen.getByText(/Use the account you use for TaskMint/)).toBeInTheDocument();
+    expect(screen.getByText(/Use the same email and password as TaskMint/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Create an account' }));
     await user.type(screen.getByLabelText('Email'), ' new@example.com ');
     await user.type(screen.getByLabelText('Password'), 'secret1');

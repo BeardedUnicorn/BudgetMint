@@ -14,10 +14,10 @@ name: Release
 # README's "Android signing").
 #
 # The web app is built too, and a tag deploys it to Firebase Hosting (the
-# budgetmint site in TaskMint's taskmint-f9a05 project) once every build has
-# passed, when the repository has the Workload Identity Federation variables.
-# Hosting only: the Firestore rules and indexes are TaskMint's, deployed from
-# TaskMint.
+# budgetmint site in BudgetMint's budgetmint project) with BudgetMint's
+# Firestore rules (rules/firestore.rules) once every build has passed, when
+# the repository has the Workload Identity Federation variables. TaskMint's
+# project and its rules are TaskMint's, deployed from TaskMint.
 on:
   push:
     tags: ['v*']
@@ -31,6 +31,7 @@ on:
       - apps/desktop/src-tauri/tauri.android.conf.json
       - apps/desktop/src-tauri/gen/android/**
       - firebase.json
+      - rules/firestore.rules
       - scripts/build-wasm.mjs
   workflow_dispatch:
 
@@ -250,16 +251,18 @@ jobs:
           path: apps/web/dist
 
       # No stored key: the provider should trust this repository's v* tags
-      # only, as a service account that can deploy Hosting and nothing more
+      # only, as a service account that can deploy Hosting and the Firestore
+      # rules, and nothing more
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       # firebase-tools at the version package.json's "firebase" script pins.
-      # Hosting only (firebase.json's budgetmint site): never the Firestore
-      # rules or indexes, which are TaskMint's.
-      - run: pnpm firebase deploy --only hosting --project taskmint-f9a05 --non-interactive
+      # The rules first, so a release's new kinds of documents are allowed by
+      # the time its web app is served.
+      - run: pnpm firebase deploy --only firestore:rules --project budgetmint --non-interactive
+      - run: pnpm firebase deploy --only hosting --project budgetmint --non-interactive
 
   github-release:
     if: github.ref_type == 'tag'
