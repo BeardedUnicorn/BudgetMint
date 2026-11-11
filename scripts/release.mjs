@@ -303,6 +303,9 @@ function build(version, plans) {
   if (!updates && plans.some(plan => plan.kind === 'tauri' || plan.kind === 'xwin')) {
     console.log("\nTAURI_SIGNING_PRIVATE_KEY isn't set, so the desktop builds make no updates.");
   }
+  // Every app runs core in its webview, so its wasm comes first (the
+  // client's build imports it)
+  run('pnpm', ['build:wasm']);
   return plans.flatMap(plan => {
     const destination = join(root, RELEASES, assetName(productName(), version, plan.target));
     if (plan.kind === 'android') {
