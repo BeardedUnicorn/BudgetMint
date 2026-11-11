@@ -186,6 +186,11 @@ pub struct ItemHistoryArgs {
 pub struct RemindersArgs {
     pub window_days: u16,
     pub max: u16,
+    /// When this device last ran: the reminders it missed since are
+    /// included (reminders::upcoming).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub missed_since_ms: Option<i64>,
 }
 
 /// The settings, and whether any have been saved (onboarding comes first until they are).
@@ -312,6 +317,7 @@ pub fn execute(
             ctx,
             args.window_days,
             args.max,
+            args.missed_since_ms,
         )),
         Command::GetSettings(_) => to_value(SettingsView {
             settings: snapshot.settings(),

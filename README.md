@@ -39,8 +39,11 @@ arrive, and when the balance would go short), at the hour you choose:
 - **Android** sets them with the system, so they come with the app closed.
 - **The desktop** shows them while the app runs. Closing the window keeps it
   in the tray (the menu bar on macOS), which also shows today's balance and
-  the lowest point ahead.
-- **The web app** shows them while a BudgetMint tab is open.
+  the lowest point ahead. Settings → Reminders → **Open BudgetMint at login**
+  starts it in the tray when you log in, and the ones it missed while closed
+  (in the last day) come when it opens.
+- **The web app** shows them while a BudgetMint tab is open, and the ones it
+  missed when it's opened again.
 
 ## How it fits with TaskMint
 
@@ -142,6 +145,12 @@ cd apps/desktop && pnpm tauri icon ../../assets/brand/icon-macos.png -o /tmp/bud
 ```bash
 cd apps/desktop/src-tauri/icons && rm -rf android ios Square*Logo.png StoreLogo.png 64x64.png
 ```
+
+The desktop's own wiring (`app.rs`, `platform/os.rs`) has no automated tests;
+[docs/qa/excluded-code-checklist.md](docs/qa/excluded-code-checklist.md)
+checks it by hand before a release, including an update from a local feed.
+[docs/runbook.md](docs/runbook.md) covers deploying, rolling back and
+incidents.
 
 ### Desktop updates
 

@@ -27,6 +27,8 @@ pub struct FakePlatform {
     recorded: Mutex<Recorded>,
     /// Notifications aren't allowed.
     pub denied: Mutex<bool>,
+    /// The app opens at login.
+    pub autostart: Mutex<bool>,
     /// What the update feed announces.
     update: Mutex<Option<AvailableUpdate>>,
     /// How an update's download goes, in order.
@@ -119,6 +121,17 @@ impl Platform for FakePlatform {
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String> {
         self.check("tray")?;
         self.record(|r| r.menus.push(menu.clone()));
+        Ok(())
+    }
+
+    fn autostart(&self) -> Result<bool, String> {
+        self.check("autostart")?;
+        Ok(*self.autostart.lock().unwrap())
+    }
+
+    fn set_autostart(&self, enabled: bool) -> Result<(), String> {
+        self.check("autostart")?;
+        *self.autostart.lock().unwrap() = enabled;
         Ok(())
     }
 

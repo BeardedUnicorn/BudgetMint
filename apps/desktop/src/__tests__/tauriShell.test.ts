@@ -26,17 +26,21 @@ describe('the Tauri shell', () => {
 
   it('on a desktop: notifications while it runs, the tray, and Google in the browser with a client', async () => {
     const shell = createTauriShell({ runtime: 'desktop' }, { clientId: 'id', clientSecret: 'secret' });
-    const { notifications, tray, googleSignIn, systemBars, splashScreen } = shell.platform;
+    const { notifications, tray, autostart, googleSignIn, systemBars, splashScreen } = shell.platform;
     expect(notifications.firesWhenClosed).toBe(false);
     await notifications.request();
     await notifications.schedule([{ id: 1, atMs: 2, title: 'Rent', body: '$1' }]);
     await tray!.setStatus(['Today: $1.00']);
+    await autostart!.isEnabled();
+    await autostart!.setEnabled(true);
     mockInvoke.mockResolvedValueOnce({ idToken: 'token' });
     expect(await googleSignIn!()).toBe('token');
     expect(sent()).toEqual([
       { command: 'request_notifications', args: {} },
       { command: 'schedule_reminders', args: { reminders: [{ id: 1, atMs: 2, title: 'Rent', body: '$1' }] } },
       { command: 'set_tray_status', args: { lines: ['Today: $1.00'] } },
+      { command: 'get_autostart', args: {} },
+      { command: 'set_autostart', args: { enabled: true } },
       { command: 'google_sign_in', args: { clientId: 'id', clientSecret: 'secret' } },
     ]);
     expect(systemBars).toBeUndefined();
@@ -49,6 +53,7 @@ describe('the Tauri shell', () => {
     const { platform } = createTauriShell({ runtime: 'mobile' }, { clientId: 'id', clientSecret: 'secret' });
     expect(platform.notifications.firesWhenClosed).toBe(true);
     expect(platform.tray).toBeUndefined();
+    expect(platform.autostart).toBeUndefined();
     expect(platform.googleSignIn).toBeUndefined();
     expect(platform.systemBars).toBeUndefined();
     expect(platform.splashScreen).toBeUndefined();

@@ -67,6 +67,15 @@ describe('the web shell', () => {
     expect(FakeNotification.shown.map(n => n.title)).toEqual(['Reminder 1', 'Reminder 3']);
   });
 
+  it('shows one that was due already at once, and only once however often it comes again', async () => {
+    const { notifications } = createWebShell().platform;
+    await notifications.schedule([reminder(1, NOW - 60_000)]);
+    vi.advanceTimersByTime(0);
+    await notifications.schedule([reminder(1, NOW - 60_000)]);
+    vi.advanceTimersByTime(0);
+    expect(FakeNotification.shown.map(n => n.title)).toEqual(['Reminder 1']);
+  });
+
   it('waits in steps for a reminder further off than a timer can wait', async () => {
     let now = NOW;
     const { notifications } = createWebShell(() => now).platform;

@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "BudgetMint",
+        "create": false,
         "width": 1280,
         "height": 860,
         "minWidth": 800,
@@ -43,21 +44,39 @@
         "object-src": "'none'",
         "frame-src": "'none'"
       },
-      "dangerousDisableAssetCspModification": ["style-src"]
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNkMwQkQ1QTNDMzhDNzEKUldSeGpNT2oxUXRzZjVDeTZDU2FUR2NTNy8rUFRiQ1d2eUxMVUZHLzVQV0tNVHhRSVpBUDEyMk0K",
-      "endpoints": ["https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json"],
+      "endpoints": [
+        "https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json"
+      ],
       "requireSignedVersion": true,
-      "windows": { "installMode": "passive" }
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "app", "dmg"],
-    "macOS": { "signingIdentity": "-" },
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "targets": [
+      "nsis",
+      "app",
+      "dmg"
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }
