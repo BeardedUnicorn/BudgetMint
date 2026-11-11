@@ -376,7 +376,7 @@ dependencies = [
 
 [[package]]
 name = "budgetmint"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64 0.22.1",
  "log",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "budgetmint-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "budgetmint-wasm"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "budgetmint-core",
  "wasm-bindgen",

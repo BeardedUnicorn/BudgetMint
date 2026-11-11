@@ -8,6 +8,45 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.0.1 – 2026-11-11
+
+### Fixed
+
+- In dark mode, the text on colored chips and buttons (Paid, Overdue, Delete) and the teal withdrawal amounts are easier to read.
+- In light mode, the outline around the focused button or field is dark enough to see.
+- A low or below-zero balance is marked with an icon in the calendar and the forecast, an overdue bill's next date says "Overdue", and the calendar's dots on a phone differ in shape, so color isn't the only cue.
+- Large amounts wrap inside the overview's cards on a phone, and a long bill name wraps instead of widening the table.
+- Undo no longer takes back a later change along with the one it undoes: if the item was changed again since, it says so instead.
+- The calendar and a bill's history no longer mark as overdue the bills your balance already covers.
+- On a day the clocks change, the forecast no longer lists a TaskMint withdrawal that arrives the day after.
+- TaskMint's open timers and average earnings are counted in TaskMint's time zone when this device is in another.
+- A bill that repeats every day keeps all its dates in a long forecast from an old balance.
+- The low balance mark and the other amounts in Settings follow a change made on another device, and only save what you type.
+- A click outside a bill's form no longer throws away what you typed (Escape and Cancel still close it).
+- A bill's amount for one time can go back to the usual amount.
+- A reminder with several days set on another device keeps them when the bill is edited here.
+- Reminders that are on but not allowed now ask: the phone's system at launch, and a browser when you click Allow.
+- In a browser, reminders stay on time after the computer sleeps, and Settings no longer mentions a tray or keyboard shortcuts the browser keeps for itself.
+- A Google sign-in left unfinished in the browser can be cancelled, and the browser's page no longer says you're signed in when you aren't.
+- Onboarding shows which account is signed in, with a way to sign out.
+- On Android, reminders for bills paid or deleted while the app was closed are cleared when it opens.
+- On Linux, Quit in the tray menu works.
+- The desktop app still checks for updates when it can't start.
+- A form says what's wrong under the field it's about, and puts the cursor there.
+- Settings has "Send a test reminder", to check that the system lets BudgetMint's notifications through.
+- Screen readers read the messages that pop up in the corner, and the forecast's chart says in words where the balance starts, its lowest point and where it ends.
+- On a phone, "Every how many months" has room in a bill's form.
+- A bill paid well before it's due (a yearly one paid months early, say) now comes off the forecast on the day it was paid, so the overview, the forecast and the calendar agree.
+- No more "balance goes below zero" reminders before a balance has been set.
+- Marking a bill paid from a list keeps the date it was moved to and its amount for that time.
+- Editing a bill's name and its amount together saves both or neither, with Undo for the whole edit.
+- A bill deleted on another device closes its open history instead of blanking the window, and a page that fails now says so with a way to try again.
+- Delete account checks first that you signed in recently and are online, so it can no longer delete your data and then fail to delete the account.
+- Signing out clears the account's reminders and its balance in the tray.
+- An amount typed with a decimal comma ("1234,50") is read as $1,234.50, not $123,450.
+- A bill changed by a newer BudgetMint on another device can't be overwritten from an older one: it says to update instead.
+- The "Source and releases" link in Settings opens in the browser on the desktop app.
+
 ## 1.0.0 – 2026-11-10
 
 ### Added
