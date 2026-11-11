@@ -163,6 +163,8 @@ pub fn sign_in(
             }
         }
     };
+    // Google's part is done: back to the app, which finishes signing in
+    platform.show_main_window();
 
     let reply: TokenReply = ureq::post(endpoints.token)
         .timeout(Duration::from_secs(30))
@@ -231,7 +233,16 @@ mod tests {
         timeout: Duration,
         browse: impl FnOnce(url::Url) + Send + 'static,
     ) -> Result<Value, String> {
-        let platform = Arc::new(FakePlatform::default());
+        signing_in_on(&Arc::new(FakePlatform::default()), token, timeout, browse)
+    }
+
+    /// signing_in, on `platform`.
+    fn signing_in_on(
+        platform: &Arc<FakePlatform>,
+        token: &str,
+        timeout: Duration,
+        browse: impl FnOnce(url::Url) + Send + 'static,
+    ) -> Result<Value, String> {
         let watching = platform.clone();
         let browser = std::thread::spawn(move || {
             let opened = loop {
@@ -278,7 +289,8 @@ mod tests {
     fn a_google_sign_in_comes_back_with_an_id_token() {
         let (token, endpoint) =
             token_endpoint(200, r#"{"id_token":"eyJ.id.token","access_token":"x"}"#);
-        let result = signing_in(&token, TIMEOUT, |url| {
+        let platform = Arc::new(FakePlatform::default());
+        let result = signing_in_on(&platform, &token, TIMEOUT, |url| {
             assert_eq!(url.path(), "/auth");
             assert_eq!(param(&url, "client_id"), CLIENT);
             assert_eq!(param(&url, "scope"), "openid email profile");
@@ -292,6 +304,8 @@ mod tests {
             assert!(page.contains("go back to BudgetMint"));
         });
         assert_eq!(result, Ok(serde_json::json!({ "idToken": "eyJ.id.token" })));
+        // The window came forward from behind the browser
+        assert_eq!(platform.recorded().windows_shown, 1);
         let request = endpoint.join().unwrap();
         assert!(request.contains("code=the-code"));
         assert!(request.contains("client_secret=s3cret"));
@@ -306,16 +320,19 @@ mod tests {
             ("server_error", "Google sign-in failed: server_error."),
             ("", "Google sign-in failed: no code."),
         ] {
-            let result = signing_in("http://127.0.0.1:9/token", TIMEOUT, move |url| {
-                let state = param(&url, "state");
-                let query = match error {
-                    "" => format!("state={}", state),
-                    error => format!("error={}&state={}", error, state),
-                };
-                // The browser isn't told it worked
-                assert!(come_back(&url, &query).contains("Signing in didn't finish"));
-            });
+            let platform = Arc::new(FakePlatform::default());
+            let result =
+                signing_in_on(&platform, "http://127.0.0.1:9/token", TIMEOUT, move |url| {
+                    let state = param(&url, "state");
+                    let query = match error {
+                        "" => format!("state={}", state),
+                        error => format!("error={}&state={}", error, state),
+                    };
+                    // The browser isn't told it worked
+                    assert!(come_back(&url, &query).contains("Signing in didn't finish"));
+                });
             assert_eq!(result, Err(message.to_string()));
+            assert_eq!(platform.recorded().windows_shown, 0);
         }
     }
 

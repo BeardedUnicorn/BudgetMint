@@ -22,7 +22,7 @@ Integration tests count toward the total, including the desktop's IPC tests (thr
 - **TypeScript:** each package's `vitest.config.ts` calls `defineBudgetmintConfig({ packageDir, … })` from [`vitest.shared.ts`](../vitest.shared.ts). The preset reads the exclusions from the policy and sets every threshold to 100; a package can't pass its own.
 - **The check:** [`scripts/check-coverage-policy.mjs`](../scripts/check-coverage-policy.mjs) fails when an inline ignore appears, when a package's vitest config isn't registered in the policy or declares its own coverage, or when a policy entry points at a file that doesn't exist.
 - **Rust ignore regex:** `node scripts/check-coverage-policy.mjs --rust-ignore-regex <crate dir>` prints that crate's `--ignore-filename-regex`: its excluded files plus every other crate.
-- **Running the gates:** [`scripts/verify.sh`](../scripts/verify.sh) runs all of them locally; CI runs the same steps.
+- **Running the gates:** [`scripts/verify.sh`](../scripts/verify.sh) runs all of them, locally and in CI (`.github/workflows/ci.yml` runs it).
 
 ## Exclusions
 
@@ -31,8 +31,8 @@ Integration tests count toward the total, including the desktop's IPC tests (thr
 | `crates/budgetmint-core` | nothing | pure code | – |
 | `crates/budgetmint-wasm` | `src/lib.rs` | the `#[wasm_bindgen]` layer over core's tested `host::JsonHost`; it runs only in a wasm engine | the client's tests load the real wasm and run commands through it |
 | `packages/client` | `src/core/wasm/**` | wasm-bindgen's generated JavaScript (built, not committed) | the same tests |
-| `apps/desktop/src-tauri` | `src/main.rs`, `src/app.rs` | binary entry; `tauri::Builder`, plugins, `generate_context!`, the run loop. They need a real event loop and main thread | [manual QA checklist](qa/excluded-code-checklist.md) |
-| `apps/desktop/src-tauri` | `src/platform/os.rs` | the Platform on Tauri (tray, OS notifications, window focus, the browser, opening at login, the updater). It needs a real UI session, so it holds calls only | [manual QA checklist](qa/excluded-code-checklist.md) |
+| `apps/desktop/src-tauri` | `src/main.rs`, `src/app.rs` | binary entry; `tauri::Builder`, plugins, the menu bar, `generate_context!`, the run loop. They need a real event loop and main thread | [manual QA checklist](qa/excluded-code-checklist.md) |
+| `apps/desktop/src-tauri` | `src/platform/os.rs` | the Platform on Tauri (the menus and tray, OS notifications, the window and the Dock icon, the browser, the logs folder, opening at login, the updater). It needs a real UI session, so it holds calls only | [manual QA checklist](qa/excluded-code-checklist.md) |
 | all TS packages | `__tests__/**`, test files, `setupTests.ts`, `*.d.ts` | not shipped runtime code | – |
 
 Each `main.tsx` is **not** excluded: it's a single `startClient` call, covered by a test that imports it.

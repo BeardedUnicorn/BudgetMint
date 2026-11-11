@@ -1,10 +1,13 @@
 // Adapted from TaskMint apps/desktop/src-tauri/src/app.rs @ 1623bee.
-//! The Tauri app: plugins, the window, the tray and the reminders' thread.
-//! It needs a real event loop and main thread, so the coverage policy leaves
-//! it to the manual QA checklist: it only wires up code tested elsewhere.
+//! The Tauri app: plugins, the window, the menus, the tray and the
+//! reminders' thread. It needs a real event loop and main thread, so the
+//! coverage policy leaves it to the manual QA checklist: it only wires up
+//! code tested elsewhere (window.rs decides the window's comings and goings,
+//! menu.rs the menus and their clicks).
 //!
 //! On Android and iOS (Tauri's `mobile` cfg) there's no second instance,
-//! tray, hide-on-close or updater, and the system keeps the reminders.
+//! tray, menu bar, hide-on-close, saved window place or updater, and the
+//! system keeps the reminders.
 
 use crate::dispatch;
 use crate::platform::os::TauriPlatform;
@@ -45,6 +48,8 @@ pub fn run() {
         show_window(app)
     }));
     let builder = builder
+        // The shell's log, with the webview's errors and warnings (logs.rs),
+        // in the app's log folder (Settings → Troubleshooting opens it)
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(if cfg!(debug_assertions) {
@@ -68,36 +73,47 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![STARTED_AT_LOGIN]),
         ))
-        // Closing the window hides it to the tray, so reminders keep coming;
-        // quit from the tray. Without a tray icon it closes normally.
+        // The window's size and position from last time; the first time,
+        // it's centered (tauri.conf.json)
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(crate::platform::os::window_state())
+                .build(),
+        )
+        // Closing the window hides it to the tray, so reminders keep coming
+        // (window.rs); quit from the tray or the app menu
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let has_tray = window
-                    .try_state::<Arc<TauriPlatform>>()
-                    .is_some_and(|p| p.has_tray());
-                if window.label() == "main" && has_tray {
+                let closes = match window.try_state::<Arc<AppState>>() {
+                    Some(state) => crate::window::closes(state.platform.as_ref(), window.label()),
+                    None => true,
+                };
+                if !closes {
                     api.prevent_close();
-                    let _ = window.hide();
                 }
             }
         });
+    // The menu bar: About, Settings…, Check for Updates…, Edit and Window
+    // (menu.rs), in place of Tauri's default
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(|app| crate::platform::os::app_menu(app, &crate::menu::app_menu()));
 
     builder
         .setup(|app| {
             let platform = Arc::new(TauriPlatform::new(app.handle().clone()));
             let state = Arc::new(AppState {
-                platform: platform.clone(),
+                platform,
                 reminders: Arc::new(Scheduler::default()),
             });
-            app.manage(platform);
             app.manage(state.clone());
 
-            // The main window ("create": false in tauri.conf.json), hidden
-            // when the app was started at login: the tray brings it up
+            // The main window ("create": false in tauri.conf.json). On a
+            // desktop it's built hidden: the window-state plugin puts it
+            // back where it was, and window.rs shows it once the tray is up
             let window = app.config().app.windows[0].clone();
             let builder = WebviewWindowBuilder::from_config(app.handle(), &window)?;
             #[cfg(desktop)]
-            let builder = builder.visible(!std::env::args().any(|arg| arg == STARTED_AT_LOGIN));
+            let builder = builder.visible(false);
             builder.build()?;
 
             // Clicking a notification brings the window forward (it may be
@@ -130,24 +146,23 @@ pub fn run() {
         });
 }
 
-/// The tray (Open and Quit until the webview sends its lines) and the thread
-/// that shows reminders at their times.
+/// The menus' clicks, the tray (Open, Settings, Check for Updates and Quit
+/// until the webview sends its lines), the window (window.rs) and the
+/// thread that shows reminders at their times.
 #[cfg(desktop)]
 fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
-    use crate::{reminders, tray};
+    use crate::{menu, reminders, tray, window};
+    // The app menu's and the tray menu's clicks both come here
     let menu_state = state.clone();
-    app.on_menu_event(move |app, event| {
-        let id = event.id().as_ref();
-        // Linux's Quit is an ordinary item (see platform/os.rs's menu_item)
-        if id == tray::QUIT {
-            app.exit(0);
-            return;
-        }
-        tray::clicked(menu_state.platform.as_ref(), id)
+    app.on_menu_event(move |_app, event| {
+        menu::clicked(menu_state.platform.as_ref(), event.id().as_ref())
     });
     if let Err(e) = state.platform.render_tray(&tray::menu(&[])) {
         log::error!("Failed to create the tray icon: {}", e);
     }
+    let started_at_login = std::env::args().any(|arg| arg == STARTED_AT_LOGIN);
+    window::at_launch(state.platform.as_ref(), started_at_login);
+
     let state = state.clone();
     std::thread::spawn(move || loop {
         let now_ms = std::time::SystemTime::now()

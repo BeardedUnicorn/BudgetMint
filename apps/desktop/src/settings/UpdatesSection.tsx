@@ -1,11 +1,17 @@
-// Adapted from BudgetMint apps/desktop/src/settings/UpdatesSection.tsx @ 1623bee.
+// Adapted from TaskMint apps/desktop/src/settings/UpdatesSection.tsx @ 1623bee.
 import { Alert, Box, Button, FormControlLabel, Stack, Switch, Typography } from '@mui/material';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import { SettingsSection } from '@budgetmint/client/ui';
+import { APP_VERSION } from '../appVersion';
 import { updates, useUpdates, type UpdateState } from '../updates';
 
+/** When a check last got an answer, as "Nov 11, 2026, 9:41 AM" in the user's locale. */
+export function checkedAt(ms: number): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(ms);
+}
+
 /** What the last check found, under the button. */
-function Status({ update }: { update: UpdateState }) {
+function Status({ update, skippedVersion }: { update: UpdateState; skippedVersion: string | null }) {
   switch (update.status) {
     case 'checking':
       return <Typography color="text.secondary">Checking for updates…</Typography>;
@@ -16,7 +22,10 @@ function Status({ update }: { update: UpdateState }) {
     case 'available':
       return (
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <Typography>BudgetMint {update.update.version} is available.</Typography>
+          <Typography>
+            BudgetMint {update.update.version} is available
+            {update.update.version === skippedVersion ? '; you chose to skip it.' : '.'}
+          </Typography>
           <Button size="small" onClick={updates.show}>
             Update…
           </Button>
@@ -32,7 +41,7 @@ function Status({ update }: { update: UpdateState }) {
 
 /** Checking GitHub for a new release, on its own or now. */
 export function UpdatesSection() {
-  const { update, autoCheck } = useUpdates();
+  const { update, autoCheck, lastCheckedAt, skippedVersion } = useUpdates();
   const busy = update.status === 'checking' || update.status === 'installing';
 
   return (
@@ -47,12 +56,16 @@ export function UpdatesSection() {
             BudgetMint looks for a new release on GitHub when it starts and once a day, and asks before installing it.
           </Typography>
         </Box>
+        <Typography variant="body2">
+          You have BudgetMint {APP_VERSION}.{' '}
+          {lastCheckedAt === null ? 'Not checked yet.' : `Last checked ${checkedAt(lastCheckedAt)}.`}
+        </Typography>
         <Box>
           <Button variant="outlined" onClick={() => void updates.check({ manual: true })} disabled={busy}>
             Check for updates
           </Button>
         </Box>
-        <Status update={update} />
+        <Status update={update} skippedVersion={skippedVersion} />
       </Stack>
     </SettingsSection>
   );

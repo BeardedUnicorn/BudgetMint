@@ -1,12 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Frontend permissions for the main window: core, and opening BudgetMint's own page on GitHub in the browser (the About link; the opener plugin's script handles the click). The webview reaches the shell through its one command, dispatch; notifications, the tray, sign-in's browser and the updater all run in Rust and need no capability.",
+  "description": "What the main window's webview may call, and nothing more. The webview reaches the shell through its one command, dispatch (allow-dispatch, from build.rs's app manifest), and listens for the shell's events (the update's progress, the menus' Settings… and Check for Updates…). The opener plugin's script opens BudgetMint's own page on GitHub in the browser (the About link). The notification plugin's script asks whether notifications are allowed at load, for its window.Notification; without the permission that's an error in the log at every launch. Notifications themselves, the tray, the menus, sign-in's browser, the logs folder and the updater all run in Rust and need no capability.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default",
+    "allow-dispatch",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "notification:allow-is-permission-granted",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

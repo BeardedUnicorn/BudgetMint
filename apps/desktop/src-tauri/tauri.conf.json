@@ -18,6 +18,7 @@
         "height": 860,
         "minWidth": 800,
         "minHeight": 500,
+        "center": true,
         "resizable": true,
         "backgroundThrottling": "disabled"
       }
@@ -63,6 +64,13 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Mike Herold",
+    "copyright": "Copyright © 2026 Mike Herold",
+    "category": "Finance",
+    "shortDescription": "Bills and cash flow, TaskMint's companion",
+    "longDescription": "BudgetMint tracks your bills and forecasts your cash flow, with TaskMint's payouts in the forecast.",
+    "homepage": "https://github.com/BeardedUnicorn/BudgetMint",
+    "license": "MIT",
     "targets": [
       "nsis",
       "app",

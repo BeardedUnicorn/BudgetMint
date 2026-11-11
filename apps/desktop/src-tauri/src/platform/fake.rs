@@ -16,8 +16,12 @@ pub struct Recorded {
     /// How many times everything set was taken back.
     pub cancelled_all: usize,
     pub opened_urls: Vec<String>,
+    pub logs_folders_opened: usize,
     pub windows_shown: usize,
+    pub windows_hidden: usize,
+    /// The tray's menus, in order: the first one created the icon.
     pub menus: Vec<TrayMenu>,
+    pub quits: usize,
     pub restarts: usize,
     pub update_checks: usize,
     pub updates_installed: usize,
@@ -122,14 +126,32 @@ impl Platform for FakePlatform {
         Ok(())
     }
 
+    fn open_logs_folder(&self) -> Result<(), String> {
+        self.check("open_logs_folder")?;
+        self.record(|r| r.logs_folders_opened += 1);
+        Ok(())
+    }
+
     fn show_main_window(&self) {
         self.record(|r| r.windows_shown += 1);
+    }
+
+    fn hide_main_window(&self) {
+        self.record(|r| r.windows_hidden += 1);
     }
 
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String> {
         self.check("tray")?;
         self.record(|r| r.menus.push(menu.clone()));
         Ok(())
+    }
+
+    fn has_tray(&self) -> bool {
+        !self.recorded.lock().unwrap().menus.is_empty()
+    }
+
+    fn quit(&self) {
+        self.record(|r| r.quits += 1);
     }
 
     fn autostart(&self) -> Result<bool, String> {

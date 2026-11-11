@@ -62,10 +62,20 @@ pub trait Platform: Send + Sync {
     fn cancel_all_notifications(&self) -> Result<(), String>;
     /// Opens a web page in the system browser (Google sign-in).
     fn open_url(&self, url: &str) -> Result<(), String>;
-    /// Shows and focuses the main window.
+    /// Opens the folder the log files are in (Finder, Explorer).
+    fn open_logs_folder(&self) -> Result<(), String>;
+    /// Shows and focuses the main window, unminimized; on macOS the Dock
+    /// icon and the app menu come back with it.
     fn show_main_window(&self);
+    /// Hides the main window to the tray; on macOS the Dock icon goes too,
+    /// leaving the menu-bar icon.
+    fn hide_main_window(&self);
     /// Shows `menu` in the tray, creating the tray icon the first time.
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String>;
+    /// Whether there's a tray icon to bring the window back from.
+    fn has_tray(&self) -> bool;
+    /// Quits the app.
+    fn quit(&self);
     /// Whether the app opens when the user logs in. Only a desktop can.
     fn autostart(&self) -> Result<bool, String>;
     /// Opens the app when the user logs in (hidden in the tray), or stops.

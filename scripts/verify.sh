@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Every gate a change must pass before it merges (CI runs the same steps).
+# Every gate a change must pass before it merges. CI runs this script too
+# (.github/workflows/ci.yml), so the two lists are one.
 # Usage: scripts/verify.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."

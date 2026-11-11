@@ -1,16 +1,23 @@
 //! The events the shell sends the webview.
 
-use crate::state::AppState;
+use crate::platform::Platform;
 use serde::Serialize;
 
 /// An update's download, as it goes (updates.rs).
 pub const UPDATE_PROGRESS: &str = "update-progress";
 
+/// The menus' Settings… (menu.rs): the webview opens Settings, as ⌘, does.
+pub const OPEN_SETTINGS: &str = "open-settings";
+
+/// The menus' Check for Updates… (menu.rs): the webview checks, and says
+/// what it found in a dialog.
+pub const CHECK_FOR_UPDATES: &str = "check-for-updates";
+
 /// Sends `payload` as `event`; one that can't be sent is logged, not an error
 /// (the webview may be gone).
-pub fn emit_quiet<T: Serialize>(state: &AppState, event: &str, payload: T) {
+pub fn emit_quiet<T: Serialize>(platform: &dyn Platform, event: &str, payload: T) {
     let payload = serde_json::to_value(payload).expect("events are plain data");
-    if let Err(error) = state.platform.emit(event, &payload) {
+    if let Err(error) = platform.emit(event, &payload) {
         log::warn!("Failed to send {}: {}", event, error);
     }
 }
@@ -23,9 +30,9 @@ mod tests {
     #[test]
     fn sends_events_and_logs_when_it_cant() {
         let f = fixture();
-        emit_quiet(&f.state, UPDATE_PROGRESS, 1);
+        emit_quiet(f.platform.as_ref(), UPDATE_PROGRESS, 1);
         f.platform.fail("emit");
-        emit_quiet(&f.state, UPDATE_PROGRESS, 2);
+        emit_quiet(f.platform.as_ref(), UPDATE_PROGRESS, 2);
         assert_eq!(
             f.platform.recorded().events,
             vec![(UPDATE_PROGRESS.to_string(), serde_json::json!(1))]
