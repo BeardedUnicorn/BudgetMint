@@ -64,6 +64,12 @@ fn random_text() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
+/// PKCE's S256 challenge for `verifier` (RFC 7636 §4.2): the URL-safe
+/// base64 of its SHA-256, unpadded.
+fn pkce_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
 fn encode(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
@@ -122,7 +128,7 @@ pub fn sign_in(
     let port = server.server_addr().to_ip().expect("a TCP listener").port();
     let redirect = format!("http://127.0.0.1:{}", port);
     let verifier = random_text();
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let challenge = pkce_challenge(&verifier);
     let state = random_text();
     let url = format!(
         "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}&prompt=select_account",
@@ -310,7 +316,23 @@ mod tests {
         assert!(request.contains("code=the-code"));
         assert!(request.contains("client_secret=s3cret"));
         assert!(request.contains("grant_type=authorization_code"));
-        assert!(request.contains("code_verifier="));
+        // Google was given the challenge for the verifier the exchange sends
+        let verifier = request
+            .split("code_verifier=")
+            .nth(1)
+            .and_then(|rest| rest.split('&').next())
+            .unwrap();
+        let opened = url::Url::parse(&platform.recorded().opened_urls[0]).unwrap();
+        assert_eq!(param(&opened, "code_challenge"), pkce_challenge(verifier));
+    }
+
+    #[test]
+    fn the_challenge_is_rfc_7636s_s256() {
+        // RFC 7636 Appendix B's example
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
     }
 
     #[test]
