@@ -176,7 +176,7 @@ describe('the Firebase store', () => {
     const snapshots: unknown[] = [];
     const stop = vi.fn();
     vi.mocked(fs.onSnapshot).mockReturnValue(stop as never);
-    const unsubscribe = store.listen('cal', '2025-10-06', snapshot => snapshots.push(snapshot), vi.fn());
+    const unsubscribe = store.listen('cal', 3, '2025-10-06', snapshot => snapshots.push(snapshot), vi.fn());
     const calls = vi.mocked(fs.onSnapshot).mock.calls as unknown as [unknown, unknown, (snapshot: unknown) => void][];
     expect(calls[0][0]).toEqual({ path: 'budgetmint/cal/data/settings~account' });
     expect(calls[0][1]).toEqual({ includeMetadataChanges: true });
@@ -195,7 +195,10 @@ describe('the Firebase store', () => {
       ],
     });
 
-    const fields = (json: unknown, schema: unknown) => (field: string) => ({ json, schema })[field];
+    const fields =
+      (json: unknown, schema: unknown, epoch: unknown = 3) =>
+      (field: string) =>
+        ({ json, schema, epoch })[field];
     calls[0][2]({ id: 'settings~account', get: fields('{}', 1), metadata: metadata(true, false) });
     calls[0][2]({ id: 'settings~account', get: fields(undefined, undefined), metadata: metadata() });
     calls[1][2]({
@@ -205,6 +208,7 @@ describe('the Firebase store', () => {
       ],
       metadata: metadata(false, true),
     });
+    expect(sdk.batch.delete).not.toHaveBeenCalled();
     expect(snapshots).toEqual([
       {
         source: 'settings',
@@ -230,6 +234,38 @@ describe('the Firebase store', () => {
     ]);
     unsubscribe();
     expect(stop).toHaveBeenCalledTimes(3);
+  });
+
+  it('reads what a delete cut short left as deleted, and deletes it again', async () => {
+    const store = await createFirebaseStore(CONFIG);
+    const snapshots: { docs: unknown[] }[] = [];
+    store.listen('cal', 3, '2025-10-06', snapshot => snapshots.push(snapshot), vi.fn());
+    const calls = vi.mocked(fs.onSnapshot).mock.calls as unknown as [unknown, unknown, (snapshot: unknown) => void][];
+    const doc = (id: string, epoch: number) => ({
+      id,
+      ref: { path: id },
+      get: (field: string) => ({ json: '{}', schema: 1, epoch })[field],
+    });
+    calls[0][2]({ ...doc('settings~account', 2), metadata: metadata() });
+    // The deleting fails: let go, and tried again at the next start
+    sdk.batch.commit.mockRejectedValueOnce(new Error('offline'));
+    calls[1][2]({
+      docChanges: () => [
+        { type: 'added', doc: doc('item~old', 1) },
+        { type: 'modified', doc: doc('item~new', 3) },
+      ],
+      metadata: metadata(),
+    });
+    expect(snapshots.map(snapshot => snapshot.docs)).toEqual([
+      [{ docId: 'settings~account', json: null, schema: 1 }],
+      [
+        { docId: 'item~old', json: null, schema: 1 },
+        { docId: 'item~new', json: '{}', schema: 1 },
+      ],
+    ]);
+    expect(sdk.batch.delete.mock.calls).toEqual([[{ path: 'settings~account' }], [{ path: 'item~old' }]]);
+    expect(sdk.batch.commit).toHaveBeenCalledTimes(2);
+    await Promise.resolve();
   });
 
   it('watches TaskMint’s forecast', async () => {
@@ -264,8 +300,15 @@ describe('the Firebase store', () => {
       json: i === 0 ? null : '{}',
       schema: 1,
     }));
-    await store.write('cal', writes, { deviceId: 'desk', epoch: 2 });
+    // Each batch is queued before any is answered (offline, none is)
+    let answer: () => void = () => undefined;
+    sdk.batch.commit.mockImplementationOnce(
+      () => new Promise<undefined>(resolve => (answer = () => resolve(undefined)))
+    );
+    const written = store.write('cal', writes, { deviceId: 'desk', epoch: 2 });
     expect(sdk.batch.commit).toHaveBeenCalledTimes(2);
+    answer();
+    await written;
     expect(sdk.batch.delete).toHaveBeenCalledWith({ path: 'budgetmint/cal/data/item~0' });
     expect(sdk.batch.set).toHaveBeenCalledWith(
       { path: 'budgetmint/cal/data/item~1' },

@@ -17,7 +17,10 @@ use std::collections::BTreeSet;
 
 mod taskmint;
 
-const SCENARIOS: &[&str] = &[include_str!("scenarios/a_month_of_bills.json")];
+const SCENARIOS: &[&str] = &[
+    include_str!("scenarios/a_month_of_bills.json"),
+    include_str!("scenarios/a_backup_restored.json"),
+];
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

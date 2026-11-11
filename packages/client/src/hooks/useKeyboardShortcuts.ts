@@ -1,7 +1,8 @@
 /**
  * App-wide keyboard shortcuts (⌘ on macOS, Ctrl elsewhere), as TaskMint's:
- * ⌘1–⌘6 open the pages in sidebar order, and ⌘, opens Settings (not in a
- * browser, which keeps it). They wait while a dialog or menu is open.
+ * ⌘1–⌘6 open the pages in sidebar order, and ⌘, opens Settings. Not in a
+ * browser, which keeps them: ⌘N adds a bill (income, on its page), and ⌘/
+ * lists them all. They wait while a dialog or menu is open.
  */
 
 import { useEffect, useRef } from 'react';
@@ -33,23 +34,36 @@ export function shortcutView(event: KeyPress, mac: boolean, inBrowser: boolean):
   return Number.isInteger(index) && index >= 0 && index < VIEWS.length ? VIEWS[index] : null;
 }
 
+/** The other shortcuts: adding, and the list of them all (neither in a browser). */
+export function shortcutAction(event: KeyPress, mac: boolean, inBrowser: boolean): 'add' | 'list' | null {
+  const modifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  if (!modifier || event.altKey || event.shiftKey || event.repeat || inBrowser) return null;
+  return event.key.toLowerCase() === 'n' ? 'add' : event.key === '/' ? 'list' : null;
+}
+
 /** Whether a dialog or menu is open, so a shortcut would act behind it. */
 function somethingOnTop(): boolean {
   return document.querySelector('[role="dialog"], [role="menu"], [role="presentation"]') !== null;
 }
 
-export function useKeyboardShortcuts(inBrowser: boolean): void {
-  const { navigate } = useNavigation();
-  const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
+/** `onList`: ⌘/ was pressed (the list is the caller's to show). */
+export function useKeyboardShortcuts(inBrowser: boolean, onList: () => void): void {
+  const navigation = useNavigation();
+  const latest = useRef({ navigation, onList });
+  latest.current = { navigation, onList };
 
   useEffect(() => {
     const mac = isMacPlatform();
     const onKeyDown = (event: KeyboardEvent) => {
       const view = shortcutView(event, mac, inBrowser);
-      if (view === null || somethingOnTop()) return;
+      const action = view === null ? shortcutAction(event, mac, inBrowser) : null;
+      if ((view === null && action === null) || somethingOnTop()) return;
       event.preventDefault();
-      navigateRef.current(view);
+      const { navigation, onList } = latest.current;
+      if (view !== null) navigation.navigate(view);
+      // Income on its own page; a bill anywhere else
+      else if (action === 'add') navigation.navigate(navigation.view === 'income' ? 'income' : 'bills', { add: true });
+      else onList();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);

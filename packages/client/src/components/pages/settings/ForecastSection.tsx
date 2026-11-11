@@ -10,7 +10,7 @@ import { LIMITS } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatDay } from '../../../utils/dates';
-import { formatCents } from '../../../utils/money';
+import { formatCents, formatWholeCents } from '../../../utils/money';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
@@ -32,7 +32,7 @@ export function ForecastSection() {
           <Typography variant="body2" sx={{ flex: 1 }}>
             {balance
               ? `Starts from ${formatCents(balance.cents)}, your balance at the end of ${formatDay(balance.asOf)}.`
-              : 'Starts from $0 until you set your balance.'}
+              : `Starts from ${formatWholeCents(0)} until you set your balance.`}
           </Typography>
           <Button variant="outlined" onClick={() => setEditing(true)}>
             {balance ? 'Update balance' : 'Set balance'}
@@ -57,7 +57,7 @@ export function ForecastSection() {
           label="Low balance mark"
           cents={settings.lowBalanceCents}
           onSave={lowBalanceCents => save(current => ({ ...current, lowBalanceCents }))}
-          helperText="Days that end below it are flagged (and below $0, short). Leave it empty for none."
+          helperText={`Days that end below it are flagged (and below ${formatWholeCents(0)}, short). Leave it empty for none.`}
           sx={{ maxWidth: 260 }}
         />
       </Stack>

@@ -10,6 +10,13 @@ async function open(user: ReturnType<typeof import('@testing-library/user-event'
   await user.click(screen.getByRole('button', { name: page }));
 }
 
+/** Closes a menu that stays open as its options are picked (a multiple choice). */
+async function closeMenu() {
+  // On the menu itself: the option clicked last may have taken the focus elsewhere
+  fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+}
+
 describe('bills and income', () => {
   it('lists bills with their schedule, next date and monthly cost', async () => {
     const { user } = await startBudget({
@@ -90,7 +97,9 @@ describe('bills and income', () => {
     // Bills remind by default, as Settings say (5 days); 2 days instead
     expect(within(dialog).getByLabelText('When')).toHaveTextContent('5 days before');
     await user.click(within(dialog).getByLabelText('When'));
+    await user.click(screen.getByRole('option', { name: '5 days before' }));
     await user.click(screen.getByRole('option', { name: '2 days before' }));
+    await closeMenu();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     const docs = [...store.docs.values()].map(doc => JSON.parse(doc.json));
@@ -161,6 +170,131 @@ describe('bills and income', () => {
     );
   });
 
+  it('ends a bill on a date, from a change too, and goes on again', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    let dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    await user.click(within(dialog).getByRole('switch', { name: 'Ends' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Choose the date it ends on')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Last on or before')).toHaveFocus();
+    fireEvent.change(within(dialog).getByLabelText('Last on or before'), { target: { value: '2027-06-30' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').schedule[0].until).toBe('2027-06-30'));
+    expect(screen.getByText('Monthly on the 1st, until Jun 30, 2027')).toBeInTheDocument();
+
+    // A new amount from January, ending later
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    expect(within(dialog).getByLabelText('Last on or before')).toHaveValue('2027-06-30');
+    const amount = within(dialog).getByLabelText('Amount');
+    await user.clear(amount);
+    await user.type(amount, '1300');
+    fireEvent.change(within(dialog).getByLabelText('The change starts on'), { target: { value: '2027-01-01' } });
+    fireEvent.change(within(dialog).getByLabelText('Last on or before'), { target: { value: '2027-12-31' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').schedule).toHaveLength(2));
+    expect(docOf(store, 'rent').schedule[1]).toMatchObject({ from: '2027-01-01', until: '2027-12-31' });
+
+    // Going on again: its last part's end goes
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    await user.click(within(dialog).getByRole('switch', { name: 'Ends' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').schedule[1].until).toBeNull());
+  });
+
+  it('finds a bill by name or category, in another order, and sums each category', async () => {
+    const { user } = await startBudget({
+      items: [
+        monthly('rent', 'Rent', 1, 120_000, { category: 'Home' }),
+        monthly('power', 'Power', 20, 9_000, { category: 'Home' }),
+        monthly('phone', 'Phone', 31, 6_000, { category: 'Utilities', note: 'Family plan' }),
+        monthly('gym', 'Gym', 5, 3_000),
+        monthly('old', 'Old lease', 3, 100_000, { category: 'Home', archived: true }),
+      ],
+    });
+    await open(user, 'Bills');
+    expect(screen.getByLabelText('A month, by category')).toHaveTextContent(
+      'A month by category: Home $1,290.00 · Utilities $60.00 · Uncategorized $30.00'
+    );
+    expect(screen.getByText('Family plan')).toBeInTheDocument();
+    const names = () =>
+      screen
+        .getAllByRole('row')
+        .filter(row => row.querySelector('td'))
+        .map(row => row.querySelector('p')!.textContent);
+    expect(names()).toEqual(['Power', 'Phone', 'Rent', 'Gym', 'Old lease']);
+
+    // By a word of the name or the category, the archived ones too
+    await user.type(screen.getByLabelText('Search'), 'home');
+    expect(names()).toEqual(['Power', 'Rent', 'Old lease']);
+    expect(screen.queryByLabelText('A month, by category')).not.toBeInTheDocument();
+    await user.clear(screen.getByLabelText('Search'));
+    await user.click(screen.getByLabelText('Category'));
+    await user.click(screen.getByRole('option', { name: 'Utilities' }));
+    expect(names()).toEqual(['Phone']);
+    await user.click(screen.getByLabelText('Category'));
+    await user.click(screen.getByRole('option', { name: 'Every category' }));
+
+    for (const [order, expected] of [
+      ['Amount', ['Rent', 'Power', 'Phone', 'Gym', 'Old lease']],
+      ['A month', ['Rent', 'Power', 'Phone', 'Gym', 'Old lease']],
+      ['Name', ['Gym', 'Phone', 'Power', 'Rent', 'Old lease']],
+    ] as const) {
+      await user.click(screen.getByLabelText('Order'));
+      await user.click(screen.getByRole('option', { name: order }));
+      expect(names()).toEqual(expected);
+    }
+    await user.type(screen.getByLabelText('Search'), 'nothing like it');
+    expect(screen.getByText('No bills match.')).toBeInTheDocument();
+  });
+
+  it('offers the categories in use, and drops a filter for one no longer used', async () => {
+    const { user, store } = await startBudget({
+      items: [monthly('rent', 'Rent', 1, 120_000, { category: 'Home' }), monthly('gym', 'Gym', 5, 3_000)],
+    });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Add bill' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add bill' });
+    await user.type(within(dialog).getByLabelText('Category (optional)'), 'Ho');
+    await user.click(await screen.findByRole('option', { name: 'Home' }));
+    expect(within(dialog).getByLabelText('Category (optional)')).toHaveValue('Home');
+    await user.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    await user.click(screen.getByLabelText('Category'));
+    await user.click(screen.getByRole('option', { name: 'Home' }));
+    expect(screen.queryByText('Gym')).not.toBeInTheDocument();
+    // Its last bill moved to another category elsewhere: everything shows again
+    store.putDoc('item~rent', JSON.stringify({ ...docOf(store, 'rent'), category: 'Flat' }));
+    expect(await screen.findByText('Gym')).toBeInTheDocument();
+  });
+
+  it('puts each row’s actions in a menu by its name on a phone', async () => {
+    const { setPhoneViewport } = await import('../../../../__tests__/setup/viewport');
+    setPhoneViewport();
+    const { user, store } = await startBudget({
+      items: [monthly('rent', 'Rent', 1, 120_000), monthly('old', 'Old', 3, 1_000, { archived: true })],
+    });
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
+    await user.click(await screen.findByRole('button', { name: 'Bills' }));
+    expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Rent' })).not.toBeInTheDocument();
+    // Opened, and closed again without a choice
+    await user.click(screen.getByRole('button', { name: 'Rent: what to do' }));
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Rent: what to do' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Archive Rent' }));
+    await waitFor(() => expect(docOf(store, 'rent').archived).toBe(true));
+    await user.click(screen.getByRole('button', { name: 'Old: what to do' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Edit Old' }));
+    expect(screen.getByRole('dialog', { name: 'Edit Old' })).toBeInTheDocument();
+  });
+
   it('saves a rename and a new amount together, or neither, and undoes both', async () => {
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
     await open(user, 'Bills');
@@ -187,14 +321,14 @@ describe('bills and income', () => {
     expect(docOf(store, 'rent').schedule).toHaveLength(1);
   });
 
-  it('keeps a reminder’s days set elsewhere, unless another is chosen here', async () => {
-    const rent = monthly('rent', 'Rent', 1, 120_000, { reminder: { leadDays: [4, 10] } });
+  it('reminds up to three times before, and keeps the days as they were', async () => {
+    const rent = monthly('rent', 'Rent', 1, 120_000, { reminder: { leadDays: [4, 10] }, note: 'Landlord: Pat' });
     const { user, store } = await startBudget({ items: [rent], settings: { ...SETTLED, reminders: { leadDays: 6 } } });
     await open(user, 'Bills');
     await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
     let dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
-    // Not one of the usual choices, and still shown
-    expect(within(dialog).getByLabelText('When')).toHaveTextContent('4 days before');
+    // Not among the usual choices, and still shown
+    expect(within(dialog).getByLabelText('When')).toHaveTextContent('4 days before, 10 days before');
     await user.type(within(dialog).getByLabelText('Name'), '!');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(docOf(store, 'rent').name).toBe('Rent!'));
@@ -204,9 +338,29 @@ describe('bills and income', () => {
     dialog = screen.getByRole('dialog', { name: 'Edit Rent!' });
     await user.click(within(dialog).getByLabelText('When'));
     await user.click(screen.getByRole('option', { name: '1 day before' }));
+    // Three chosen: no more
+    expect(screen.getByRole('option', { name: 'On the day' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(screen.getByRole('option', { name: '4 days before' }));
+    await user.click(screen.getByRole('option', { name: '10 days before' }));
+    await closeMenu();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(docOf(store, 'rent').reminder).toEqual({ leadDays: [1] }));
+
+    // None chosen: no reminder
+    await user.click(screen.getByRole('button', { name: 'Edit Rent!' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Rent!' });
+    await user.click(within(dialog).getByLabelText('When'));
+    await user.click(screen.getByRole('option', { name: '1 day before' }));
+    await closeMenu();
+    expect(within(dialog).getByLabelText('When')).toHaveTextContent('Choose when');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').reminder).toBeNull());
+
+    // The item's note heads its history
+    await user.click(screen.getByRole('button', { name: "Rent!'s history" }));
+    expect(within(screen.getByRole('dialog', { name: 'Rent!' })).getByText('Landlord: Pat')).toBeInTheDocument();
     // The settings' own choice shows too
+    await user.keyboard('{Escape}');
     await open(user, 'Settings');
     expect(screen.getByLabelText('New bills remind')).toHaveTextContent('6 days before');
   });

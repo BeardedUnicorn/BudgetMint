@@ -38,6 +38,8 @@ pub struct ForecastDoc {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum ForecastState {
+    /// Not heard from the cloud yet (just signed in, or started over).
+    Checking,
     /// No TaskMint device has published one (none syncs with this account).
     Missing,
     Ready,
@@ -70,8 +72,18 @@ pub struct TaskMint {
 }
 
 impl Default for TaskMint {
+    /// Before the client has read the forecast (or that there's none).
     fn default() -> Self {
-        Self::read(None)
+        TaskMint {
+            status: ForecastStatus {
+                state: ForecastState::Checking,
+                app_version: None,
+                published_at_ms: None,
+                as_of_ms: None,
+                last_import_ms: None,
+            },
+            forecast: None,
+        }
     }
 }
 
@@ -99,15 +111,16 @@ impl TaskMint {
             };
         }
         match serde_json::from_str::<PayoutForecast>(&found.json) {
-            Ok(forecast) if forecast.schema <= FORECAST_SCHEMA => TaskMint {
-                status: status(ForecastState::Ready, &doc, Some(&forecast)),
-                forecast: Some(forecast),
-            },
-            Ok(_) => TaskMint {
+            Ok(forecast) if forecast.schema > FORECAST_SCHEMA => TaskMint {
                 status: status(ForecastState::Newer, &doc, None),
                 forecast: None,
             },
-            Err(_) => TaskMint {
+            Ok(forecast) if forecast.in_range() => TaskMint {
+                status: status(ForecastState::Ready, &doc, Some(&forecast)),
+                forecast: Some(forecast),
+            },
+            // Not JSON TaskMint writes, or numbers it couldn't have
+            Ok(_) | Err(_) => TaskMint {
                 status: status(ForecastState::Unreadable, &doc, None),
                 forecast: None,
             },
@@ -130,7 +143,8 @@ mod tests {
 
     #[test]
     fn reads_the_forecast_or_says_why_not() {
-        assert_eq!(TaskMint::default().status.state, ForecastState::Missing);
+        assert_eq!(TaskMint::default().status.state, ForecastState::Checking);
+        assert_eq!(TaskMint::read(None).status.state, ForecastState::Missing);
         let ready = TaskMint::read(doc(
             r#"{"schema":1,"asOfMs":5,"fundsReleaseDays":7,"withdrawalIntervalMs":3,"lastImportMs":4}"#,
             1,
@@ -155,6 +169,13 @@ mod tests {
             1,
         ));
         assert_eq!(newer_json.status.state, ForecastState::Newer);
+        // Numbers TaskMint couldn't have written (core would count days to them)
+        let wild = TaskMint::read(doc(
+            r#"{"schema":1,"fundsReleaseDays":9223372036854775807,"withdrawalIntervalMs":3}"#,
+            1,
+        ));
+        assert_eq!(wild.status.state, ForecastState::Unreadable);
+        assert!(wild.forecast.is_none());
         let broken = TaskMint::read(doc("{", 1));
         assert_eq!(broken.status.state, ForecastState::Unreadable);
         assert_eq!(broken.status.app_version.as_deref(), Some("4.2.0"));

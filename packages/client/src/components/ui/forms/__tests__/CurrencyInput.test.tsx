@@ -12,7 +12,8 @@ describe('cleanAmount', () => {
     ['-5', '5'],
     ['', ''],
     ['.', '.'],
-    ['12345678', String(MAX_AMOUNT)],
+    ['123456789012', String(MAX_AMOUNT)],
+    ['12345678', '12345678'],
   ])('keeps %j as %j', (typed, kept) => {
     expect(cleanAmount(typed)).toBe(kept);
   });

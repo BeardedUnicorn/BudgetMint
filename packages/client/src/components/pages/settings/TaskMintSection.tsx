@@ -11,13 +11,15 @@ import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
+import { importIsStale } from '../../../utils/taskmint';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
 
-/** After this long without an import, TaskMint's numbers may be out of date (as TaskMint says). */
-export const STALE_IMPORT_MS = 3 * 24 * 60 * 60 * 1000;
+/** How long a withdrawal may take to reach the bank (Settings and onboarding offer the same). */
+export const DELAYS = [0, 12, 24, 48, 72, 120];
 
-const DELAYS = [0, 12, 24, 48, 72, 120];
+export const delayLabel = (hours: number) =>
+  hours === 0 ? 'At once' : hours < 48 ? `${hours} hours later` : `${hours / 24} days later`;
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const WEEKDAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -33,7 +35,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
   const status = view.taskmint;
   const setPlan = (patch: Partial<typeof plan>) =>
     save(current => ({ ...current, taskmint: { ...current.taskmint, ...patch } }));
-  const stale = status.lastImportMs !== null && nowMs - status.lastImportMs > STALE_IMPORT_MS;
+  const stale = importIsStale(status, nowMs);
   const policy: 'open' | 'weekly' = plan.policy.kind === 'weekly' ? 'weekly' : 'open';
   const weekly = plan.policy.kind === 'weekly' ? plan.policy : { kind: 'weekly' as const, weekday: 4, hour: 9 };
   const future = plan.future;
@@ -48,9 +50,13 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
           sx={{ ml: 1 }}
           color={status.state === 'ready' ? 'success' : 'default'}
           label={
-            { ready: 'Connected', missing: 'Not connected', newer: 'Update BudgetMint', unreadable: 'Can’t read it' }[
-              status.state
-            ]
+            {
+              checking: 'Checking…',
+              ready: 'Connected',
+              missing: 'Not connected',
+              newer: 'Update BudgetMint',
+              unreadable: 'Can’t read it',
+            }[status.state]
           }
         />
       }
@@ -142,7 +148,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
             >
               {DELAYS.map(hours => (
                 <MenuItem key={hours} value={hours}>
-                  {hours === 0 ? 'At once' : hours < 48 ? `${hours} hours later` : `${hours / 24} days later`}
+                  {delayLabel(hours)}
                 </MenuItem>
               ))}
             </TextField>

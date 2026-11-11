@@ -67,7 +67,7 @@ export async function startClient(container: HTMLElement, options: StartOptions)
   const session = new BudgetSession(store, core, deviceId(), google);
   session.start();
   // The user may have travelled: "today" is where they are
-  window.addEventListener('focus', () => core.setZone(deviceZone()));
+  window.addEventListener('focus', () => session.moveTo(deviceZone()));
   root.render(<App session={session} core={core} extensions={options.extensions ?? {}} />);
   return session;
 }

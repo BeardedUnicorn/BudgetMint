@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import type { ForecastView } from '@budgetmint/contracts';
+import type { ForecastState, ForecastView } from '@budgetmint/contracts';
 import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 import { assumptions } from '../ForecastPage';
 
@@ -68,8 +68,9 @@ describe('the forecast', () => {
   });
 
   it('says what it assumes about TaskMint', () => {
-    const view = (plan: Partial<ForecastView['plan']>, assumed = 0) =>
+    const view = (plan: Partial<ForecastView['plan']>, assumed = 0, state: ForecastState = 'ready') =>
       ({
+        taskmint: { state },
         plan: {
           useForecast: true,
           policy: { kind: 'asSoonAsOpen' },
@@ -83,6 +84,14 @@ describe('the forecast', () => {
         assumedPerDayCents: assumed,
       }) as ForecastView;
     expect(assumptions(view({ useForecast: false }))).toEqual(['TaskMint’s withdrawals aren’t counted.']);
+    // Counted, but there's no forecast to count them from: why
+    expect(assumptions(view({}, 0, 'missing'))).toEqual([
+      'TaskMint isn’t connected, so its withdrawals aren’t counted.',
+    ]);
+    expect(assumptions(view({}, 0, 'newer'))).toEqual([
+      'TaskMint’s forecast is from a newer version: update BudgetMint to count its withdrawals.',
+    ]);
+    expect(assumptions(view({}, 0, 'checking'))).toEqual(['TaskMint’s forecast hasn’t been read yet.']);
     expect(assumptions(view({}))).toEqual([
       'You withdraw as soon as the site allows, it reaches the bank 24 hours later.',
       'Counting time tracked but not imported and money still pending past its release.',

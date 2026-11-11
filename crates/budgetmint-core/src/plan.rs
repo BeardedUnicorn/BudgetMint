@@ -11,7 +11,7 @@ use crate::model::{
 };
 use crate::occur::MOVE_DAYS;
 use crate::recur::is_item_date;
-use crate::time::Ctx;
+use crate::time::{in_calendar, Ctx, FIRST_YEAR, LAST_YEAR};
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 
@@ -103,6 +103,19 @@ fn cents(value: Cents, what: &str) -> Result<Cents, CoreError> {
     }
 }
 
+/// A date the user gave, in core's calendar (a year typed with a digit
+/// too many isn't).
+fn check_date(date: NaiveDate) -> Result<(), CoreError> {
+    if in_calendar(date) {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "Choose a date from {} to {}",
+            FIRST_YEAR, LAST_YEAR
+        )))
+    }
+}
+
 fn check_repeat(repeat: Repeat) -> Result<(), CoreError> {
     let ok = match repeat {
         Repeat::Once => true,
@@ -128,6 +141,8 @@ fn check_schedule(schedule: &[Segment]) -> Result<(), CoreError> {
         )));
     }
     for (index, segment) in schedule.iter().enumerate() {
+        check_date(segment.from)?;
+        segment.until.map_or(Ok(()), check_date)?;
         check_repeat(segment.repeat)?;
         cents(segment.amount_cents, "amount")?;
         if segment.until.is_some_and(|until| until < segment.from) {
@@ -196,6 +211,10 @@ pub struct ScheduleChange {
     pub from: NaiveDate,
     pub repeat: Repeat,
     pub amount_cents: Cents,
+    /// Its last date (inclusive); none: it goes on.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub until: Option<NaiveDate>,
 }
 
 /// `schedule` with `change` from its date on: what comes before stays as it was.
@@ -203,7 +222,7 @@ fn rescheduled(mut schedule: Vec<Segment>, change: ScheduleChange) -> Vec<Segmen
     schedule.retain(|segment| segment.from < change.from);
     schedule.push(Segment {
         from: change.from,
-        until: None,
+        until: change.until,
         repeat: change.repeat,
         amount_cents: change.amount_cents,
     });
@@ -216,19 +235,24 @@ pub fn save_item(
     input: ItemInput,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    save_item_from(snapshot, input, None, ctx)
+    save_item_from(snapshot, input, None, false, ctx)
 }
 
 /// Saves an item and, with `change`, changes its schedule from a date on:
-/// both or, when either is refused, neither.
+/// both or, when either is refused, neither. An `edit` is refused once the
+/// item is gone (deleted on another device): saving it would bring it back.
 pub fn save_item_from(
     snapshot: &mut Snapshot,
     mut input: ItemInput,
     change: Option<ScheduleChange>,
+    edit: bool,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
     if !valid_id(&input.id) {
         return Err(invalid("An item's id is 1–64 letters, digits and dashes"));
+    }
+    if edit {
+        item(snapshot, &input.id)?;
     }
     ours(snapshot, &DocKey::Item(input.id.clone()))?;
     let name =
@@ -280,11 +304,55 @@ pub fn change_schedule(
         from,
         repeat,
         amount_cents,
+        until: None,
     };
     changed.schedule = rescheduled(changed.schedule, change);
     check_schedule(&changed.schedule)?;
     changed.updated_at = ctx.now;
     Ok(write_item(snapshot, &changed))
+}
+
+/// Replaces the budget with a backup's (crate::backup): each document it
+/// has, written as it has it, and every other one deleted. All of it or
+/// none, with the writes that undo it.
+pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, CoreError> {
+    let restored = crate::backup::read_backup(json)?;
+    let items: Vec<String> = snapshot.items.keys().cloned().collect();
+    let overrides: Vec<(String, NaiveDate)> = snapshot.overrides.keys().cloned().collect();
+    let occ = |(item_id, date): &(String, NaiveDate)| DocKey::Occ {
+        date: *date,
+        item_id: item_id.clone(),
+    };
+    // A document a newer BudgetMint wrote isn't this one's to replace: checked first
+    let mut keys = vec![DocKey::Settings];
+    keys.extend(
+        items
+            .iter()
+            .chain(restored.items.keys())
+            .map(|id| DocKey::Item(id.clone())),
+    );
+    keys.extend(overrides.iter().chain(restored.overrides.keys()).map(occ));
+    for key in &keys {
+        ours(snapshot, key)?;
+    }
+    let mut planned = Planned::default();
+    for at in overrides
+        .iter()
+        .filter(|at| !restored.overrides.contains_key(at))
+    {
+        planned.add(snapshot.write::<Override>(occ(at), None));
+    }
+    for id in items.iter().filter(|id| !restored.items.contains_key(*id)) {
+        planned.add(snapshot.write::<Item>(DocKey::Item(id.clone()), None));
+    }
+    planned.add(snapshot.write(DocKey::Settings, restored.settings.as_ref()));
+    for (id, item) in &restored.items {
+        planned.add(snapshot.write(DocKey::Item(id.clone()), Some(item)));
+    }
+    for (at, over) in &restored.overrides {
+        planned.add(snapshot.write(occ(at), Some(over)));
+    }
+    Ok(planned)
 }
 
 /// Archives an item (it stops; its history stays), or brings it back.
@@ -355,6 +423,8 @@ pub fn set_occurrence(
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
     let found = item(snapshot, &input.item_id)?;
+    check_date(input.date)?;
+    input.moved_to.map_or(Ok(()), check_date)?;
     let key = DocKey::Occ {
         date: input.date,
         item_id: input.item_id.clone(),
@@ -367,6 +437,7 @@ pub fn set_occurrence(
         return Err(invalid("It isn't due on that date"));
     }
     if let OccStatus::Done { on, amount_cents } = input.status {
+        check_date(on)?;
         cents(amount_cents, "amount paid")?;
         if on > ctx.today() + Duration::days(1) {
             return Err(invalid(
@@ -449,6 +520,11 @@ pub fn set_balance(
 /// Saves the settings (the balance is set_balance's, and stays as it is).
 pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Planned, CoreError> {
     ours(snapshot, &DocKey::Settings)?;
+    if settings.currency.len() != 3 || !settings.currency.bytes().all(|b| b.is_ascii_uppercase()) {
+        return Err(invalid(
+            "Choose a currency by its three-letter code (USD, EUR)",
+        ));
+    }
     if !(MIN_HORIZON_DAYS..=MAX_HORIZON_DAYS).contains(&settings.horizon_days) {
         return Err(invalid(format!(
             "Look {} to {} days ahead",
@@ -575,6 +651,8 @@ mod tests {
             (bad(|i| i.schedule.clear()), "A schedule has 1 to 24 parts"),
             (bad(|i| i.schedule[0].amount_cents = -1), "The amount must be between $0 and $10,000,000,000"),
             (bad(|i| i.schedule[0].until = Some(d(2026, 10, 1))), "It can't end before it starts"),
+            (bad(|i| i.schedule[0].from = d(20261, 11, 1)), "Choose a date from 1900 to 2199"),
+            (bad(|i| i.schedule[0].until = Some(d(22026, 1, 1))), "Choose a date from 1900 to 2199"),
             (bad(|i| i.schedule[0].repeat = Repeat::Days { n: 0 }), "Choose how often it repeats: every 1–365 days, 1–52 weeks, 1–12 months or 1–10 years"),
             (bad(|i| i.reminder = Some(ItemReminder { lead_days: vec![31] })), "Remind up to 3 times, each up to 30 days before"),
             (bad(|i| i.reminder = Some(ItemReminder { lead_days: vec![1, 2, 3, 4] })), "Remind up to 3 times, each up to 30 days before"),
@@ -824,6 +902,28 @@ mod tests {
                 },
                 "It can be moved up to 62 days either way",
             ),
+            (
+                occurrence("rent", d(1, 1, 1), OccStatus::Skipped),
+                "Choose a date from 1900 to 2199",
+            ),
+            (
+                OccurrenceInput {
+                    moved_to: Some(d(20261, 11, 1)),
+                    ..occurrence("rent", d(2026, 11, 1), OccStatus::Open)
+                },
+                "Choose a date from 1900 to 2199",
+            ),
+            (
+                occurrence(
+                    "rent",
+                    d(2026, 11, 1),
+                    OccStatus::Done {
+                        on: d(1026, 11, 1),
+                        amount_cents: 1,
+                    },
+                ),
+                "Choose a date from 1900 to 2199",
+            ),
         ];
         for (value, expected) in refusals {
             assert_eq!(message(set_occurrence(&mut s, value, &ctx())), expected);
@@ -899,6 +999,14 @@ mod tests {
             (
                 refused(|s| s.horizon_days = 13),
                 "Look 14 to 366 days ahead",
+            ),
+            (
+                refused(|s| s.currency = "usd".into()),
+                "Choose a currency by its three-letter code (USD, EUR)",
+            ),
+            (
+                refused(|s| s.currency = "EURO".into()),
+                "Choose a currency by its three-letter code (USD, EUR)",
             ),
             (
                 refused(|s| s.low_balance_cents = -1),
@@ -1054,17 +1162,92 @@ mod tests {
             from: d(2027, 1, 1),
             repeat: Repeat::Months { n: 1, day: 1 },
             amount_cents,
+            until: None,
         };
         // The change refused: the name isn't saved either
-        assert!(save_item_from(&mut s, edit.clone(), Some(change(-1)), &ctx()).is_err());
+        assert!(save_item_from(&mut s, edit.clone(), Some(change(-1)), true, &ctx()).is_err());
         assert_eq!(s.items["rent"].name, "Rent");
         // Both, in one write that one undo takes back
-        let planned = save_item_from(&mut s, edit, Some(change(130_000)), &ctx()).unwrap();
+        let planned =
+            save_item_from(&mut s, edit.clone(), Some(change(130_000)), true, &ctx()).unwrap();
         assert_eq!((planned.writes.len(), planned.undo.len()), (1, 1));
         let saved = &s.items["rent"];
         assert_eq!(saved.name, "Flat");
         assert_eq!(saved.schedule.len(), 2);
         assert_eq!(saved.schedule[1].amount_cents, 130_000);
+        // A change that ends: on a date after it starts
+        let ending = |until| ScheduleChange {
+            until: Some(until),
+            ..change(130_000)
+        };
+        assert_eq!(
+            message(save_item_from(
+                &mut s,
+                edit.clone(),
+                Some(ending(d(2026, 12, 31))),
+                true,
+                &ctx()
+            )),
+            "It can't end before it starts"
+        );
+        save_item_from(
+            &mut s,
+            edit.clone(),
+            Some(ending(d(2027, 6, 30))),
+            true,
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(s.items["rent"].schedule[1].until, Some(d(2027, 6, 30)));
+
+        // Deleted on another device meanwhile: the edit would bring it back
+        s.apply(vec![crate::docs::IncomingDoc {
+            doc_id: "item~rent".into(),
+            json: None,
+            schema: 1,
+        }]);
+        assert_eq!(
+            message(save_item_from(&mut s, edit.clone(), None, true, &ctx())),
+            "That bill isn't there any more (deleted on another device?)"
+        );
+        assert!(s.items.is_empty());
+        // Added (not an edit): it's made
+        assert!(save_item_from(&mut s, edit, None, false, &ctx()).is_ok());
+    }
+
+    #[test]
+    fn restores_a_backup_whole_and_undoes_it_whole() {
+        let mut s = Snapshot::default();
+        save_item(&mut s, input("rent"), &ctx()).unwrap();
+        let skipped = occurrence("rent", d(2026, 11, 1), OccStatus::Skipped);
+        set_occurrence(&mut s, skipped, &ctx()).unwrap();
+        let backup = crate::backup::export(&s, &ctx()).backup;
+        save_item(&mut s, input("gym"), &ctx()).unwrap();
+        // The occurrence opened again since: the backup's skip comes back
+        let open = occurrence("rent", d(2026, 11, 1), OccStatus::Open);
+        set_occurrence(&mut s, open, &ctx()).unwrap();
+        let planned = restore_budget(&mut s, &backup).unwrap();
+        assert_eq!(s.items.keys().collect::<Vec<_>>(), vec!["rent"]);
+        assert_eq!(
+            s.overrides[&("rent".to_string(), d(2026, 11, 1))].status,
+            OccStatus::Skipped
+        );
+        // Once more: nothing changes
+        assert_eq!(restore_budget(&mut s, &backup).unwrap(), Planned::default());
+        // Undone: gym back, and the occurrence open again
+        let undone: Vec<String> = undo(&s, planned)
+            .unwrap()
+            .into_iter()
+            .map(|write| write.doc_id)
+            .collect();
+        assert_eq!(undone, ["occ~2026-11-01~rent", "item~gym"]);
+        // A newer BudgetMint's document isn't replaced: nothing is
+        s.apply(vec![crate::docs::IncomingDoc {
+            doc_id: "item~rent".into(),
+            json: Some("{}".into()),
+            schema: 9,
+        }]);
+        assert_eq!(message(restore_budget(&mut s, &backup)), NEWER);
     }
 
     #[test]

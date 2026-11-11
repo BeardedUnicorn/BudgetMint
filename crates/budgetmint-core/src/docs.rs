@@ -190,14 +190,16 @@ impl Snapshot {
         match key {
             DocKey::Settings => match json.map(serde_json::from_str::<Settings>) {
                 None => self.settings = None,
-                Some(Ok(settings)) => self.settings = Some(settings),
-                Some(Err(_)) => return false,
+                Some(Ok(settings)) if settings.in_calendar() => self.settings = Some(settings),
+                Some(_) => return false,
             },
             DocKey::Item(id) => match json.map(serde_json::from_str::<Item>) {
                 None => {
                     self.items.remove(id);
                 }
-                Some(Ok(item)) if item.id == *id && !item.schedule.is_empty() => {
+                Some(Ok(item))
+                    if item.id == *id && !item.schedule.is_empty() && item.in_calendar() =>
+                {
                     self.items.insert(id.clone(), item);
                 }
                 Some(_) => return false,
@@ -208,7 +210,9 @@ impl Snapshot {
                     None => {
                         self.overrides.remove(&at);
                     }
-                    Some(Ok(over)) if over.item_id == *item_id && over.date == *date => {
+                    Some(Ok(over))
+                        if over.item_id == *item_id && over.date == *date && over.in_calendar() =>
+                    {
                         self.overrides.insert(at, over);
                     }
                     Some(_) => return false,
@@ -403,6 +407,70 @@ mod tests {
             Some(serde_json::to_string(&empty).unwrap()),
         )]);
         assert_eq!(applied.unreadable.len(), 6);
+    }
+
+    #[test]
+    fn a_date_outside_the_calendar_doesnt_read() {
+        let mut snapshot = Snapshot::default();
+        let mut far = rent();
+        far.id = "far".into();
+        far.schedule[0].until = Some(d(20266, 1, 1));
+        let mut early = rent();
+        early.id = "early".into();
+        early.schedule[0].from = d(1899, 12, 31);
+        let over = |date: NaiveDate, moved_to: Option<NaiveDate>, status: OccStatus| {
+            serde_json::to_string(&Override {
+                item_id: "rent".into(),
+                date,
+                status,
+                amount_cents: None,
+                moved_to,
+                note: None,
+                updated_at: DateTime::UNIX_EPOCH,
+            })
+            .unwrap()
+        };
+        let paid = |on| OccStatus::Done {
+            on,
+            amount_cents: 1,
+        };
+        let applied = snapshot.apply(vec![
+            doc("item~far", Some(serde_json::to_string(&far).unwrap())),
+            doc("item~early", Some(serde_json::to_string(&early).unwrap())),
+            doc(
+                "occ~0001-01-01~rent",
+                Some(over(d(1, 1, 1), None, OccStatus::Skipped)),
+            ),
+            doc(
+                "occ~2026-11-01~rent",
+                Some(over(d(2026, 11, 1), Some(d(9999, 1, 1)), OccStatus::Open)),
+            ),
+            doc(
+                "occ~2026-12-01~rent",
+                Some(over(d(2026, 12, 1), None, paid(d(1800, 1, 1)))),
+            ),
+            doc(
+                "settings~account",
+                Some(
+                    serde_json::to_string(&Settings {
+                        balance: Some(crate::model::Balance {
+                            cents: 1,
+                            as_of: d(1800, 1, 1),
+                        }),
+                        ..Settings::default()
+                    })
+                    .unwrap(),
+                ),
+            ),
+            // Within it: read
+            doc(
+                "occ~2027-01-01~rent",
+                Some(over(d(2027, 1, 1), None, paid(d(2026, 12, 31)))),
+            ),
+        ]);
+        assert_eq!(applied.applied, 1);
+        assert_eq!(applied.unreadable.len(), 6);
+        assert!(snapshot.items.is_empty() && snapshot.settings.is_none());
     }
 
     #[test]

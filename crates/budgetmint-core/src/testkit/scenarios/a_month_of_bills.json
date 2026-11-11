@@ -47,7 +47,7 @@
         "incomeAheadCents": 120000,
         "upcoming": [{ "date": "2026-11-12", "closingCents": 198401 }, { "date": "2026-11-13", "closingCents": 318401 }],
         "nextWithdrawal": null,
-        "taskmint": { "state": "missing" }
+        "taskmint": { "state": "checking" }
       }
     },
     {
@@ -130,6 +130,7 @@
     { "call": "undo", "args": { "planned": { "writes": [], "undo": [] } }, "expect": [] },
     { "call": "reset_docs", "expect": null },
     { "call": "get_settings", "expect": { "saved": false } },
-    { "call": "get_overview", "expect": { "todayCents": 0, "taskmint": { "state": "missing" } } }
+    { "call": "get_overview", "expect": { "todayCents": 0, "taskmint": { "state": "checking" } } },
+    { "call": "apply_forecast", "args": { "doc": null }, "expect": { "state": "missing" } }
   ]
 }

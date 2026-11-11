@@ -2,7 +2,7 @@
 // change the Rust, then run `cargo test -p budgetmint-core --features ts --test contracts`.
 
 /** Every command core runs, by name. */
-export const COMMAND_NAMES = ["apply_docs","reset_docs","apply_forecast","get_overview","get_month","get_forecast","get_items","get_item_history","get_reminders","get_settings","save_item","change_schedule","archive_item","delete_item","set_occurrence","set_balance","save_settings","undo"] as const;
+export const COMMAND_NAMES = ["apply_docs","reset_docs","apply_forecast","get_overview","get_month","get_forecast","get_items","get_item_history","get_reminders","get_settings","save_item","change_schedule","archive_item","delete_item","set_occurrence","set_balance","save_settings","undo","export_budget","restore_budget"] as const;
 
 /** The documents' schema: written into each, and one from a newer BudgetMint is held. */
 export const BUDGET_SCHEMA = 1 as const;

@@ -3,7 +3,7 @@
  */
 
 import type { OccurrenceView, Repeat } from '@budgetmint/contracts';
-import { formatDay, parseDay } from './dates';
+import { formatDay, formatDayInYear, parseDay } from './dates';
 import { formattingLocale } from './locale';
 
 /** "1st", "2nd", "31st". */
@@ -35,6 +35,9 @@ export function describeRepeat(repeat: Repeat, from: string): string {
       return `${every(repeat.n, 'Yearly', 'years')} on ${formatDay(from)}`;
   }
 }
+
+/** How a schedule's end reads after its repeat (", until Jun 30, 2027"); nothing when it goes on. */
+export const describeEnd = (until: string | null) => (until ? `, until ${formatDayInYear(until)}` : '');
 
 /** What's become of an occurrence, for a chip: null for one still to come. */
 export function occurrenceLabel(occurrence: OccurrenceView): string | null {

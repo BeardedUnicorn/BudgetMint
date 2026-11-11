@@ -4,6 +4,7 @@
 //! calendar dates in the user's zone, and every field a later version adds
 //! has a default, so older documents keep reading.
 
+use crate::time::in_calendar;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -235,7 +236,15 @@ pub struct Settings {
     pub horizon_days: u16,
     pub taskmint: TaskMintPlan,
     pub reminders: ReminderSettings,
+    /// The currency amounts are in (ISO 4217): only how they're written,
+    /// since core keeps cents of whichever it is and converts nothing.
+    pub currency: String,
+    /// The calendar's weeks start on Monday (else Sunday).
+    pub week_starts_monday: bool,
 }
+
+/// The currency amounts are in until the user chooses another.
+pub const DEFAULT_CURRENCY: &str = "USD";
 
 pub const DEFAULT_HORIZON_DAYS: u16 = 60;
 pub const MIN_HORIZON_DAYS: u16 = 14;
@@ -249,7 +258,42 @@ impl Default for Settings {
             horizon_days: DEFAULT_HORIZON_DAYS,
             taskmint: TaskMintPlan::default(),
             reminders: ReminderSettings::default(),
+            currency: DEFAULT_CURRENCY.into(),
+            week_starts_monday: false,
         }
+    }
+}
+
+// Whether each document's dates are all in core's calendar (crate::time):
+// one with a date outside it doesn't read.
+
+impl Item {
+    pub fn in_calendar(&self) -> bool {
+        self.schedule
+            .iter()
+            .all(|segment| in_calendar(segment.from) && segment.until.is_none_or(in_calendar))
+    }
+}
+
+impl OccStatus {
+    pub fn in_calendar(&self) -> bool {
+        match self {
+            OccStatus::Done { on, .. } => in_calendar(*on),
+            OccStatus::Open | OccStatus::Skipped => true,
+        }
+    }
+}
+
+impl Override {
+    pub fn in_calendar(&self) -> bool {
+        in_calendar(self.date) && self.moved_to.is_none_or(in_calendar) && self.status.in_calendar()
+    }
+}
+
+impl Settings {
+    pub fn in_calendar(&self) -> bool {
+        self.balance
+            .is_none_or(|balance| in_calendar(balance.as_of))
     }
 }
 

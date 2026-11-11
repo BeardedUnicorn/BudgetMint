@@ -15,6 +15,7 @@
 //! passes the time, the zone and new ids in; [`host::JsonHost`] is what it
 //! calls, by command name ([`command`]).
 
+pub mod backup;
 pub mod command;
 pub mod docs;
 pub mod error;

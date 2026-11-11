@@ -20,10 +20,24 @@ const MESSAGES: Record<string, string> = {
   'auth/requires-recent-login': 'Sign in again first, then try once more.',
   'permission-denied': 'The cloud refused that change. Sign out and in again.',
   unavailable: 'Can’t reach the cloud. Changes are saved here and go once it’s back.',
+  // The Firebase project is on a free plan, shared with TaskMint
+  'resource-exhausted': 'The cloud’s limit for today is used up. Try again later: it resets each day.',
+  unauthenticated: 'Your sign-in has run out. Sign out and in again.',
+  'deadline-exceeded': 'The cloud took too long to answer. Check the connection and try again.',
 };
 
-export function cloudErrorMessage(error: unknown): string {
+/** Where reading the data (not saving a change) needs other words. */
+const READING: Record<string, string> = {
+  'permission-denied': 'The cloud won’t let this account read its data. Sign out and in again.',
+  unavailable: 'Can’t reach the cloud. Check the connection and try again.',
+};
+
+/** `error` in the user's words: as it came from saving a change, or (`reading`) from reading the data. */
+export function cloudErrorMessage(error: unknown, { reading = false } = {}): string {
   const code = (error as { code?: unknown } | null)?.code;
-  if (typeof code === 'string' && code in MESSAGES) return MESSAGES[code];
+  if (typeof code === 'string') {
+    if (reading && code in READING) return READING[code];
+    if (code in MESSAGES) return MESSAGES[code];
+  }
   return error instanceof Error ? error.message : String(error);
 }

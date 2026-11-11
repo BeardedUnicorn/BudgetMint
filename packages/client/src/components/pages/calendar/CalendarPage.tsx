@@ -63,6 +63,7 @@ export function CalendarPage() {
   const [month, setMonth] = useState(thisMonth);
   const [focusedDate, setFocusedDate] = useState(today);
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const { settings } = useCoreQuery('get_settings');
   const view = useCoreQuery('get_month', { month });
   const titleId = useId();
   const open = view.days.find(day => day.date === openDay);
@@ -139,6 +140,7 @@ export function CalendarPage() {
           onMonthChange={setMonth}
           onOpenDay={setOpenDay}
           labelledBy={titleId}
+          mondayFirst={settings.weekStartsMonday}
         />
 
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>

@@ -1,0 +1,128 @@
+{
+  "name": "A backup: written, and restored over a budget that changed since",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    {
+      "call": "set_balance",
+      "args": {
+        "balance": {
+          "cents": 200000,
+          "asOf": "2026-11-09"
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "gym",
+          "kind": "bill",
+          "name": "Gym",
+          "schedule": [
+            {
+              "from": "2026-11-05",
+              "repeat": {
+                "every": "months",
+                "n": 1,
+                "day": 5
+              },
+              "amountCents": 3000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": {
+        "occurrence": {
+          "itemId": "gym",
+          "date": "2026-12-05",
+          "status": {
+            "state": "skipped"
+          }
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "occ~2026-12-05~gym"
+          }
+        ]
+      }
+    },
+    {
+      "call": "export_budget",
+      "expect": {
+        "fileStem": "budgetmint-2026-11-10"
+      }
+    },
+    {
+      "call": "restore_budget",
+      "args": {
+        "backup": "{"
+      },
+      "error": "That file isn't a BudgetMint backup"
+    },
+    {
+      "call": "restore_budget",
+      "args": {
+        "backup": "{\"format\": \"budgetmint-backup\", \"version\": 2, \"exportedAt\": \"2026-11-10T18:00:00Z\", \"settings\": {\"balance\": {\"cents\": 50000, \"asOf\": \"2026-11-09\"}}, \"items\": [{\"id\": \"rent\", \"kind\": \"bill\", \"name\": \"Rent\", \"schedule\": [{\"from\": \"2026-12-01\", \"until\": null, \"repeat\": {\"every\": \"months\", \"n\": 1, \"day\": 1}, \"amountCents\": 150000}], \"createdAt\": \"2026-11-01T00:00:00Z\", \"updatedAt\": \"2026-11-01T00:00:00Z\"}], \"occurrences\": []}"
+      },
+      "error": "That backup is from a newer BudgetMint. Update BudgetMint to restore it."
+    },
+    {
+      "call": "restore_budget",
+      "args": {
+        "backup": "{\"format\": \"budgetmint-backup\", \"version\": 1, \"exportedAt\": \"2026-11-10T18:00:00Z\", \"settings\": {\"balance\": {\"cents\": 50000, \"asOf\": \"2026-11-09\"}}, \"items\": [{\"id\": \"rent\", \"kind\": \"bill\", \"name\": \"Rent\", \"schedule\": [{\"from\": \"2026-12-01\", \"until\": null, \"repeat\": {\"every\": \"months\", \"n\": 1, \"day\": 1}, \"amountCents\": 150000}], \"createdAt\": \"2026-11-01T00:00:00Z\", \"updatedAt\": \"2026-11-01T00:00:00Z\"}], \"occurrences\": []}"
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "occ~2026-12-05~gym",
+            "json": null
+          },
+          {
+            "docId": "item~gym",
+            "json": null
+          },
+          {
+            "docId": "settings~account"
+          },
+          {
+            "docId": "item~rent"
+          }
+        ]
+      }
+    },
+    {
+      "call": "get_items",
+      "expect": [
+        {
+          "item": {
+            "id": "rent",
+            "name": "Rent"
+          }
+        }
+      ]
+    },
+    {
+      "call": "get_overview",
+      "expect": {
+        "todayCents": 50000
+      }
+    },
+    {
+      "call": "get_settings",
+      "expect": {
+        "saved": true,
+        "settings": {
+          "balance": {
+            "cents": 50000
+          }
+        }
+      }
+    }
+  ]
+}

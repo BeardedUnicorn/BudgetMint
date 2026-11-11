@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { forecastDoc, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
+import { forecastDoc, monthly, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 import { createFakeShell } from '../../../../testing';
 import { APP_VERSION } from '../../../../utils/appVersion';
 
@@ -14,6 +14,115 @@ async function settings(seed: Parameters<typeof startBudget>[0] = {}) {
 }
 
 const section = (name: string) => screen.getByRole('heading', { name }).closest('.MuiPaper-root') as HTMLElement;
+
+describe('signing out', () => {
+  it('asks first while changes are still on their way to the cloud', async () => {
+    const { user, store, session } = await settings({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    // A change the cloud hasn't confirmed
+    vi.mocked(store.write).mockImplementationOnce(() => new Promise(() => undefined));
+    void session.write([{ docId: 'item~rent', kind: 'item', json: null, schema: 1 }]);
+    const account = section('Account');
+    await user.click(within(account).getByRole('button', { name: 'Sign out' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out before your changes are saved?' });
+    expect(store.signOut).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out anyway' }));
+    await waitFor(() => expect(store.signOut).toHaveBeenCalled());
+  });
+
+  it('says when signing out fails', async () => {
+    const { user, store } = await settings();
+    vi.mocked(store.signOut).mockRejectedValueOnce(new Error('No connection'));
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out' }));
+    expect(await within(section('Account')).findByText('No connection')).toBeInTheDocument();
+  });
+});
+
+describe('currency and weeks', () => {
+  it('writes amounts in the chosen currency, and starts weeks on the chosen day', async () => {
+    const { user, store } = await settings({ settings: { ...SETTLED } });
+    await user.click(screen.getByLabelText('Currency'));
+    await user.click(screen.getByRole('option', { name: 'Euro (EUR)' }));
+    await waitFor(() => expect(settingsOf(store).currency).toBe('EUR'));
+    expect(screen.getByText(/flagged \(and below €0, short\)/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Weeks start on'));
+    await user.click(screen.getByRole('option', { name: 'Monday' }));
+    await waitFor(() => expect(settingsOf(store).weekStartsMonday).toBe(true));
+    await user.click(screen.getByLabelText('Weeks start on'));
+    await user.click(screen.getByRole('option', { name: 'Sunday' }));
+    await waitFor(() => expect(settingsOf(store).weekStartsMonday).toBe(false));
+  });
+
+  it('lists a currency chosen elsewhere that isn’t among the usual ones', async () => {
+    await settings({ settings: { ...SETTLED, currency: 'ISK' } });
+    expect(screen.getByLabelText('Currency')).toHaveTextContent('Icelandic Króna (ISK)');
+  });
+});
+
+describe('your data', () => {
+  it('saves a backup and a spreadsheet the shell’s way, and restores a backup with Undo', async () => {
+    const shell = createFakeShell();
+    const { user, store } = await settings({ items: [monthly('rent', 'Rent', 1, 120_000)], shell });
+    const data = section('Your data');
+    await user.click(within(data).getByRole('button', { name: 'Download backup' }));
+    await waitFor(() => expect(shell.platform.saveFile).toHaveBeenCalledTimes(1));
+    const [name, backup, type] = vi.mocked(shell.platform.saveFile).mock.calls[0];
+    expect([name, type]).toEqual(['budgetmint-2026-11-10.json', 'application/json']);
+    expect(JSON.parse(backup).items.map((item: { id: string }) => item.id)).toEqual(['rent']);
+    await user.click(within(data).getByRole('button', { name: 'Download spreadsheet' }));
+    await waitFor(() => expect(shell.platform.saveFile).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(shell.platform.saveFile).mock.calls[1][0]).toBe('budgetmint-2026-11-10.csv');
+    vi.mocked(shell.platform.saveFile).mockRejectedValueOnce(new Error('disk full'));
+    await user.click(within(data).getByRole('button', { name: 'Download backup' }));
+    expect(await within(data).findByText('It wasn’t saved: disk full')).toBeInTheDocument();
+
+    // The button asks for the file
+    const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    await user.click(within(data).getByRole('button', { name: 'Restore from a backup…' }));
+    expect(choose).toHaveBeenCalled();
+    choose.mockRestore();
+    // Rent deleted since: the backup brings it back, and Undo takes it away again
+    store.putDoc('item~rent', null);
+    await user.upload(within(data).getByLabelText('Backup file'), new File([backup], 'budget.json'));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Replace your budget with the backup?' })).getByRole('button', {
+        name: 'Restore',
+      })
+    );
+    await waitFor(() => expect(store.docs.has('item~rent')).toBe(true));
+    await user.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(store.docs.has('item~rent')).toBe(false));
+
+    // Not a backup: said, and nothing changes
+    await user.upload(within(data).getByLabelText('Backup file'), new File(['{'], 'notes.json'));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Restore' }));
+    expect(await within(data).findByText("That file isn't a BudgetMint backup")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // None picked: nothing asked
+    fireEvent.change(within(data).getByLabelText('Backup file'), { target: { files: [] } });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('downloads them in a browser, and says where to get them when the app can’t save', async () => {
+    const createObjectURL = vi.fn(() => 'blob:budget');
+    const revokeObjectURL = vi.fn();
+    Object.assign(URL, { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const { user } = await settings({ shell: createFakeShell({ runtime: 'web', without: ['saveFile'] }) });
+    await user.click(within(section('Your data')).getByRole('button', { name: 'Download spreadsheet' }));
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(click).toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:budget');
+    click.mockRestore();
+  });
+
+  it('says where to get the files when this app can’t save them', async () => {
+    await settings({ shell: createFakeShell({ without: ['saveFile'] }) });
+    const data = section('Your data');
+    expect(within(data).getByText(/This app can’t save files yet/)).toBeInTheDocument();
+    expect(within(data).queryByRole('button', { name: 'Download backup' })).not.toBeInTheDocument();
+    expect(within(data).getByRole('button', { name: 'Restore from a backup…' })).toBeInTheDocument();
+  });
+});
 
 describe('settings', () => {
   it('signs out, and deletes the data or the account', async () => {

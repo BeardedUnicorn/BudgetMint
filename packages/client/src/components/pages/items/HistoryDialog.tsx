@@ -19,6 +19,11 @@ export function HistoryDialog({ view, today, onClose }: { view: ItemView; today:
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{view.item.name}</DialogTitle>
       <DialogContent>
+        {view.item.note && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, whiteSpace: 'pre-wrap' }}>
+            {view.item.note}
+          </Typography>
+        )}
         {history.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             Nothing in the past year or the next three months.

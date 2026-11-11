@@ -36,8 +36,6 @@ interface SidebarProps {
   onViewChange: (view: SidebarView) => void;
   /** Pinned to the bottom of the sidebar (today's balance). */
   footer?: (collapsed: boolean) => ReactNode;
-  /** Beside the title; below the toggle when collapsed. */
-  headerAction?: (collapsed: boolean) => ReactNode;
   /**
    * `temporary` is the phone's menu: it slides in over the page while
    * `open`, always expanded (no collapse toggle, no shortcut hints), and
@@ -66,7 +64,6 @@ export function Sidebar({
   activeView,
   onViewChange,
   footer,
-  headerAction,
   variant = 'permanent',
   open = false,
   onClose,
@@ -131,7 +128,6 @@ export function Sidebar({
             <Wordmark height={28} />
           </Box>
         )}
-        {!isCollapsed && headerAction?.(false)}
         {!temporary && (
           <IconButton
             onClick={() => setIsCollapsed(!isCollapsed)}
@@ -141,7 +137,6 @@ export function Sidebar({
             {isCollapsed ? <MenuIcon /> : <ChevronLeftIcon />}
           </IconButton>
         )}
-        {isCollapsed && headerAction?.(true)}
       </Box>
 
       <Divider />

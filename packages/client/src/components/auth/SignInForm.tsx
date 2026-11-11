@@ -6,8 +6,18 @@
  */
 
 import { FormEvent, useRef, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Stack, TextField, Typography } from '@mui/material';
-import { Google as GoogleIcon } from '@mui/icons-material';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
+  IconButton,
+  InputAdornment,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { Google as GoogleIcon, Visibility as ShowIcon, VisibilityOff as HideIcon } from '@mui/icons-material';
 import { cloudErrorMessage } from '../../cloud/errors';
 
 type FormMode = 'signIn' | 'signUp' | 'reset';
@@ -35,6 +45,9 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
   const [mode, setMode] = useState<FormMode>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  /** A new account's password, typed again: a typo would lock it out. */
+  const [again, setAgain] = useState('');
+  const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -76,6 +89,10 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (mode === 'signUp' && password !== again) {
+      setProblem('The two passwords aren’t the same. Type it again in both.');
+      return;
+    }
     setBusy(true);
     setProblem(null);
     try {
@@ -120,10 +137,36 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
         {mode !== 'reset' && (
           <TextField
             label="Password"
-            type="password"
+            type={shown ? 'text' : 'password'}
             autoComplete={mode === 'signUp' ? 'new-password' : 'current-password'}
             value={password}
             onChange={event => setPassword(event.target.value)}
+            size="small"
+            slotProps={{
+              input: {
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      edge="end"
+                      aria-label={shown ? 'Hide the password' : 'Show the password'}
+                      onClick={() => setShown(!shown)}
+                    >
+                      {shown ? <HideIcon fontSize="small" /> : <ShowIcon fontSize="small" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+        )}
+        {mode === 'signUp' && (
+          <TextField
+            label="The password again"
+            type={shown ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={again}
+            onChange={event => setAgain(event.target.value)}
             size="small"
           />
         )}
@@ -138,11 +181,17 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
           </Button>
           {mode === 'signIn' ? (
             <>
-              <Button onClick={() => switchTo('signUp')}>Create an account</Button>
-              <Button onClick={() => switchTo('reset')}>Forgot password?</Button>
+              <Button disabled={busy} onClick={() => switchTo('signUp')}>
+                Create an account
+              </Button>
+              <Button disabled={busy} onClick={() => switchTo('reset')}>
+                Forgot password?
+              </Button>
             </>
           ) : (
-            <Button onClick={() => switchTo('signIn')}>I have an account</Button>
+            <Button disabled={busy} onClick={() => switchTo('signIn')}>
+              I have an account
+            </Button>
           )}
         </Stack>
         {engine.canUseGoogle && mode !== 'reset' && (

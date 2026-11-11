@@ -13,7 +13,7 @@ import { SettingsSection } from './SettingsSection';
 
 export function AccountSection() {
   const { session, view } = useBudget();
-  const [confirming, setConfirming] = useState<'data' | 'account' | null>(null);
+  const [confirming, setConfirming] = useState<'data' | 'account' | 'signOut' | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const attempt = (action: () => Promise<void>) => async () => {
     setProblem(null);
@@ -37,7 +37,11 @@ export function AccountSection() {
         </Alert>
       )}
       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
-        <Button variant="outlined" onClick={() => void session.signOut()}>
+        {/* Changes not yet in the cloud: asked first */}
+        <Button
+          variant="outlined"
+          onClick={view.saving ? () => setConfirming('signOut') : attempt(() => session.signOut())}
+        >
           Sign out
         </Button>
         <Button color="error" onClick={() => setConfirming('data')}>
@@ -47,6 +51,14 @@ export function AccountSection() {
           Delete account
         </Button>
       </Stack>
+      <ConfirmDialog
+        open={confirming === 'signOut'}
+        onClose={() => setConfirming(null)}
+        onConfirm={attempt(() => session.signOut())}
+        title="Sign out before your changes are saved?"
+        message="Some changes haven’t reached the cloud yet. Wait until they have (the footer stops saying Saving), or sign out anyway."
+        confirmLabel="Sign out anyway"
+      />
       <ConfirmDialog
         open={confirming === 'data'}
         onClose={() => setConfirming(null)}

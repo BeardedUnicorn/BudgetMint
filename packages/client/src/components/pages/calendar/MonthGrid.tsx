@@ -1,6 +1,7 @@
 // Adapted from TaskMint packages/client/src/components/pages/calendar/MonthGrid.tsx @ 1623bee.
 /**
- * The Calendar's month as a grid of days, weeks from Sunday. One day is in
+ * The Calendar's month as a grid of days, weeks from Sunday (or Monday, as
+ * the settings say). One day is in
  * the tab order; the arrow keys move between days (into the next or
  * previous month when they run off this one), Home and End go to the week's
  * ends, Page Up and Page Down change month, and Enter or Space opens the day.
@@ -16,13 +17,16 @@ import { DayCell } from './DayCell';
 
 const COLUMNS = { display: 'grid', gap: 0.5, gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' } as const;
 
-/** Sun…Sat in the formatting locale (Nov 1 2026 is a Sunday). */
-const weekdayName = (index: number) =>
-  new Date(2026, 10, 1 + index).toLocaleDateString(formattingLocale(), { weekday: 'short' });
+/** The week's days from its first in the formatting locale (Nov 1 2026 is a Sunday). */
+const weekdayName = (index: number, mondayFirst: boolean) =>
+  new Date(2026, 10, 1 + index + (mondayFirst ? 1 : 0)).toLocaleDateString(formattingLocale(), { weekday: 'short' });
+
+/** Which day of its week `date` is: 0 for the first (Sunday, or Monday). */
+const dayOfWeek = (date: string, mondayFirst: boolean) => (parseDay(date).getDay() + (mondayFirst ? 6 : 0)) % 7;
 
 /** Where a key moves the focus from `date`, or null for a key the grid doesn't use. */
-export function keyTarget(key: string, date: string): string | null {
-  const weekday = parseDay(date).getDay();
+export function keyTarget(key: string, date: string, mondayFirst = false): string | null {
+  const weekday = dayOfWeek(date, mondayFirst);
   const moves: Record<string, () => string> = {
     ArrowLeft: () => addDays(date, -1),
     ArrowRight: () => addDays(date, 1),
@@ -44,9 +48,9 @@ export function keyTarget(key: string, date: string): string | null {
   return [target, last].sort()[0];
 }
 
-/** The month's days in weeks from Sunday, with null for the days of other months. */
-export function weeksOf(days: CalendarDay[]): (CalendarDay | null)[][] {
-  const cells: (CalendarDay | null)[] = [...Array(parseDay(days[0].date).getDay()).fill(null), ...days];
+/** The month's days in weeks from Sunday (or Monday), with null for the days of other months. */
+export function weeksOf(days: CalendarDay[], mondayFirst = false): (CalendarDay | null)[][] {
+  const cells: (CalendarDay | null)[] = [...Array(dayOfWeek(days[0].date, mondayFirst)).fill(null), ...days];
   while (cells.length % 7 !== 0) cells.push(null);
   return Array.from({ length: cells.length / 7 }, (_, week) => cells.slice(week * 7, week * 7 + 7));
 }
@@ -60,9 +64,19 @@ export interface MonthGridProps {
   onMonthChange: (month: string) => void;
   onOpenDay: (date: string) => void;
   labelledBy: string;
+  /** Weeks start on Monday (the settings'). */
+  mondayFirst?: boolean;
 }
 
-export function MonthGrid({ view, focusedDate, onFocusDate, onMonthChange, onOpenDay, labelledBy }: MonthGridProps) {
+export function MonthGrid({
+  view,
+  focusedDate,
+  onFocusDate,
+  onMonthChange,
+  onOpenDay,
+  labelledBy,
+  mondayFirst = false,
+}: MonthGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   // A key moved the focus: put it on the day once it's rendered
   const moveFocus = useRef(false);
@@ -76,7 +90,7 @@ export function MonthGrid({ view, focusedDate, onFocusDate, onMonthChange, onOpe
   }, [tabbable]);
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    const next = keyTarget(event.key, tabbable);
+    const next = keyTarget(event.key, tabbable, mondayFirst);
     if (next === null) return;
     event.preventDefault();
     if (next === tabbable) return;
@@ -103,11 +117,11 @@ export function MonthGrid({ view, focusedDate, onFocusDate, onMonthChange, onOpe
                 [PHONE]: { px: 0, letterSpacing: 0, textAlign: 'center', fontSize: '0.65rem' },
               }}
             >
-              {weekdayName(index)}
+              {weekdayName(index, mondayFirst)}
             </Typography>
           ))}
         </Box>
-        {weeksOf(view.days).map(week => (
+        {weeksOf(view.days, mondayFirst).map(week => (
           <Box role="row" key={week.find(Boolean)!.date} sx={{ ...COLUMNS, mb: 0.5 }}>
             {week.map((day, index) =>
               day ? (

@@ -3,6 +3,7 @@
 //! and the TypeScript `CommandMap` (packages/contracts, from
 //! tests/contracts.rs).
 
+use crate::backup::BudgetExport;
 use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
@@ -43,6 +44,8 @@ pub enum Command {
     SetBalance(SetBalanceArgs),
     SaveSettings(SaveSettingsArgs),
     Undo(UndoArgs),
+    ExportBudget(NoArgs),
+    RestoreBudget(RestoreBudgetArgs),
 }
 
 macro_rules! command_types {
@@ -96,6 +99,8 @@ command_types! {
     "set_balance": SetBalanceArgs => Planned,
     "save_settings": SaveSettingsArgs => Planned,
     "undo": UndoArgs => Vec<DocWrite>,
+    "export_budget": NoArgs => BudgetExport,
+    "restore_budget": RestoreBudgetArgs => Planned,
 }
 
 /// `reply` read as a `T` and written back.
@@ -213,6 +218,11 @@ pub struct SaveItemArgs {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub change: Option<ScheduleChange>,
+    /// An edit to an item already there, refused once it's been deleted
+    /// (on another device); without it, the item is added.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub edit: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -267,6 +277,14 @@ pub struct SaveSettingsArgs {
 pub struct UndoArgs {
     /// The change to take back, as its command returned it.
     pub planned: Planned,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreBudgetArgs {
+    /// The backup file's text, as export_budget wrote it.
+    pub backup: String,
 }
 
 impl Command {
@@ -337,9 +355,13 @@ pub fn execute(
             settings: snapshot.settings(),
             saved: snapshot.settings.is_some(),
         }),
-        Command::SaveItem(args) => {
-            to_value(plan::save_item_from(snapshot, args.item, args.change, ctx)?)
-        }
+        Command::SaveItem(args) => to_value(plan::save_item_from(
+            snapshot,
+            args.item,
+            args.change,
+            args.edit.unwrap_or(false),
+            ctx,
+        )?),
         Command::ChangeSchedule(args) => to_value(plan::change_schedule(
             snapshot,
             &args.item_id,
@@ -361,6 +383,8 @@ pub fn execute(
         Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
+        Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),
+        Command::RestoreBudget(args) => to_value(plan::restore_budget(snapshot, &args.backup)?),
     })
 }
 

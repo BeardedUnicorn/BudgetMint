@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { coreClient, deviceZone, getCore, loadCore, setCoreForTest } from '..';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CoreStopped, coreClient, deviceZone, getCore, loadCore, setCoreForTest } from '..';
 import { TEST_NOW, wasmBytes } from '../../testing';
 
 afterEach(() => setCoreForTest(null));
@@ -34,6 +34,23 @@ describe('core', () => {
       new Error('Set the balance as of today or a day before')
     );
     client.setZone('UTC');
+  });
+
+  it('stops for good once its WebAssembly traps, saying to reload', () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let calls = 0;
+    const client = coreClient({
+      call: () => {
+        calls += 1;
+        throw new WebAssembly.RuntimeError('unreachable');
+      },
+      setZone: () => undefined,
+    } as never);
+    expect(() => client.call('get_overview')).toThrow(CoreStopped);
+    // Not called again: what it holds can't be trusted
+    expect(() => client.call('get_overview')).toThrow(/Reload to start it again/);
+    expect(calls).toBe(1);
+    quiet.mockRestore();
   });
 
   it('times calls by the clock when none is given', () => {

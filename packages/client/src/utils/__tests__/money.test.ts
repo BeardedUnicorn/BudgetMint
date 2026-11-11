@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { centsToInput, formatCents, formatMaybeCents, formatWholeCents, parseDollars } from '../money';
+import { afterEach } from 'vitest';
+import {
+  centsToInput,
+  currencySymbol,
+  formatCents,
+  formatMaybeCents,
+  formatWholeCents,
+  parseDollars,
+  setCurrency,
+} from '../money';
+
+afterEach(() => setCurrency('USD'));
 
 describe('money', () => {
   it('is written in dollars', () => {
@@ -8,6 +19,16 @@ describe('money', () => {
     expect(formatWholeCents(123456)).toBe('$1,235');
     expect(formatMaybeCents(500, true)).toBe('~$5.00');
     expect(formatMaybeCents(500, false)).toBe('$5.00');
+  });
+
+  it('is written in the currency the settings choose, and read with its sign', () => {
+    expect(currencySymbol()).toBe('$');
+    setCurrency('EUR');
+    expect(formatCents(123456)).toBe('€1,234.56');
+    expect(formatWholeCents(123456)).toBe('€1,235');
+    expect(currencySymbol()).toBe('€');
+    expect(parseDollars('€40')).toBe(4_000);
+    expect(parseDollars('£ 12.50')).toBe(1_250);
   });
 
   it('reads what the user typed, or says it isn’t an amount', () => {

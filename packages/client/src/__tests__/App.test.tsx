@@ -72,8 +72,9 @@ describe('the app', () => {
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByLabelText('They reach the bank'));
-    await user.click(screen.getByRole('option', { name: 'Two days later' }));
-    await user.click(screen.getByRole('button', { name: 'Start' }));
+    await user.click(screen.getByRole('option', { name: '2 days later' }));
+    // Enter in the balance starts it, as Start does
+    await user.type(screen.getByLabelText('Balance'), '{Enter}');
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     const saved = JSON.parse(store.docs.get('settings~account')!.json);
     expect(saved).toMatchObject({
@@ -115,6 +116,15 @@ describe('the app', () => {
     const { forecastDoc } = await import('./setup/budget');
     await startBudget({ settings: null, forecast: forecastDoc({ asOfMs: TEST_NOW, carried: { actualCents: 5_000 } }) });
     expect(screen.getByText('Your next withdrawal: $50.00, in the bank Nov 11.')).toBeInTheDocument();
+  });
+
+  it('says it’s still checking TaskMint while onboarding, until the cloud says', async () => {
+    const store = createFakeStore();
+    // TaskMint's forecast not heard of yet
+    vi.mocked(store.watchForecast).mockImplementation(() => () => undefined);
+    store.setUser(cal());
+    unstarted(store).session.start();
+    expect(await screen.findByText('Checking TaskMint…')).toBeInTheDocument();
   });
 
   it('says TaskMint has nothing to withdraw yet while onboarding', async () => {
