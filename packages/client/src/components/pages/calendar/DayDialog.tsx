@@ -1,6 +1,7 @@
 /**
- * A calendar day: everything due, TaskMint's money coming in, and the
- * balance at its end; the previous and next days a click away.
+ * A calendar day: everything due, TaskMint's money coming in, what the day's
+ * work earned in TaskMint that's not withdrawn yet (and when it reaches the
+ * bank), and the balance at its end; the previous and next days a click away.
  */
 
 import {
@@ -54,7 +55,7 @@ export function DayDialog({
       </Box>
       <DialogContent>
         {day.occurrences.length > 0 && <OccurrenceList occurrences={day.occurrences} today={today} />}
-        {day.occurrences.length === 0 && day.withdrawalCents === 0 && (
+        {day.occurrences.length === 0 && day.withdrawalCents === 0 && day.earnedCents === 0 && (
           <Typography variant="body2" color="text.secondary">
             Nothing due.
           </Typography>
@@ -68,6 +69,23 @@ export function DayDialog({
               +{formatMaybeCents(day.withdrawalCents, day.withdrawalUncertainCents > 0)}
             </Typography>
           </Stack>
+        )}
+        {day.earnedCents > 0 && (
+          <Box sx={{ py: 1 }}>
+            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Earned in TaskMint, not withdrawn yet
+              </Typography>
+              <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
+                {formatMaybeCents(day.earnedCents, day.earnedUncertainCents > 0)}
+              </Typography>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              {day.earnedArrivesOn
+                ? `In the bank ${formatLongDay(day.earnedArrivesOn)}, with the withdrawal that takes it.`
+                : 'No withdrawal ahead takes it yet.'}
+            </Typography>
+          </Box>
         )}
         {day.closingCents !== null && (
           <Typography

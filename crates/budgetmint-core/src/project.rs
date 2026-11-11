@@ -20,8 +20,9 @@
 use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
 use crate::forecast::curve::live_curve;
+use crate::forecast::earned::{unwithdrawn, Unwithdrawn};
 use crate::forecast::series::{project_withdrawals, ProjectedWithdrawal};
-use crate::model::{Cents, ItemKind, OccStatus, Settings};
+use crate::model::{Cents, ItemKind, OccStatus, Settings, TaskMintPlan};
 use crate::occur::{occurrences, paid_outside, MOVE_DAYS};
 use crate::time::{Ctx, HOUR_MS};
 use chrono::{Duration, NaiveDate, NaiveTime};
@@ -112,6 +113,8 @@ pub struct Projection {
     pub days: Vec<DayRow>,
     /// TaskMint's withdrawals ahead, made by the end.
     pub withdrawals: Vec<ProjectedWithdrawal>,
+    /// What each work day earned in TaskMint that no withdrawal has taken yet.
+    pub unwithdrawn: Vec<Unwithdrawn>,
     pub overdue: Vec<Late>,
     pub late_income: Vec<Late>,
 }
@@ -152,6 +155,24 @@ pub fn settled_through(settings: &Settings, today: NaiveDate) -> NaiveDate {
             today - Duration::days(OVERDUE_DAYS_WITHOUT_BALANCE),
             |balance| balance.as_of,
         )
+}
+
+/// TaskMint's recorded withdrawals and the day each reaches the bank (after
+/// the arrival delay), newest first.
+pub fn recorded_arrivals(
+    forecast: &PayoutForecast,
+    plan: &TaskMintPlan,
+    ctx: &Ctx,
+) -> Vec<(NaiveDate, Cents)> {
+    let delay = i64::from(plan.arrival_delay_hours) * HOUR_MS;
+    forecast
+        .taken()
+        .iter()
+        .map(|taken| {
+            let date = ctx.day_of(taken.taken_at_ms.saturating_add(delay));
+            (date, taken.amount_cents)
+        })
+        .collect()
 }
 
 /// The cash flow up to `end` (today at the earliest).
@@ -231,24 +252,20 @@ pub fn project(
     }
 
     let mut withdrawals = Vec::new();
+    let mut earned = Vec::new();
     if let Some(forecast) = taskmint.filter(|_| settings.taskmint.use_forecast) {
         let plan = &settings.taskmint;
         let delay = i64::from(plan.arrival_delay_hours) * HOUR_MS;
-        for taken in forecast.taken() {
-            let date = ctx.day_of(taken.taken_at_ms.saturating_add(delay));
+        for (date, cents) in recorded_arrivals(forecast, plan, ctx) {
             if date > base && date <= end {
-                flows.push(withdrawal_flow(
-                    date,
-                    FlowStatus::Recorded,
-                    taken.amount_cents,
-                    0,
-                ));
+                flows.push(withdrawal_flow(date, FlowStatus::Recorded, cents, 0));
             }
         }
         // To the end of `end`, however long that day is (clock changes)
         let until = ctx.at(end + Duration::days(1), NaiveTime::MIN) - 1 - delay;
         let curve = live_curve(forecast, ctx, plan, until);
         withdrawals = project_withdrawals(forecast, &curve, ctx, plan, until);
+        earned = unwithdrawn(&curve, &withdrawals);
         for projected in &withdrawals {
             let uncertain = projected.money.estimated_cents + projected.money.assumed_cents;
             flows.push(withdrawal_flow(
@@ -296,6 +313,7 @@ pub fn project(
         start_cents,
         days,
         withdrawals,
+        unwithdrawn: earned,
         overdue,
         late_income,
     }
@@ -538,8 +556,10 @@ mod tests {
                 estimated_cents: 0,
                 past_due_cents: 0,
             },
+            carried_days: vec![],
             steps: vec![crate::forecast::contract::Step {
                 at_ms: now + DAY_MS,
+                day: None,
                 actual_cents: 200,
                 estimated_cents: 50,
                 past_due_cents: 0,
@@ -643,6 +663,7 @@ mod tests {
                 estimated_cents: 0,
                 past_due_cents: 0,
             },
+            carried_days: vec![],
             steps: vec![],
             recent_days: vec![],
             zone: "America/Chicago".into(),

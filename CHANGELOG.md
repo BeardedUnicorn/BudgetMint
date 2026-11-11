@@ -8,6 +8,16 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 1.2.0 – 2026-11-11
+
+### Added
+
+- The calendar shows what you earned in TaskMint on each day you worked, past days included, until a withdrawal takes it, and when that withdrawal reaches the bank. It doesn't change the day's balance: the money counts when it arrives. It needs TaskMint 4.2.3 or later.
+
+### Fixed
+
+- TaskMint withdrawals that reached the bank on or before your balance's date, or in an earlier month, show on the calendar and count in that month's TaskMint total.
+
 ## 1.1.0 – 2026-11-11
 
 ### Added

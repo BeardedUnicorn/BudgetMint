@@ -121,10 +121,12 @@ mod tests {
                 actual_cents: 100,
                 ..Amount::default()
             },
+            carried_days: vec![],
             steps: steps
                 .iter()
                 .map(|(at_ms, cents)| Step {
                     at_ms: *at_ms,
+                    day: None,
                     actual_cents: *cents,
                     estimated_cents: 0,
                     past_due_cents: 0,
@@ -288,6 +290,7 @@ mod tests {
         busy.steps = (1..1000)
             .map(|i| Step {
                 at_ms: NOW + i * HOUR_MS,
+                day: None,
                 actual_cents: 1,
                 estimated_cents: 0,
                 past_due_cents: 0,

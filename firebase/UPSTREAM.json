@@ -1,7 +1,7 @@
 {
   "$comment": "What BudgetMint keeps from TaskMint, pinned to a TaskMint commit (scripts/sync-upstream.mjs): pnpm upstream:check checks the copies, pnpm upstream:pull refreshes them. Never edit them here.",
   "repo": "BeardedUnicorn/taskmint",
-  "ref": "27c12cb643ce48a4570316b306cbb1867a7237eb",
+  "ref": "c1e730218e71edee227eccada18b243749ad495c",
   "sources": [
     {
       "from": "firebase/firestore.rules",
@@ -18,10 +18,10 @@
   ],
   "files": {
     "firebase/firestore.rules": "bbf36761dc59e8026fa404d84dbe5da3b65a2ccaa6bf99d9e71c44d15822e84b",
-    "docs/taskmint/payout-forecast.md": "5ffd25e783a2c22f3dc4cc3d739f817f3682a3eae4d88b979461ffe6840a8fc1",
-    "crates/budgetmint-core/src/testkit/taskmint/after-withdrawal.json": "f943221a89a2efce7d4dbe85a936885ab86f625f44a30c24e62807d43a2b9620",
-    "crates/budgetmint-core/src/testkit/taskmint/no-withdrawal.json": "a7f36185e371e45d49ee4287350517426e974d922cd2e3267b2c96024e577f0a",
-    "crates/budgetmint-core/src/testkit/taskmint/open-timers.json": "d7753b61449fe2a52ee404ddb8dd0b03a970187a9b5a6f2d11310d1d94491636",
-    "crates/budgetmint-core/src/testkit/taskmint/window-open.json": "c1bd19b1e935bbf58ad7f79b49c0dae5126417667c52d17bf5f341d70378012f"
+    "docs/taskmint/payout-forecast.md": "6ac8e290f913a9693e59557234667d2be8f14225560effc4ac34b600739fcc4c",
+    "crates/budgetmint-core/src/testkit/taskmint/after-withdrawal.json": "ac9c6c6b8015b27bbb82699018e1e1658ed29d5bc2be8c6463ef51fb6dd94566",
+    "crates/budgetmint-core/src/testkit/taskmint/no-withdrawal.json": "4709e450b245d480a4b757afe19ad821c0c014f8daef4313393b13671d858584",
+    "crates/budgetmint-core/src/testkit/taskmint/open-timers.json": "e847101951ffeb9e2fc6f88afb7c7e6f95cd7bf62fdfc64dfe8b33b5a4b71507",
+    "crates/budgetmint-core/src/testkit/taskmint/window-open.json": "c9d84b4cbbffbc7f65cc6b234044c8190414ccdd0b62753dba9980d9787851bd"
   }
 }

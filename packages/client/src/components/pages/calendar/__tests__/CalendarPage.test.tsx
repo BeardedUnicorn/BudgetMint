@@ -35,6 +35,9 @@ const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,
+  earnedCents: 0,
+  earnedUncertainCents: 0,
+  earnedArrivesOn: null,
   closingCents: null,
   short: false,
   low: false,
@@ -137,6 +140,99 @@ describe('the calendar', () => {
       screen.getByRole('button', { name: /^Friday, November 13, 2026: TaskMint withdrawal expected \$9\.00/ })
     ).toBeInTheDocument();
     expect(screen.getByText('TaskMint', { selector: 'div' }).nextSibling).toHaveTextContent('$34.00');
+  });
+
+  const DAY = 86_400_000;
+  /**
+   * Taken on Nov 7 (in the bank on the 8th, before the cash flow starts) and Oct 20. The 3rd's
+   * and 4th's work is released already: the withdrawal open now takes it, in the bank on the
+   * 11th. The 5th's is released on the 12th: the next one takes it, on the 13th, in on the 14th.
+   */
+  const EARNINGS = forecastDoc({
+    asOfMs: TEST_NOW,
+    zone: 'America/Chicago',
+    cutoff: { takenAtMs: TEST_NOW - 3 * DAY, amountCents: 2_500 },
+    recentWithdrawals: [
+      { takenAtMs: TEST_NOW - 3 * DAY, amountCents: 2_500 },
+      { takenAtMs: TEST_NOW - 21 * DAY, amountCents: 1_800 },
+    ],
+    nextAllowedAtMs: TEST_NOW,
+    carried: { actualCents: 1_300, estimatedCents: 200, pastDueCents: 0 },
+    carriedDays: [
+      { day: '2026-11-03', actualCents: 1_000, estimatedCents: 0, pastDueCents: 0 },
+      { day: '2026-11-04', actualCents: 300, estimatedCents: 200, pastDueCents: 0 },
+    ],
+    steps: [
+      {
+        atMs: TEST_NOW + 2 * DAY - 3 * 3_600_000,
+        day: '2026-11-05',
+        actualCents: 700,
+        estimatedCents: 0,
+        pastDueCents: 0,
+      },
+    ],
+  });
+
+  it('shows what each work day earned in TaskMint until a withdrawal takes it', async () => {
+    const { user } = await calendar({ settings: { balance: { cents: 0, asOf: '2026-11-09' } }, forecast: EARNINGS });
+    const named = (name: RegExp) => screen.getByRole('button', { name });
+    expect(
+      named(
+        /^Tuesday, November 3, 2026: TaskMint earned, not withdrawn yet \$10\.00, in the bank Wednesday, November 11, 2026$/
+      )
+    ).toBeInTheDocument();
+    expect(
+      named(
+        /^Wednesday, November 4, 2026: TaskMint earned, not withdrawn yet about \$5\.00, in the bank Wednesday, November 11, 2026$/
+      )
+    ).toBeInTheDocument();
+    expect(
+      named(
+        /^Thursday, November 5, 2026: TaskMint earned, not withdrawn yet \$7\.00, in the bank Saturday, November 14, 2026$/
+      )
+    ).toBeInTheDocument();
+    // The withdrawals still show on the days they reach the bank, and the balance only moves then
+    expect(
+      named(/^Wednesday, November 11, 2026: TaskMint withdrawal expected \$15\.00; balance \$15\.00$/)
+    ).toBeInTheDocument();
+    expect(named(/^Thursday, November 12, 2026: balance \$15\.00$/)).toBeInTheDocument();
+    // The one that reached the bank before the balance's day shows too, and counts in the month's total
+    expect(named(/^Sunday, November 8, 2026: TaskMint withdrawal \$25\.00$/)).toBeInTheDocument();
+    expect(screen.getByText('TaskMint', { selector: 'div' }).nextSibling).toHaveTextContent('$47.00');
+    // A bar on a phone, a dotted badge wider, with ~ where some of it is estimated
+    expect(document.querySelector('[data-dot="earned"]')).toHaveStyle({ height: '3px' });
+    expect(screen.getByText('~$5.00')).toBeInTheDocument();
+    expect(screen.getByText('Earned, not withdrawn yet')).toBeInTheDocument();
+
+    await user.click(named(/^Wednesday, November 4, 2026/));
+    const dialog = screen.getByRole('dialog', { name: 'Wednesday, November 4, 2026' });
+    expect(within(dialog).getByText('Earned in TaskMint, not withdrawn yet')).toBeInTheDocument();
+    expect(within(dialog).getByText('~$5.00')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('In the bank Wednesday, November 11, 2026, with the withdrawal that takes it.')
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Nothing due.')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+
+    // Last month's withdrawal, before the balance too
+    await user.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(screen.getByText('TaskMint', { selector: 'div' }).nextSibling).toHaveTextContent('$18.00');
+  });
+
+  it('says when no withdrawal ahead takes a day’s earnings', async () => {
+    const { user } = await calendar({
+      settings: { balance: { cents: 0, asOf: '2026-11-09' }, taskmint: { minWithdrawalCents: 1_000_000 } },
+      forecast: EARNINGS,
+    });
+    const nov3 = screen.getByRole('button', {
+      name: /^Tuesday, November 3, 2026: TaskMint earned, not withdrawn yet \$10\.00, no withdrawal ahead takes it yet$/,
+    });
+    await user.click(nov3);
+    expect(
+      within(screen.getByRole('dialog', { name: 'Tuesday, November 3, 2026' })).getByText(
+        'No withdrawal ahead takes it yet.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('works out the keys’ moves and the weeks', () => {
