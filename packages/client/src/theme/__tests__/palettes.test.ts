@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/theme/__tests__/palettes.test.ts @ 1623bee: the dark palette and the focus ring are checked too.
+// Copied from TaskMint packages/client/src/theme/__tests__/palettes.test.ts @ 8ca16f2: keep the two in step.
 import { describe, it, expect } from 'vitest';
 import { getContrastRatio } from '@mui/material/styles';
 import { createAppTheme } from '..';

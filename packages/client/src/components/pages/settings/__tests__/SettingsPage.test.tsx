@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { forecastDoc, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 import { createFakeShell } from '../../../../testing';
+import { APP_VERSION } from '../../../../utils/appVersion';
 
 const settingsOf = (store: { docs: Map<string, { json: string }> }) =>
   JSON.parse(store.docs.get('settings~account')!.json);
@@ -246,7 +247,8 @@ describe('settings', () => {
     });
     expect(screen.getByText('Updates go here')).toBeInTheDocument();
     expect(screen.getByText('They come while BudgetMint is open (or in the tray).')).toBeInTheDocument();
-    expect(screen.getByText(/BudgetMint 0\.1\.0/)).toBeInTheDocument();
+    // Whatever version this is (a release changes it)
+    expect(screen.getByText(new RegExp(`BudgetMint ${APP_VERSION.replace(/\./g, '\\.')},`))).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Source and releases' })).toHaveAttribute(
       'href',
       'https://github.com/BeardedUnicorn/BudgetMint'

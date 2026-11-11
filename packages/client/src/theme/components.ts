@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/theme/components.ts @ 1623bee: the focus ring is darker on light surfaces.
+// Copied from TaskMint packages/client/src/theme/components.ts @ 8ca16f2: keep the two in step.
 /**
  * Component defaults for both modes: visible focus rings, comfortable touch
  * targets (44px, 32px for small controls with a mouse), the few looks that

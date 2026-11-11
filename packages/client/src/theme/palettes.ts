@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/theme/palettes.ts @ 1623bee: the dark palette's colors read too (4.5:1).
+// Copied from TaskMint packages/client/src/theme/palettes.ts @ 8ca16f2: keep the two in step.
 /**
  * The light and dark palettes. Shared brand colors; each mode's text colors
  * read on its surfaces, and the text on a filled chip or button reads on its
