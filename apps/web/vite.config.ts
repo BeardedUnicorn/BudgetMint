@@ -1,12 +1,23 @@
 // Adapted from TaskMint apps/web/vite.config.ts @ 1623bee.
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { webBuild } from './src/build/plugin';
 
 // The web app: built into dist/, which Firebase Hosting serves
 // (firebase.json). In development it syncs with the real project, or with
 // the emulators when VITE_FIREBASE_EMULATOR_HOST is set (.env).
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // public/ (the manifest and icons, robots.txt, the privacy and terms
+    // pages) beside the client's, and the service worker, /sw.js
+    webBuild({
+      publicDir: fileURLToPath(new URL('./public', import.meta.url)),
+      worker: fileURLToPath(new URL('./src/offline/worker.ts', import.meta.url)),
+      notOffline: ['robots.txt', 'social.png'],
+    }),
+  ],
   // Favicon and logos live with the shared client.
   publicDir: '../../packages/client/public',
   // .env (the emulators) stays at the repo root.

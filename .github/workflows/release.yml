@@ -13,11 +13,15 @@ name: Release
 # the ANDROID_KEYSTORE secret, so each one installs over the one before (the
 # README's "Android signing").
 #
+# The release also gets SHA256SUMS, the checksums of every file it ships.
+#
 # The web app is built too, and a tag deploys it to Firebase Hosting (the
 # budgetmint site in BudgetMint's budgetmint project) with BudgetMint's
 # Firestore rules (rules/firestore.rules) once every build has passed, when
 # the repository has the Workload Identity Federation variables. TaskMint's
-# project and its rules are TaskMint's, deployed from TaskMint.
+# project and its rules are TaskMint's, deployed from TaskMint. The GitHub
+# release waits for the web build, not the deploy, so a failed deploy can be
+# re-run on its own.
 on:
   push:
     tags: ['v*']
@@ -30,6 +34,13 @@ on:
       - apps/desktop/src-tauri/tauri.updater.conf.json
       - apps/desktop/src-tauri/tauri.android.conf.json
       - apps/desktop/src-tauri/gen/android/**
+      # What the desktop builds compile, so a change that breaks the Windows
+      # build fails on its pull request
+      - apps/desktop/src-tauri/src/**
+      - apps/desktop/src-tauri/Cargo.toml
+      - Cargo.toml
+      - Cargo.lock
+      - pnpm-lock.yaml
       - firebase.json
       - rules/firestore.rules
       - scripts/build-wasm.mjs
@@ -266,7 +277,8 @@ jobs:
 
   github-release:
     if: github.ref_type == 'tag'
-    needs: build
+    # The web build too: a release whose web app doesn't build isn't made
+    needs: [build, web]
     runs-on: ubuntu-26.04
     permissions:
       contents: write

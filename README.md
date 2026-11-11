@@ -5,11 +5,11 @@
   </picture>
 </h1>
 
-A bill tracker and cash-flow forecast for the desktop, Android and the web,
-and TaskMint's companion. You list your bills and income, mark them paid or
-received, and see your balance day by day, with TaskMint's upcoming
-DataAnnotation withdrawals counted as income. Signed in with your TaskMint
-account, every device shares the same budget through Firebase.
+A bill tracker and cash-flow forecast for the desktop and the web (Android
+is planned), and TaskMint's companion. You list your bills and income, mark
+them paid or received, and see your balance day by day, with TaskMint's
+upcoming DataAnnotation withdrawals counted as income. Signed in with your
+TaskMint account, every device shares the same budget through Firebase.
 
 Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 [TaskMint](https://github.com/BeardedUnicorn/taskmint).
@@ -38,7 +38,6 @@ TaskMint, BudgetMint works as a plain bill tracker.
 **Reminders** come the days before a bill is due (and when income should
 arrive, and when the balance would go short), at the hour you choose:
 
-- **Android** sets them with the system, so they come with the app closed.
 - **The desktop** shows them while the app runs. Closing the window keeps it
   in the tray (the menu bar on macOS), which also shows today's balance and
   the lowest point ahead. Settings → Reminders → **Open BudgetMint at login**
@@ -46,6 +45,15 @@ arrive, and when the balance would go short), at the hour you choose:
   (in the last day) come when it opens.
 - **The web app** shows them while a BudgetMint tab is open, and the ones it
   missed when it's opened again.
+- **Android**, once there's an app for it, will set them with the system, so
+  they'll come with the app closed.
+
+**The web app** is at [budgetmint.web.app](https://budgetmint.web.app). It
+can be installed from the browser, and opens without a connection once it has been opened online: its
+service worker keeps the app's own files, and Firestore keeps the budget.
+[Privacy](https://budgetmint.web.app/privacy) and
+[terms](https://budgetmint.web.app/terms) are pages of the site
+(`apps/web/public/`).
 
 ## How it fits with TaskMint
 
@@ -225,7 +233,23 @@ Change notes go in `changes/` ([changes/README.md](changes/README.md));
 `pnpm release` turns them into the next CHANGELOG section and version,
 commits and tags. Pushing the `vX.Y.Z` tag runs the Release workflow, which
 builds the macOS and Windows apps with their signed updates and
-`latest.json`, and the web app, and creates the GitHub release.
+`latest.json`, and the web app, then creates the GitHub release with
+`SHA256SUMS`, every file's checksum (`sha256sum -c --ignore-missing
+SHA256SUMS` checks a download).
+
+**The web app**, as TaskMint's: once every build has passed, a tag deploys
+BudgetMint's Firestore rules (`rules/firestore.rules`), then the web app, to
+its project `budgetmint`. The GitHub release doesn't wait for the deploy, and
+a failed deploy can be re-run on its own. The deploy signs in to Google
+without a stored key ("Firebase setup" below says how), and
+[docs/runbook.md](docs/runbook.md) says how to deploy by hand and how to roll
+back.
+
+The installers aren't signed (the Mac app is signed ad hoc), as TaskMint's
+aren't. The first time a downloaded build is opened, macOS says it can't
+verify BudgetMint: open System Settings → Privacy & Security and click
+**Open Anyway**. On Windows, SmartScreen says it protected the PC: click
+**More info**, then **Run anyway**.
 
 ## Firebase setup still to do
 
@@ -269,7 +293,7 @@ crates/budgetmint-wasm/     core for the webview (wasm-bindgen)
 packages/contracts/         TypeScript types generated from core
 packages/client/            the React app every shell runs
 apps/desktop/               the Tauri shell (desktop and Android) and its entry
-apps/web/                   the web app's entry, for Firebase Hosting
+apps/web/                   the web app's entry, its public files and service worker, for Firebase Hosting
 rules/                      BudgetMint's Firestore rules and their tests
 firebase/                   TaskMint's rules, pinned (UPSTREAM.json), for the tests
 docs/                       ADRs, and TaskMint's forecast contract (pinned)
