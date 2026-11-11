@@ -1,7 +1,8 @@
 //! TaskMint's payout forecast, as its contract (schema 1) spells it. Fields
 //! a later TaskMint adds are ignored; missing ones read as empty.
 
-use serde::Deserialize;
+use chrono::NaiveDate;
+use serde::{Deserialize, Deserializer};
 
 /// The contract's version this BudgetMint reads.
 pub const FORECAST_SCHEMA: u32 = 1;
@@ -22,10 +23,20 @@ pub struct Open {
     pub cents_per_hour: i64,
 }
 
+/// A work day (`YYYY-MM-DD` in the forecast's zone): None when it's missing
+/// or doesn't read as one, rather than the whole forecast unreadable.
+fn work_day<'de, D: Deserializer<'de>>(from: D) -> Result<Option<NaiveDate>, D::Error> {
+    let text = Option::<String>::deserialize(from)?;
+    Ok(text.and_then(|text| NaiveDate::parse_from_str(&text, "%Y-%m-%d").ok()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
     pub at_ms: i64,
+    /// The work day whose money it is (none from an older TaskMint).
+    #[serde(default, deserialize_with = "work_day")]
+    pub day: Option<NaiveDate>,
     #[serde(default)]
     pub actual_cents: i64,
     #[serde(default)]
@@ -34,6 +45,16 @@ pub struct Step {
     pub past_due_cents: i64,
     #[serde(default)]
     pub open: Option<Open>,
+}
+
+/// Carried money from one work day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CarriedDay {
+    #[serde(default, deserialize_with = "work_day")]
+    pub day: Option<NaiveDate>,
+    #[serde(flatten)]
+    pub amount: Amount,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -80,6 +101,9 @@ pub struct PayoutForecast {
     pub scheduled: Option<Scheduled>,
     #[serde(default)]
     pub carried: Amount,
+    /// `carried` by the work day it was earned (none from an older TaskMint).
+    #[serde(default)]
+    pub carried_days: Vec<CarriedDay>,
     #[serde(default)]
     pub steps: Vec<Step>,
     #[serde(default)]
@@ -121,6 +145,9 @@ mod tests {
         assert_eq!(forecast.recent_days[0].estimated_cents, 2);
         assert_eq!(forecast.next_allowed_at_ms, Some(8));
         assert_eq!(forecast.zone, "America/Chicago");
+        // From an older TaskMint: no work days
+        assert_eq!(forecast.steps[0].day, None);
+        assert!(forecast.carried_days.is_empty());
         // No recent ones listed: the cutoff
         assert_eq!(
             forecast.taken(),
@@ -137,5 +164,37 @@ mod tests {
             ..forecast
         };
         assert_eq!(listed.taken().len(), 1);
+    }
+
+    #[test]
+    fn reads_the_work_day_of_each_steps_and_the_carried_money() {
+        let forecast: PayoutForecast = serde_json::from_str(
+            r#"{"schema":1,"fundsReleaseDays":7,"withdrawalIntervalMs":3,
+                "carried":{"actualCents":5,"estimatedCents":2,"pastDueCents":1},
+                "carriedDays":[{"day":"2026-11-02","actualCents":5,"pastDueCents":1},
+                               {"day":"2026-11-03","estimatedCents":2},{"day":"Tuesday","actualCents":0}],
+                "steps":[{"atMs":11,"day":"2026-11-05","actualCents":4},{"atMs":12,"day":null,"actualCents":1}]}"#,
+        )
+        .unwrap();
+        let day = |text| NaiveDate::parse_from_str(text, "%Y-%m-%d").ok();
+        assert_eq!(forecast.steps[0].day, day("2026-11-05"));
+        assert_eq!(forecast.steps[1].day, None);
+        assert_eq!(
+            forecast.carried_days[0],
+            CarriedDay {
+                day: day("2026-11-02"),
+                amount: Amount {
+                    actual_cents: 5,
+                    estimated_cents: 0,
+                    past_due_cents: 1
+                }
+            }
+        );
+        assert_eq!(forecast.carried_days[1].amount.estimated_cents, 2);
+        // A day that isn't one is unknown, and the rest still reads
+        assert_eq!(forecast.carried_days[2].day, None);
+        // One that isn't text at all doesn't read, as with any field of the wrong type
+        let wrong = r#"{"schema":1,"fundsReleaseDays":7,"withdrawalIntervalMs":3,"steps":[{"atMs":1,"day":5}]}"#;
+        assert!(serde_json::from_str::<PayoutForecast>(wrong).is_err());
     }
 }

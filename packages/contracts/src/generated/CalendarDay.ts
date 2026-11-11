@@ -26,6 +26,19 @@ withdrawalCents: number, withdrawalUncertainCents: number,
  */
 withdrawalProjected: boolean, 
 /**
+ * What the day's work earned in TaskMint that no withdrawal has taken
+ * yet (it's in no balance until one does).
+ */
+earnedCents: number, 
+/**
+ * Of it, estimated or assumed.
+ */
+earnedUncertainCents: number, 
+/**
+ * When the last of it reaches the bank; null when no withdrawal ahead takes it.
+ */
+earnedArrivesOn: string | null, 
+/**
  * The balance at the day's end, where the cash flow covers the day.
  */
 closingCents: number | null, short: boolean, low: boolean, };

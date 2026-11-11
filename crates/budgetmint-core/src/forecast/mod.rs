@@ -6,13 +6,15 @@
 //!   with open timers brought up to now and (if the user wants) earnings
 //!   still to come;
 //! - [`series`] projects the withdrawals themselves, and when each reaches
-//!   the bank.
+//!   the bank;
+//! - [`earned`] says which work days' money each one takes.
 //!
 //! None of TaskMint's math is here: the forecast is its answer, and its
 //! golden fixtures (src/testkit/taskmint) check that this reads it right.
 
 pub mod contract;
 pub mod curve;
+pub mod earned;
 pub mod series;
 
 use contract::{PayoutForecast, FORECAST_SCHEMA};

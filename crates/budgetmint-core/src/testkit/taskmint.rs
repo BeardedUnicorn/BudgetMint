@@ -1,10 +1,11 @@
 //! TaskMint's golden fixtures for the payout forecast (pinned in
 //! taskmint/*.json): at each fixture's now, what a withdrawal at each time
 //! takes, and the next withdrawal, must be TaskMint's own answers, worked
-//! out here from the forecast alone.
+//! out here from the forecast alone. And every cent of it is some work day's.
 
 use crate::forecast::contract::PayoutForecast;
-use crate::forecast::curve::live_curve;
+use crate::forecast::curve::{live_curve, Money};
+use crate::forecast::earned::unwithdrawn;
 use crate::forecast::series::project_withdrawals;
 use crate::model::TaskMintPlan;
 use crate::time::Ctx;
@@ -101,5 +102,25 @@ fn reads_taskmints_forecast_as_taskmint_does() {
                 );
             }
         }
+
+        // Each step says its work day, and the carried days add up to what's carried
+        assert!(
+            curve.steps.iter().all(|step| step.day.is_some()),
+            "{}",
+            name
+        );
+        let carried_days = curve
+            .carried_days
+            .iter()
+            .fold(Money::default(), |sum, (_, money)| sum + *money);
+        assert_eq!(carried_days, curve.carried, "{}", name);
+        // So the days account for all of it: what the withdrawals take, and nothing else
+        let by_day = unwithdrawn(&curve, &withdrawals)
+            .iter()
+            .fold(Money::default(), |sum, day| sum + day.money);
+        let all = curve.at(i64::MAX);
+        let taken: i64 = withdrawals.iter().map(|made| made.total_cents).sum();
+        assert_eq!(by_day, all, "{}", name);
+        assert_eq!(by_day.total(), taken, "{}", name);
     }
 }

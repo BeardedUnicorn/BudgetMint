@@ -38,7 +38,8 @@ All times are epoch milliseconds, all money integer cents.
 | `nextAllowedAtMs` | `cutoff.takenAtMs + withdrawalIntervalMs`; `null` with no cutoff |
 | `scheduled` | `{releaseMs, dueMs}`: the withdrawal the user scheduled in TaskMint (for the release at `releaseMs`, due at `dueMs`), or `null` |
 | `carried` | `{actualCents, estimatedCents, pastDueCents}`: in every withdrawal from `asOfMs` on, until one takes it |
-| `steps` | `[{atMs, actualCents, estimatedCents, pastDueCents, open?}]`, by `atMs`: money becoming withdrawable at `atMs` |
+| `carriedDays` | `[{day, actualCents, estimatedCents, pastDueCents}]`: `carried` by the work day (`YYYY-MM-DD` in `zone`) it was earned, oldest first. They add up to `carried`. |
+| `steps` | `[{atMs, day, actualCents, estimatedCents, pastDueCents, open?}]`, by `atMs` (then `day`): money from work day `day` (`YYYY-MM-DD` in `zone`) becoming withdrawable at `atMs`. Several steps may share an `atMs`, one per work day. |
 | `recentDays` | `[{day, actualCents, estimatedCents}]`: earnings per work day (`YYYY-MM-DD` in `zone`) for the 42 days up to the latest, oldest first; days with none are left out |
 | `zone` | The IANA time zone of the device that built it |
 
@@ -46,6 +47,9 @@ All times are epoch milliseconds, all money integer cents.
   time not imported yet, at each timer's rate (TaskMint shows it with a `~`).
 - `pastDueCents` is part of `actualCents`: money the site still listed as
   pending after its release time, so it waits on the site's approval.
+- `day` and `carriedDays` say which work days' money a withdrawal takes:
+  everything in `carriedDays` and every step at or before its time. A
+  forecast from an older TaskMint has neither; read it as days unknown.
 - New fields may appear without a new `schema`; ignore what you don't know.
 
 ### What a withdrawal takes

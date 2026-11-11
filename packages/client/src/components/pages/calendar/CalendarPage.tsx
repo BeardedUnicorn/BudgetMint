@@ -1,7 +1,7 @@
 /**
- * Calendar: a month of bills, income and TaskMint's withdrawals, with each
- * day's closing balance; the month's totals above, a day's details a click
- * away.
+ * Calendar: a month of bills, income, TaskMint's withdrawals and each work
+ * day's TaskMint earnings not withdrawn yet, with each day's closing
+ * balance; the month's totals above, a day's details a click away.
  */
 
 import { useId, useState } from 'react';
@@ -30,12 +30,15 @@ function Stat({ label, value }: { label: string; value: string }) {
 function LegendItem({
   tone,
   dashed = false,
+  dotted = false,
   children,
 }: {
   tone: 'error' | 'success' | 'secondary';
   dashed?: boolean;
+  dotted?: boolean;
   children: string;
 }) {
+  const outlined = dashed || dotted;
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <Box
@@ -43,8 +46,8 @@ function LegendItem({
           width: 14,
           height: 10,
           borderRadius: 0.5,
-          border: `1px ${dashed ? 'dashed' : 'solid'} ${theme.palette[tone].main}`,
-          bgcolor: dashed ? 'transparent' : alpha(theme.palette[tone].main, 0.3),
+          border: `1px ${dotted ? 'dotted' : dashed ? 'dashed' : 'solid'} ${theme.palette[tone].main}`,
+          bgcolor: outlined ? 'transparent' : alpha(theme.palette[tone].main, 0.3),
         })}
       />
       <Typography variant="caption" color="text.secondary">
@@ -78,7 +81,7 @@ export function CalendarPage() {
     <PageContainer>
       <PageHeader
         title="Calendar"
-        subtitle="Bills, income and TaskMint’s withdrawals, with the balance each day ends on."
+        subtitle="Bills, income, and TaskMint’s earnings and withdrawals, with the balance each day ends on."
       />
       <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
         <Box
@@ -144,6 +147,9 @@ export function CalendarPage() {
           <LegendItem tone="secondary">TaskMint withdrawal</LegendItem>
           <LegendItem tone="secondary" dashed>
             Expected withdrawal
+          </LegendItem>
+          <LegendItem tone="secondary" dotted>
+            Earned, not withdrawn yet
           </LegendItem>
           <Typography variant="caption" color="text.secondary">
             ~ includes time tracked in TaskMint and not imported yet

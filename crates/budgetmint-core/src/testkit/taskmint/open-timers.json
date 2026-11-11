@@ -24,27 +24,51 @@
       "estimatedCents": 0,
       "pastDueCents": 900
     },
+    "carriedDays": [
+      {
+        "day": "2027-01-04",
+        "actualCents": 300,
+        "estimatedCents": 0,
+        "pastDueCents": 0
+      },
+      {
+        "day": "2027-01-05",
+        "actualCents": 500,
+        "estimatedCents": 0,
+        "pastDueCents": 500
+      },
+      {
+        "day": "2027-01-07",
+        "actualCents": 400,
+        "estimatedCents": 0,
+        "pastDueCents": 400
+      }
+    ],
     "steps": [
       {
         "atMs": 1800100800000,
+        "day": "2027-01-09",
         "actualCents": 1000,
         "estimatedCents": 0,
         "pastDueCents": 0
       },
       {
         "atMs": 1800187200000,
+        "day": "2027-01-10",
         "actualCents": 2000,
         "estimatedCents": 0,
         "pastDueCents": 0
       },
       {
         "atMs": 1800446400000,
+        "day": "2027-01-13",
         "actualCents": 4000,
         "estimatedCents": 0,
         "pastDueCents": 0
       },
       {
         "atMs": 1800534600000,
+        "day": "2027-01-14",
         "actualCents": 0,
         "estimatedCents": 3000,
         "pastDueCents": 0,
@@ -55,6 +79,7 @@
       },
       {
         "atMs": 1800534600000,
+        "day": "2027-01-13",
         "actualCents": 0,
         "estimatedCents": 3000,
         "pastDueCents": 0,
