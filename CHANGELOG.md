@@ -8,6 +8,10 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.0.1 – 2026-11-11
+
+No user-facing changes.
+
 ## 2.0.0 – 2026-11-11
 
 ### Changed
