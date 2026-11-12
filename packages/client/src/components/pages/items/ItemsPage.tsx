@@ -215,7 +215,14 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                       {item.name}
                     </Typography>
                     {item.category && <Chip size="small" label={item.category} />}
-                    {item.autopay && <Chip size="small" label="Autopay" variant="outlined" color="info" />}
+                    {item.autopay && (
+                      <Chip
+                        size="small"
+                        label={item.kind === 'bill' ? 'Autopay' : 'Automatic'}
+                        variant="outlined"
+                        color="info"
+                      />
+                    )}
                     {item.saveUp && <Chip size="small" label="Saving up" variant="outlined" color="secondary" />}
                     {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
                   </Stack>

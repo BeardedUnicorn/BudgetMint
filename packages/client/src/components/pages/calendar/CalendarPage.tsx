@@ -4,7 +4,7 @@
  * balance; the month's totals above, a day's details a click away.
  */
 
-import { useId, useState } from 'react';
+import { ReactNode, useId, useState } from 'react';
 import { Box, Button, IconButton, Paper, Typography } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
@@ -13,6 +13,7 @@ import { PHONE } from '../../../theme/media';
 import { addDays, addMonths, formatMonth } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
+import { Dot, WIDE } from './DayCell';
 import { DayDialog } from './DayDialog';
 import { MonthGrid } from './MonthGrid';
 
@@ -27,27 +28,37 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * A legend's line: the badge it stands for where the grid has badges, and
+ * the dot where it has dots (the legend is a container of the same width,
+ * so the grid's own query picks).
+ */
 function LegendItem({
   tone,
   dashed = false,
   dotted = false,
+  dot,
   children,
 }: {
   tone: 'error' | 'success' | 'secondary';
   dashed?: boolean;
   dotted?: boolean;
+  dot: ReactNode;
   children: string;
 }) {
   const outlined = dashed || dotted;
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+      <Box sx={{ display: 'flex', width: 14, justifyContent: 'center', [WIDE]: { display: 'none' } }}>{dot}</Box>
       <Box
         sx={theme => ({
+          display: 'none',
           width: 14,
           height: 10,
           borderRadius: 0.5,
           border: `1px ${dotted ? 'dotted' : dashed ? 'dashed' : 'solid'} ${theme.palette[tone].main}`,
           bgcolor: outlined ? 'transparent' : alpha(theme.palette[tone].main, 0.3),
+          [WIDE]: { display: 'block' },
         })}
       />
       <Typography variant="caption" color="text.secondary">
@@ -143,19 +154,27 @@ export function CalendarPage() {
           mondayFirst={settings.weekStartsMonday}
         />
 
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
-          <LegendItem tone="error">Bills</LegendItem>
-          <LegendItem tone="success">Income</LegendItem>
-          <LegendItem tone="secondary">TaskMint withdrawal</LegendItem>
-          <LegendItem tone="secondary" dashed>
-            Expected withdrawal
-          </LegendItem>
-          <LegendItem tone="secondary" dotted>
-            Earned, not withdrawn yet
-          </LegendItem>
-          <Typography variant="caption" color="text.secondary">
-            ~ includes time tracked in TaskMint and not imported yet
-          </Typography>
+        <Box sx={{ containerType: 'inline-size', containerName: 'calendar', mt: 2 }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+            <LegendItem tone="error" dot={<Dot tone="error" />}>
+              Bills
+            </LegendItem>
+            <LegendItem tone="success" dot={<Dot tone="success" />}>
+              Income
+            </LegendItem>
+            <LegendItem tone="secondary" dot={<Dot tone="secondary" />}>
+              TaskMint withdrawal
+            </LegendItem>
+            <LegendItem tone="secondary" dashed dot={<Dot tone="secondary" hollow />}>
+              Expected withdrawal
+            </LegendItem>
+            <LegendItem tone="secondary" dotted dot={<Dot tone="secondary" shape="earned" />}>
+              Earned, not withdrawn yet
+            </LegendItem>
+            <Typography variant="caption" color="text.secondary">
+              ~ includes time tracked in TaskMint and not imported yet
+            </Typography>
+          </Box>
         </Box>
       </Paper>
 

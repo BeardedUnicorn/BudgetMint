@@ -13,6 +13,7 @@ function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
     due: '2026-11-01',
     expectedCents: 100,
     estimated: false,
+    varies: false,
     status: { state: 'open' },
     late: false,
     amountCents: null,

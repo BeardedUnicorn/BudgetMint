@@ -43,7 +43,8 @@ export function findItems(views: ItemView[], query: ItemQuery): ItemView[] {
   const by: Record<ItemOrder, ((a: ItemView, b: ItemView) => number) | null> = {
     next: null,
     name: (a, b) => a.item.name.localeCompare(b.item.name),
-    amount: (a, b) => b.current.amountCents - a.current.amountCents,
+    // As the column shows it: a varying one at its estimate
+    amount: (a, b) => (b.estimate?.cents ?? b.current.amountCents) - (a.estimate?.cents ?? a.current.amountCents),
     monthly: (a, b) => b.monthlyCents - a.monthlyCents,
   };
   const compare = by[query.order];
@@ -117,7 +118,7 @@ export function CategoryTotals({ views }: { views: ItemView[] }) {
   return (
     <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }} aria-label="A month, by category">
       A month by category:{' '}
-      {rows.map(([category, cents]) => `${category || 'Uncategorized'} ${formatCents(cents)}`).join(' · ')}
+      {rows.map(([category, cents]) => `${category || 'No category'} ${formatCents(cents)}`).join(' · ')}
     </Typography>
   );
 }

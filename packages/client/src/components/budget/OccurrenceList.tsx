@@ -1,7 +1,9 @@
 /**
  * Occurrences as a list: name, amount, what's become of each, and its
  * actions: mark it paid (or received) in one click, or open it for the
- * rest. Used by the overview and the calendar's day.
+ * rest. One whose amount varies asks what it came to instead (its estimate
+ * isn't what was paid), and so does one on autopay once it's due. Used by
+ * the overview and the calendar's day.
  */
 
 import { useState } from 'react';
@@ -24,12 +26,13 @@ const CHIP_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default' | 
   Overdue: 'error',
   Late: 'warning',
   Autopay: 'info',
+  Automatic: 'info',
 };
 
 export function OccurrenceList({ occurrences, today }: { occurrences: OccurrenceView[]; today: string }) {
   const change = useBudgetChange();
   const { showError } = useNotification();
-  const [open, setOpen] = useState<OccurrenceView | null>(null);
+  const [open, setOpen] = useState<{ occurrence: OccurrenceView; askAmount: boolean } | null>(null);
 
   const markDone = (occurrence: OccurrenceView) => {
     try {
@@ -84,7 +87,7 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   size="small"
                   label={label}
                   color={CHIP_COLORS[label]}
-                  variant={label === 'Autopay' ? 'outlined' : 'filled'}
+                  variant={label === 'Autopay' || label === 'Automatic' ? 'outlined' : 'filled'}
                 />
               )}
               <Typography
@@ -106,10 +109,22 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   <Button
                     size="small"
                     startIcon={<PaidIcon />}
-                    onClick={() => markDone(occurrence)}
+                    onClick={() =>
+                      occurrence.varies ? setOpen({ occurrence, askAmount: true }) : markDone(occurrence)
+                    }
                     aria-label={`Mark ${occurrence.name} ${verb}`}
                   >
                     {occurrence.kind === 'bill' ? 'Mark paid' : 'Mark received'}
+                  </Button>
+                ) : !done && occurrence.varies && occurrence.due <= today ? (
+                  // On autopay, so it's gone: what it came to teaches its estimate
+                  <Button
+                    size="small"
+                    startIcon={<PaidIcon />}
+                    onClick={() => setOpen({ occurrence, askAmount: true })}
+                    aria-label={`Enter what ${occurrence.name} came to on ${formatDay(occurrence.due)}`}
+                  >
+                    Enter amount
                   </Button>
                 ) : (
                   <Box sx={{ width: 0 }} />
@@ -118,7 +133,7 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   <IconButton
                     size="small"
                     aria-label={`${occurrence.name} on ${formatDay(occurrence.scheduled)}: details`}
-                    onClick={() => setOpen(occurrence)}
+                    onClick={() => setOpen({ occurrence, askAmount: false })}
                   >
                     <MoreIcon fontSize="small" />
                   </IconButton>
@@ -128,7 +143,14 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
           );
         })}
       </List>
-      {open && <OccurrenceDialog occurrence={open} today={today} onClose={() => setOpen(null)} />}
+      {open && (
+        <OccurrenceDialog
+          occurrence={open.occurrence}
+          askAmount={open.askAmount}
+          today={today}
+          onClose={() => setOpen(null)}
+        />
+      )}
     </>
   );
 }

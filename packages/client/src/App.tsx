@@ -10,7 +10,7 @@ import type { CoreClient } from './core';
 import type { BudgetSession } from './cloud/session';
 import { AppExtensionsContext } from './app/extensions';
 import { AuthLayout } from './components/auth/AuthLayout';
-import { SignInForm } from './components/auth/SignInForm';
+import { SignInForm, type FormMode } from './components/auth/SignInForm';
 import { BalanceFooter } from './components/layout/BalanceFooter';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
@@ -82,6 +82,23 @@ function Loading() {
   );
 }
 
+/** The page's title for what the form is doing. */
+const SIGN_IN_TITLES: Record<FormMode, string> = {
+  signIn: 'Sign in to BudgetMint',
+  signUp: 'Create your BudgetMint account',
+  reset: 'Reset your password',
+};
+
+/** Signing in, or making an account, or a reset link: the title says which. */
+function SignInPage({ session }: { session: BudgetSession }) {
+  const [mode, setMode] = useState<FormMode>('signIn');
+  return (
+    <AuthLayout title={SIGN_IN_TITLES[mode]}>
+      <SignInForm engine={session} onPhone={getShell().capabilities.runtime === 'mobile'} onModeChange={setMode} />
+    </AuthLayout>
+  );
+}
+
 /** What the session's phase shows: signing in, loading, an error, or the app. */
 function Gate() {
   const { session, view } = useBudget();
@@ -95,11 +112,7 @@ function Gate() {
     case 'starting':
       return <Loading />;
     case 'signedOut':
-      return (
-        <AuthLayout title="Sign in to BudgetMint">
-          <SignInForm engine={session} onPhone={getShell().capabilities.runtime === 'mobile'} />
-        </AuthLayout>
-      );
+      return <SignInPage session={session} />;
     case 'error':
       return (
         <AuthLayout title="BudgetMint can’t reach your data">

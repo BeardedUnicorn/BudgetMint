@@ -51,6 +51,12 @@ overdue: Array<OccurrenceView>,
  */
 lateIncome: Array<OccurrenceView>, 
 /**
+ * Autopay items whose amount varies, due in the last NEEDS_AMOUNT_DAYS
+ * and taken at their estimate: what they really came to is asked, so
+ * the estimate learns from it.
+ */
+needsAmount: Array<OccurrenceView>, 
+/**
  * The next 14 days with something on them.
  */
 upcoming: Array<UpcomingDay>, taskmint: ForecastStatus, 

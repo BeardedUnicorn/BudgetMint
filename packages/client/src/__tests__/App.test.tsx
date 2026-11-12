@@ -29,6 +29,13 @@ describe('the app', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
     expect(shell.platform.splashScreen.hide).toHaveBeenCalled();
     const user = userEvent.setup();
+    // The title says what the form does
+    await user.click(screen.getByRole('button', { name: 'Create an account' }));
+    expect(screen.getByRole('heading', { name: 'Create your BudgetMint account' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'I have an account' }));
+    await user.click(screen.getByRole('button', { name: 'Forgot password?' }));
+    expect(screen.getByRole('heading', { name: 'Reset your password' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'I have an account' }));
     await user.type(screen.getByLabelText('Email'), 'cal@example.com');
     await user.type(screen.getByLabelText('Password'), 'secret');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));

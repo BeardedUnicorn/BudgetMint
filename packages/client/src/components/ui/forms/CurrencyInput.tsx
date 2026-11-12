@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/ui/forms/CurrencyInput.tsx @ 1623bee: it takes a ref to its input.
+// Adapted from TaskMint packages/client/src/components/ui/forms/CurrencyInput.tsx @ 1623bee: it takes a ref to its input, and can start with the focus.
 import React from 'react';
 import { TextField, InputAdornment } from '@mui/material';
 import { LIMITS } from '@budgetmint/contracts';
@@ -38,6 +38,7 @@ export function CurrencyInput({
   onBlur,
   onKeyDown,
   inputRef,
+  autoFocus,
 }: CurrencyInputProps) {
   return (
     <TextField
@@ -47,6 +48,7 @@ export function CurrencyInput({
       onBlur={onBlur}
       onKeyDown={onKeyDown}
       inputRef={inputRef}
+      autoFocus={autoFocus}
       placeholder="0.00"
       error={error}
       helperText={helperText}

@@ -314,7 +314,7 @@ describe('safe to spend, everyday spending and TaskMint’s cover', () => {
     // The forecast takes a day's share each day, and draws the balance besides what's set aside
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getByText('Everyday spending: $70.00 a week, a day’s share each day.')).toBeInTheDocument();
-    expect(screen.getByText('The dashed line leaves out the money set aside for bills.')).toBeInTheDocument();
+    expect(screen.getByText('The dashed balance line leaves out the money set aside for bills.')).toBeInTheDocument();
     expect(screen.getAllByText('Everyday spending').length).toBeGreaterThan(0);
     expect(tooltipMoney(10, 'free')).toEqual(['$10.00', 'Besides what’s set aside']);
 
@@ -711,6 +711,14 @@ describe('a bank statement', () => {
     await pick(user, dialog, 'Or money out', 'None');
     await user.click(read);
     expect(within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: $1,200.00 on Nov 1' })).toBeChecked();
+    // A click outside keeps it; with something to save, Escape asks before dropping it
+    await user.click(document.querySelector('.MuiBackdrop-root')!);
+    expect(dialog).toBeInTheDocument();
+    within(dialog).getByRole('checkbox', { name: /Rent/ }).focus();
+    await user.keyboard('{Escape}');
+    const asking = await screen.findByRole('dialog', { name: 'Leave the statement unsaved?' });
+    await user.click(within(asking).getByRole('button', { name: 'Keep going' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Leave the statement unsaved?' })).toBeNull());
     // Nothing to save once it's unticked and there's no balance in it
     await user.click(within(dialog).getByRole('checkbox', { name: /Rent/ }));
     expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();

@@ -22,7 +22,7 @@ import {
 import { Google as GoogleIcon, Visibility as ShowIcon, VisibilityOff as HideIcon } from '@mui/icons-material';
 import { cloudErrorMessage } from '../../cloud/errors';
 
-type FormMode = 'signIn' | 'signUp' | 'reset';
+export type FormMode = 'signIn' | 'signUp' | 'reset';
 
 const FORM_TITLES: Record<FormMode, string> = {
   signIn: 'Sign in',
@@ -51,12 +51,19 @@ export function SignInForm({
   engine,
   intro = INTRO,
   onPhone = false,
+  onModeChange,
 }: {
   engine: SignInActions;
   intro?: string;
   onPhone?: boolean;
+  /** Told when it switches between signing in, making an account and a reset link (the page's title follows). */
+  onModeChange?: (mode: FormMode) => void;
 }) {
-  const [mode, setMode] = useState<FormMode>('signIn');
+  const [mode, setFormMode] = useState<FormMode>('signIn');
+  const setMode = (next: FormMode) => {
+    setFormMode(next);
+    onModeChange?.(next);
+  };
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   /** A new account's password, typed again: a typo would lock it out. */

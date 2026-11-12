@@ -27,6 +27,7 @@ import type { CsvColumns, StatementView } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay, formatDayInYear } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
+import { ConfirmDialog } from '../ui/dialogs/ConfirmDialog';
 
 type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit';
 
@@ -107,6 +108,8 @@ export function StatementDialog({
   const [unticked, setUnticked] = useState<number[]>([]);
   const [takeBalance, setTakeBalance] = useState(view.balance !== null);
   const [problem, setProblem] = useState<string | null>(null);
+  /** Escape was pressed with something to save: asking before it's dropped. */
+  const [asking, setAsking] = useState(false);
 
   const read = (columns: CsvColumns) => {
     try {
@@ -149,7 +152,17 @@ export function StatementDialog({
   };
 
   return (
-    <Dialog open onClose={(_event, reason) => reason !== 'backdropClick' && onClose()} maxWidth="sm" fullWidth>
+    <Dialog
+      open
+      // A click outside doesn't close it; Escape asks first while there's something to save
+      onClose={(_event, reason) => {
+        if (reason === 'backdropClick') return;
+        if (chosen.length > 0 || balance !== null) setAsking(true);
+        else onClose();
+      }}
+      maxWidth="sm"
+      fullWidth
+    >
       <DialogTitle>Bank statement</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -226,6 +239,16 @@ export function StatementDialog({
           Save
         </Button>
       </DialogActions>
+      <ConfirmDialog
+        open={asking}
+        onClose={() => setAsking(false)}
+        onConfirm={onClose}
+        title="Leave the statement unsaved?"
+        message="Nothing it matched is marked paid until you save."
+        confirmLabel="Discard"
+        cancelLabel="Keep going"
+        severity="error"
+      />
     </Dialog>
   );
 }

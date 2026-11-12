@@ -14,6 +14,7 @@ import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switc
 import type { ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { useDirty } from '../../hooks/useDirty';
 import { categoriesOf } from '../pages/items/ItemFilters';
 import { parseDay } from '../../utils/dates';
 import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
@@ -166,6 +167,28 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const [problem, setProblem] = useState<string | null>(null);
   /** A field left wrong: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState<{ field: Field; message: string } | null>(null);
+  const dirty = useDirty([
+    name,
+    amount,
+    every,
+    n,
+    from,
+    day,
+    second,
+    week,
+    weekday,
+    weekends,
+    changeFrom,
+    ends,
+    endsOn,
+    category,
+    autopay,
+    reminded,
+    leads,
+    note,
+    varies,
+    saveUp,
+  ]);
   const inputs = {
     amount: useRef<HTMLInputElement>(null),
     changeFrom: useRef<HTMLInputElement>(null),
@@ -258,6 +281,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   return (
     <FormDialog
       onClose={onClose}
+      dirty={dirty}
       title={item ? `Edit ${item.name}` : goal ? 'Add a savings goal' : `Add ${NOUNS[kind]}`}
       onSubmit={submit}
     >

@@ -73,6 +73,7 @@ export function occurrenceLabel(occurrence: OccurrenceView): string | null {
   if (status.state === 'done') return occurrence.kind === 'bill' ? 'Paid' : 'Received';
   if (status.state === 'skipped') return 'Skipped';
   if (occurrence.late) return occurrence.kind === 'bill' ? 'Overdue' : 'Late';
-  if (occurrence.autopay) return 'Autopay';
+  // Income that comes in on its own isn't "autopay": nothing is paid
+  if (occurrence.autopay) return occurrence.kind === 'bill' ? 'Autopay' : 'Automatic';
   return null;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
 import type { ForecastState, ForecastView } from '@budgetmint/contracts';
 import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
@@ -62,8 +62,12 @@ describe('the forecast', () => {
   it('says when no money moves, and opens the assumptions', async () => {
     const { user } = await forecast({ settings: { balance: { cents: 0, asOf: '2026-11-09' }, horizonDays: 14 } });
     expect(screen.getByText('No money moves before Nov 24.')).toBeInTheDocument();
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    scroll.mockClear();
     await user.click(screen.getByRole('button', { name: 'Assumptions' }));
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    // Where everyday spending, the horizon and the low mark are
+    expect((scroll.mock.contexts[0] as Element).id).toBe('settings-forecast');
     expect(item).toBeDefined();
   });
 

@@ -8,6 +8,7 @@ import { Alert, Checkbox, FormControlLabel, Radio, RadioGroup, Stack, TextField,
 import type { OccStatus, OccurrenceView } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
+import { useDirty } from '../../hooks/useDirty';
 import { formatDay } from '../../utils/dates';
 import { centsToInput, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
@@ -18,21 +19,29 @@ type State = OccStatus['state'];
 export function OccurrenceDialog({
   occurrence,
   today,
+  askAmount = false,
   onClose,
 }: {
   occurrence: OccurrenceView;
   today: string;
+  /**
+   * Opened to say what it came to: marked paid (or received), with the
+   * amount left empty to type (an amount that varies would be recorded at
+   * its estimate otherwise).
+   */
+  askAmount?: boolean;
   onClose: () => void;
 }) {
   const change = useBudgetChange();
   const status = occurrence.status;
   const bill = occurrence.kind === 'bill';
-  const [state, setState] = useState<State>(status.state);
+  const [state, setState] = useState<State>(askAmount ? 'done' : status.state);
+  // Paid today, as Mark paid records it; one on autopay was paid on its day
   const [paidOn, setPaidOn] = useState(
-    status.state === 'done' ? status.on : occurrence.due < today ? occurrence.due : today
+    status.state === 'done' ? status.on : occurrence.autopay && occurrence.due < today ? occurrence.due : today
   );
   const [paid, setPaid] = useState(
-    centsToInput(status.state === 'done' ? status.amountCents : occurrence.expectedCents)
+    askAmount ? '' : centsToInput(status.state === 'done' ? status.amountCents : occurrence.expectedCents)
   );
   const [expected, setExpected] = useState(centsToInput(occurrence.expectedCents));
   /** Back to the schedule's amount: this time's own amount is dropped. */
@@ -44,6 +53,7 @@ export function OccurrenceDialog({
   const [wrong, setWrong] = useState<'paid' | 'expected' | null>(null);
   const paidInput = useRef<HTMLInputElement>(null);
   const expectedInput = useRef<HTMLInputElement>(null);
+  const dirty = useDirty([state, paidOn, paid, expected, usual, due, note]);
 
   const submit = () => {
     const paidCents = parseDollars(paid);
@@ -91,12 +101,17 @@ export function OccurrenceDialog({
   };
 
   return (
-    <FormDialog onClose={onClose} title={`${occurrence.name}, ${formatDay(occurrence.scheduled)}`} onSubmit={submit}>
+    <FormDialog
+      onClose={onClose}
+      dirty={dirty}
+      title={`${occurrence.name}, ${formatDay(occurrence.scheduled)}`}
+      onSubmit={submit}
+    >
       <Stack spacing={2}>
         {problem && <Alert severity="error">{problem}</Alert>}
         <Typography variant="body2" color="text.secondary">
           {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} due {formatDay(occurrence.due)}
-          {occurrence.autopay ? ', on autopay' : ''}
+          {occurrence.autopay ? (bill ? ', on autopay' : ', comes in automatically') : ''}
           {occurrence.estimated ? ' (its amount varies: this is the average of the last few)' : ''}
         </Typography>
         <RadioGroup value={state} onChange={event => setState(event.target.value as State)} aria-label="What happened">
@@ -121,6 +136,7 @@ export function OccurrenceDialog({
               error={wrong === 'paid'}
               helperText={wrong === 'paid' ? 'Enter the amount' : undefined}
               inputRef={paidInput}
+              autoFocus={askAmount}
               sx={{ flex: 1 }}
             />
           </Stack>

@@ -252,6 +252,19 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         </Paper>
       )}
 
+      {overview.needsAmount.length > 0 && (
+        <Paper component="section" aria-labelledby="needs-amount-title" sx={SECTION}>
+          <Typography id="needs-amount-title" variant="h6" component="h2">
+            What did these come to?
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            They’re paid automatically and their amount varies: what each really was keeps the next ones’ estimate
+            right.
+          </Typography>
+          <OccurrenceList occurrences={overview.needsAmount} today={today} />
+        </Paper>
+      )}
+
       {items.length === 0 ? (
         <EmptyState
           icon={<DueIcon sx={{ fontSize: 48 }} />}
