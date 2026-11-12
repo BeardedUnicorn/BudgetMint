@@ -9,7 +9,7 @@ import { useEffect } from 'react';
 import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
 import { MoreHoriz as MoreIcon } from '@mui/icons-material';
 import { type SidebarView, VIEW_LABELS } from '../../navigation/views';
-import { VIEW_ICONS } from './Sidebar';
+import { VIEW_ICONS } from '../../navigation/icons';
 
 /** The pages on the bar; the others are under More. */
 export const BAR_VIEWS: SidebarView[] = ['overview', 'bills', 'calendar', 'forecast'];

@@ -53,8 +53,9 @@ Object.defineProperty(window, 'sessionStorage', {
 });
 
 // Mock window.matchMedia
-// Browsers have it; jsdom doesn't lay anything out to scroll to
+// Browsers have them; jsdom doesn't lay anything out to scroll to
 Element.prototype.scrollIntoView = vi.fn();
+Element.prototype.scrollTo = vi.fn();
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -113,4 +114,14 @@ Object.defineProperty(navigator, 'clipboard', {
 beforeEach(() => {
   localStorageMock.clear();
   sessionStorageMock.clear();
+});
+
+// Back (navigation/backStack.ts) goes back through the window's history, and
+// jsdom moves there a task later: the steps an app takes as it unmounts land
+// before the next test, not in it (after Testing Library's cleanup, which
+// runs first: vitest runs after-hooks last-registered first)
+const nextTask = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+afterEach(async () => {
+  await nextTask();
+  await nextTask();
 });

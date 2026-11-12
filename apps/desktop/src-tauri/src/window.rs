@@ -51,7 +51,9 @@ mod tests {
 
     fn with_tray() -> FakePlatform {
         let platform = FakePlatform::default();
-        platform.render_tray(&tray::menu(&[])).unwrap();
+        platform
+            .render_tray(&tray::menu(&Default::default()))
+            .unwrap();
         platform
     }
 
@@ -69,7 +71,9 @@ mod tests {
     fn shows_at_login_too_without_a_tray_to_come_back_from() {
         let platform = FakePlatform::default();
         platform.fail("tray");
-        assert!(platform.render_tray(&tray::menu(&[])).is_err());
+        assert!(platform
+            .render_tray(&tray::menu(&Default::default()))
+            .is_err());
         at_launch(&platform, true);
         assert_eq!(platform.recorded().windows_shown, 1);
         assert_eq!(platform.recorded().windows_hidden, 0);

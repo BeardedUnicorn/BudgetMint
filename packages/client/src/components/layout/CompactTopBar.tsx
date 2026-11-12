@@ -16,7 +16,7 @@ export function CompactTopBar({ title }: CompactTopBarProps) {
   const status = view.offline ? 'Offline' : view.saving ? 'Saving…' : null;
   return (
     <AppBar
-      position="static"
+      position="sticky"
       color="inherit"
       elevation={0}
       sx={{

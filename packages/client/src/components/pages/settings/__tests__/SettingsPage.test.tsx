@@ -16,24 +16,44 @@ async function settings(seed: Parameters<typeof startBudget>[0] = {}) {
 const section = (name: string) => screen.getByRole('heading', { name }).closest('.MuiPaper-root') as HTMLElement;
 
 describe('signing out', () => {
-  it('asks first while changes are still on their way to the cloud', async () => {
+  it('asks first: the budget stays in the account, and this device’s copy goes', async () => {
+    const { user, store, restart } = await settings();
+    expect(within(section('Account')).getByText(/stays in step on every device/)).toBeInTheDocument();
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out of BudgetMint?' });
+    expect(dialog).toHaveTextContent('Your budget stays in your BudgetMint account');
+    expect(dialog).toHaveTextContent('This device’s copy of it is erased.');
+    expect(store.signOut).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
+    expect(store.clearDevice).toHaveBeenCalledOnce();
+    await waitFor(() => expect(restart).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('says so while changes are still on their way to the cloud', async () => {
     const { user, store, session } = await settings({ items: [monthly('rent', 'Rent', 1, 120_000)] });
     // A change the cloud hasn't confirmed
     vi.mocked(store.write).mockImplementationOnce(() => new Promise(() => undefined));
     void session.write([{ docId: 'item~rent', kind: 'item', json: null, schema: 1 }]);
-    const account = section('Account');
-    await user.click(within(account).getByRole('button', { name: 'Sign out' }));
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Sign out before your changes are saved?' });
+    expect(dialog).toHaveTextContent('would be lost');
     expect(store.signOut).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('button', { name: 'Sign out anyway' }));
     await waitFor(() => expect(store.signOut).toHaveBeenCalled());
   });
 
-  it('says when signing out fails', async () => {
+  it('says when signing out fails, and stays to try again', async () => {
     const { user, store } = await settings();
     vi.mocked(store.signOut).mockRejectedValueOnce(new Error('No connection'));
-    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out' }));
-    expect(await within(section('Account')).findByText('No connection')).toBeInTheDocument();
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out of BudgetMint?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByText('No connection')).toBeInTheDocument();
+    expect(dialog).toBeInTheDocument();
+    expect(store.clearDevice).not.toHaveBeenCalled();
   });
 });
 
@@ -190,7 +210,8 @@ describe('settings', () => {
 
   it('signs out from its button, and says which way the account signs in', async () => {
     const { user } = await settings();
-    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out' }));
+    await user.click(within(section('Account')).getByRole('button', { name: 'Sign out…' }));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Sign out' }));
     expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
   });
 

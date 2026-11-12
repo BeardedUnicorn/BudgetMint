@@ -5,6 +5,7 @@
 use crate::files;
 use crate::google_sign_in::{sign_in_with_google, GoogleClient};
 use crate::logs;
+use crate::menu;
 use crate::reminders::{self, Reminder};
 use crate::state::AppState;
 use crate::tray;
@@ -28,6 +29,7 @@ pub const COMMANDS: &[&str] = &[
     "log",
     "open_logs_folder",
     "save_file",
+    "set_menu_state",
 ];
 
 #[derive(Deserialize)]
@@ -49,6 +51,12 @@ struct AutostartArgs {
 #[derive(Deserialize)]
 struct TrayArgs {
     lines: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MenuStateArgs {
+    budget_open: bool,
 }
 
 #[derive(Deserialize)]
@@ -87,7 +95,15 @@ pub fn run(state: &AppState, command: &str, value: Value) -> Result<Value, Strin
         }
         "set_tray_status" => {
             let TrayArgs { lines } = args(command, value)?;
-            platform.render_tray(&tray::menu(&lines))?;
+            tray::update(state, |status| status.lines = lines)?;
+            Ok(Value::Null)
+        }
+        // The budget opened (signed in, past onboarding) or closed: the menu
+        // bar's items for it, and the tray's Sign Out…
+        "set_menu_state" => {
+            let MenuStateArgs { budget_open } = args(command, value)?;
+            platform.set_menu_enabled(&menu::budget_items(&menu::app_menu()), budget_open);
+            tray::update(state, |status| status.budget_open = budget_open)?;
             Ok(Value::Null)
         }
         "get_autostart" => Ok(json!(platform.autostart()?)),
@@ -159,7 +175,7 @@ mod tests {
             run(&phone.state, "nope", Value::Null),
             Err("Unknown command: nope".to_string())
         );
-        assert_eq!(COMMANDS.len(), 13);
+        assert_eq!(COMMANDS.len(), 14);
     }
 
     #[test]
@@ -213,6 +229,8 @@ mod tests {
             ),
             Ok(Value::Null)
         );
+        // The line, then (the budget not open yet) Open, About, Check for
+        // Updates and Quit, with separators
         assert_eq!(f.platform.recorded().menus[0].0.len(), 7);
         assert!(run(&f.state, "set_tray_status", json!({ "lines": 3 })).is_err());
         f.platform.fail("tray");
@@ -225,6 +243,45 @@ mod tests {
             json!({ "reminders": [{ "id": 1, "atMs": 0, "title": "", "body": "" }] })
         )
         .is_err());
+    }
+
+    #[test]
+    fn greys_out_the_budgets_menu_items_until_it_opens_and_offers_sign_out_in_the_tray() {
+        let f = fixture();
+        assert_eq!(
+            run(&f.state, "set_menu_state", json!({ "budgetOpen": true })),
+            Ok(Value::Null)
+        );
+        let recorded = f.platform.recorded();
+        let (ids, enabled) = &recorded.menu_enabled[0];
+        assert!(*enabled);
+        assert!(ids.contains(&crate::menu::NEW_BILL.to_string()));
+        assert!(!ids.contains(&crate::menu::ABOUT.to_string()));
+        assert!(recorded.menus[0].0.contains(&crate::menu::MenuItem::action(
+            crate::menu::SIGN_OUT,
+            "Sign Out…"
+        )));
+
+        // Signed out: greyed out again, and the tray keeps its lines
+        run(
+            &f.state,
+            "set_tray_status",
+            json!({ "lines": ["Today: $1.00"] }),
+        )
+        .unwrap();
+        run(&f.state, "set_menu_state", json!({ "budgetOpen": false })).unwrap();
+        let recorded = f.platform.recorded();
+        assert!(!recorded.menu_enabled[1].1);
+        let last = &recorded.menus.last().unwrap().0;
+        assert_eq!(last[0], crate::menu::MenuItem::Label("Today: $1.00".into()));
+        assert!(!last.contains(&crate::menu::MenuItem::action(
+            crate::menu::SIGN_OUT,
+            "Sign Out…"
+        )));
+
+        assert!(run(&f.state, "set_menu_state", json!({})).is_err());
+        f.platform.fail("tray");
+        assert!(run(&f.state, "set_menu_state", json!({ "budgetOpen": true })).is_err());
     }
 
     #[test]

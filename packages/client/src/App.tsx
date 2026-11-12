@@ -1,7 +1,7 @@
 /**
  * The app: signing in until someone is, onboarding until the settings are
- * saved, then the pages in TaskMint's frame: the sidebar (a slide-in menu
- * and a top bar on a phone) and the page beside it.
+ * saved, then the pages in TaskMint's frame: the sidebar (a slide-in menu,
+ * a top bar and a bar of the main pages on a phone) and the page beside it.
  */
 
 import { ComponentType, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -11,12 +11,12 @@ import type { BudgetSession } from './cloud/session';
 import { AppExtensionsContext } from './app/extensions';
 import { AuthLayout } from './components/auth/AuthLayout';
 import { SignInForm, type FormMode } from './components/auth/SignInForm';
+import { AccountMenu } from './components/account/AccountMenu';
 import { BalanceFooter } from './components/layout/BalanceFooter';
 import { BottomNav } from './components/layout/BottomNav';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
-import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
 import { CompactTopBar } from './components/layout/CompactTopBar';
-import { Sidebar } from './components/layout/Sidebar';
+import { Sidebar, SIDEBAR_COLLAPSED_KEY } from './components/layout/Sidebar';
 import { StatusNotices } from './components/layout/StatusNotices';
 import { Onboarding } from './components/onboarding/Onboarding';
 import { CalendarPage } from './components/pages/calendar/CalendarPage';
@@ -26,16 +26,19 @@ import { OverviewPage } from './components/pages/overview/OverviewPage';
 import { ReportsPage } from './components/pages/reports/ReportsPage';
 import { SavingsPage } from './components/pages/savings/SavingsPage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
+import { AppDialogsProvider, useAppDialogs } from './contexts/AppDialogsContext';
 import { activeViewKey, NavigationProvider, useBackDismiss, useNavigation } from './contexts/NavigationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BudgetProvider, useBudget, useCoreQuery } from './data/BudgetContext';
 import { useCompactLayout } from './hooks/useCompactLayout';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { somethingOnTop, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useLocalStorage } from './hooks/useLocalStorage';
+import { goTo, MENU, useMenuCommands } from './hooks/useMenuCommands';
 import { useReminders } from './hooks/useReminders';
 import { useSystemBarsTheme } from './hooks/useSystemBarsTheme';
 import { useTrayStatus } from './hooks/useTrayStatus';
-import { VIEW_LABELS, type SidebarView } from './navigation/views';
+import { VIEW_LABELS, VIEWS, type SidebarView } from './navigation/views';
 import { getShell } from './shell';
 import type { AppExtensions } from './shell/types';
 import { useAnalyticsScreens } from './utils/analytics';
@@ -152,16 +155,43 @@ function Ready() {
 
 /**
  * What runs behind the pages once signed in: reminders, the tray, the
- * system bars, the pages opened (for usage analytics) and shortcuts.
+ * system bars, the pages opened (for usage analytics), shortcuts, and the
+ * menu bar's items for the budget.
  */
 function BackgroundJobs() {
-  const [listing, setListing] = useState(false);
+  const { navigate } = useNavigation();
+  const dialogs = useAppDialogs();
+  const [, setCollapsed] = useLocalStorage(SIDEBAR_COLLAPSED_KEY, false);
   useReminders();
   useTrayStatus();
   useSystemBarsTheme();
   useAnalyticsScreens();
-  useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => setListing(true));
-  return <ShortcutsDialog open={listing} onClose={() => setListing(false)} />;
+  useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => dialogs.open('shortcuts'));
+
+  // The menu bar's items for the budget are greyed out until it's open
+  useEffect(() => {
+    const menu = getShell().platform.menu;
+    menu?.setBudgetOpen(true);
+    return () => menu?.setBudgetOpen(false);
+  }, []);
+  // As the shortcuts, they wait while a dialog or menu is open
+  const unlessOnTop = (action: () => void) => () => {
+    if (!somethingOnTop()) action();
+  };
+  useMenuCommands({
+    [MENU.settings]: unlessOnTop(() => navigate('settings')),
+    [MENU.signOut]: unlessOnTop(() => dialogs.open('signOut')),
+    [MENU.newBill]: unlessOnTop(() => navigate('bills', { add: true })),
+    [MENU.newIncome]: unlessOnTop(() => navigate('income', { add: true })),
+    [MENU.updateBalance]: unlessOnTop(() => navigate('overview', { open: 'balance' })),
+    [MENU.importStatement]: unlessOnTop(() => navigate('settings', { section: 'data' })),
+    [MENU.downloadBackup]: unlessOnTop(() => navigate('settings', { section: 'data', open: 'backup' })),
+    [MENU.downloadSpreadsheet]: unlessOnTop(() => navigate('settings', { section: 'data', open: 'spreadsheet' })),
+    [MENU.shortcuts]: unlessOnTop(() => dialogs.open('shortcuts')),
+    [MENU.toggleSidebar]: () => setCollapsed(collapsed => !collapsed),
+    ...Object.fromEntries(VIEWS.map(view => [goTo(view), unlessOnTop(() => navigate(view))])),
+  });
+  return null;
 }
 
 function AppShell() {
@@ -171,7 +201,12 @@ function AppShell() {
   // Back closes the phone's slid-in sidebar first
   useBackDismiss(compact && navigationOpen, () => setNavigationOpen(false));
   const Page = PAGES[activeView];
-  const footer = (collapsed: boolean) => <BalanceFooter collapsed={collapsed} />;
+  const footer = (collapsed: boolean) => (
+    <>
+      <AccountMenu collapsed={collapsed} onPicked={() => setNavigationOpen(false)} />
+      <BalanceFooter collapsed={collapsed} />
+    </>
+  );
   const main = useRef<HTMLElement>(null);
   // A page opens at its top, not where the last one was scrolled to: before the page's
   // own effects, which may scroll it somewhere (Settings to a section)
@@ -239,13 +274,15 @@ export function App({ session, core, extensions = {} }: AppProps) {
       <NotificationProvider>
         <BudgetProvider session={session} core={core}>
           <AppExtensionsContext.Provider value={extensions}>
-            {/* A page that fails says so, and the shell's work below goes on */}
-            <ErrorBoundary>
-              <Gate />
-            </ErrorBoundary>
-            {/* The shell's own work (the desktop's update check) runs whatever
-                the phase, so an update can reach an app that can't sign in */}
-            {Background && <Background />}
+            <AppDialogsProvider>
+              {/* A page that fails says so, and the shell's work below goes on */}
+              <ErrorBoundary>
+                <Gate />
+              </ErrorBoundary>
+              {/* The shell's own work (the desktop's update check) runs whatever
+                    the phase, so an update can reach an app that can't sign in */}
+              {Background && <Background />}
+            </AppDialogsProvider>
           </AppExtensionsContext.Provider>
         </BudgetProvider>
       </NotificationProvider>

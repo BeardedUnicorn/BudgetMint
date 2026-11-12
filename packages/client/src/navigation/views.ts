@@ -28,8 +28,13 @@ export type SettingsSectionId =
   | 'privacy'
   | 'about';
 
-/** What a page is opened for: a settings section, or (Bills, Income, Overview) adding one. */
+/**
+ * What a page is opened for: a settings section, (Bills, Income) adding
+ * one, or (from the menu bar) Overview's balance, or saving Your data's
+ * backup or spreadsheet.
+ */
 export interface NavigationParams {
   section?: SettingsSectionId;
   add?: boolean;
+  open?: 'balance' | 'backup' | 'spreadsheet';
 }

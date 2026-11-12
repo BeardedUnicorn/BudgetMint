@@ -85,6 +85,7 @@ export function createFakeStore(): FakeStore {
     signOut: vi.fn(async () => store.setUser(null)),
     deleteUser: vi.fn(async () => store.setUser(null)),
     signedInRecently: vi.fn(async () => true),
+    clearDevice: vi.fn(async () => undefined),
     onTaskMint: vi.fn((listener: (user: CloudUser | null) => void) => {
       taskmintListeners.add(listener);
       listener(taskmintUser);

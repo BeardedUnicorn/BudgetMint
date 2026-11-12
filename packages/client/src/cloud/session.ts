@@ -8,6 +8,8 @@
  * - Deleting the data (from any device) moves it to a new epoch: the rules
  *   refuse the old one's writes, and every device starts over on the new.
  * - Offline, Firestore's cache answers and keeps the writes until it's back.
+ * - Signing out (here, in another tab, or by deleting the account) erases
+ *   this device's copy of the data, and the app starts over.
  */
 
 import type { DocWrite, ForecastStatus } from '@budgetmint/contracts';
@@ -50,9 +52,15 @@ export interface SessionOptions {
   historyDays: number;
   /** Now, in milliseconds. */
   clock: () => number;
+  /** Starts the app over (the page loads again), with a new store: after signing out. */
+  restart: () => void;
 }
 
-export const SESSION_OPTIONS: SessionOptions = { historyDays: 400, clock: Date.now };
+export const SESSION_OPTIONS: SessionOptions = {
+  historyDays: 400,
+  clock: Date.now,
+  restart: () => window.location.reload(),
+};
 
 const SOURCES: DocsSource[] = ['settings', 'items', 'occurrences'];
 
@@ -250,7 +258,10 @@ export class BudgetSession {
     this.core.call('reset_docs');
     const fresh = { held: 0, unreadable: 0, offline: false, saving: false, taskmint: NO_FORECAST, error: null };
     if (!user) {
+      const left = this.view.user !== null;
       this.changed({ ...fresh, phase: 'signedOut', user: null, resetElsewhere: false });
+      // The account has left this device: its data goes too, and the app starts over (the store can't)
+      if (left) void this.store.clearDevice().then(this.options.restart);
       return;
     }
     this.changed({ ...fresh, phase: 'starting', user, resetElsewhere });

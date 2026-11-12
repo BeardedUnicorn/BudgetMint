@@ -24,6 +24,8 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
     ...VIEWS.map((view, index): [string, string] => [`${key}${index + 1}`, `Open ${VIEW_LABELS[view]}`]),
     [`${key},`, 'Open Settings'],
     [`${key}N`, 'Add a bill (income, on the Income page)'],
+    [`⇧${key}N`, 'Add income'],
+    [`${key}B`, 'Update your balance'],
     [`${key}/`, 'These shortcuts'],
   ];
   useBackDismiss(open, onClose);

@@ -1,28 +1,48 @@
 //! The tray (the menu bar on macOS): the lines the webview sends (today's
-//! balance, the next bill, the lowest ahead), then Open, Settings, Check for
-//! Updates and Quit. The words are the webview's; this only lays them out
-//! (platform/os.rs renders it, and menu.rs handles the clicks).
+//! balance, the next bill, the lowest ahead), then Open, About, Settings
+//! (while the budget is open: only it has Settings), Check for Updates, Sign
+//! Out (while the budget is open) and Quit. The
+//! words are the webview's; this only lays them out (platform/os.rs renders
+//! it, and menu.rs handles the clicks).
 
-use crate::menu::{MenuItem, SystemItem, CHECK_FOR_UPDATES, OPEN, SETTINGS};
+use crate::menu::{MenuItem, SystemItem, ABOUT, CHECK_FOR_UPDATES, OPEN, SETTINGS, SIGN_OUT};
 use crate::platform::Platform;
+use crate::state::{AppState, TrayStatus};
+use std::sync::PoisonError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrayMenu(pub Vec<MenuItem>);
 
-/// The menu for `lines`.
-pub fn menu(lines: &[String]) -> TrayMenu {
-    let mut items: Vec<MenuItem> = lines.iter().cloned().map(MenuItem::Label).collect();
+/// The menu for `status`.
+pub fn menu(status: &TrayStatus) -> TrayMenu {
+    let mut items: Vec<MenuItem> = status.lines.iter().cloned().map(MenuItem::Label).collect();
     if !items.is_empty() {
         items.push(MenuItem::Separator);
     }
     items.extend([
         MenuItem::action(OPEN, "Open BudgetMint"),
-        MenuItem::action(SETTINGS, "Settings…"),
-        MenuItem::action(CHECK_FOR_UPDATES, "Check for Updates…"),
-        MenuItem::Separator,
-        MenuItem::System(SystemItem::Quit),
+        MenuItem::action(ABOUT, "About BudgetMint"),
     ]);
+    if status.budget_open {
+        items.push(MenuItem::action(SETTINGS, "Settings…"));
+    }
+    items.push(MenuItem::action(CHECK_FOR_UPDATES, "Check for Updates…"));
+    if status.budget_open {
+        items.push(MenuItem::action(SIGN_OUT, "Sign Out…"));
+    }
+    items.extend([MenuItem::Separator, MenuItem::System(SystemItem::Quit)]);
     TrayMenu(items)
+}
+
+/// Changes what the tray shows, and shows it. The lock isn't held while it
+/// renders (os.rs: Tauri runs that on the main thread and waits for it).
+pub fn update(state: &AppState, change: impl FnOnce(&mut TrayStatus)) -> Result<(), String> {
+    let status = {
+        let mut status = state.tray.lock().unwrap_or_else(PoisonError::into_inner);
+        change(&mut status);
+        status.clone()
+    };
+    state.platform.render_tray(&menu(&status))
 }
 
 /// A click on the tray icon itself, not on its menu.
@@ -59,22 +79,56 @@ mod tests {
     use crate::platform::fake::FakePlatform;
 
     #[test]
-    fn lays_out_the_lines_then_open_settings_updates_and_quit() {
+    fn lays_out_the_lines_then_open_about_settings_updates_sign_out_and_quit() {
+        let open = TrayStatus {
+            lines: vec!["Today: $1.00".into()],
+            budget_open: true,
+        };
         assert_eq!(
-            menu(&["Today: $1.00".into()]).0,
+            menu(&open).0,
             vec![
                 MenuItem::Label("Today: $1.00".into()),
                 MenuItem::Separator,
                 MenuItem::action(OPEN, "Open BudgetMint"),
+                MenuItem::action(ABOUT, "About BudgetMint"),
                 MenuItem::action(SETTINGS, "Settings…"),
+                MenuItem::action(CHECK_FOR_UPDATES, "Check for Updates…"),
+                MenuItem::action(SIGN_OUT, "Sign Out…"),
+                MenuItem::Separator,
+                MenuItem::System(SystemItem::Quit),
+            ]
+        );
+        // No lines, no separator above Open; signed out, no Settings or Sign
+        // Out (nothing would answer them)
+        assert_eq!(
+            menu(&TrayStatus::default()).0,
+            vec![
+                MenuItem::action(OPEN, "Open BudgetMint"),
+                MenuItem::action(ABOUT, "About BudgetMint"),
                 MenuItem::action(CHECK_FOR_UPDATES, "Check for Updates…"),
                 MenuItem::Separator,
                 MenuItem::System(SystemItem::Quit),
             ]
         );
-        // No lines, no separator above Open
-        assert_eq!(menu(&[]).0[0], MenuItem::action(OPEN, "Open BudgetMint"));
-        assert_eq!(menu(&[]).0.len(), 5);
+    }
+
+    #[test]
+    fn keeps_what_it_shows_between_changes() {
+        let f = crate::testing::fixture();
+        update(&f.state, |status| {
+            status.lines = vec!["Today: $1.00".into()]
+        })
+        .unwrap();
+        update(&f.state, |status| status.budget_open = true).unwrap();
+        let menus = f.platform.recorded().menus;
+        assert_eq!(menus[1].0[0], MenuItem::Label("Today: $1.00".into()));
+        assert!(menus[1]
+            .0
+            .contains(&MenuItem::action(SIGN_OUT, "Sign Out…")));
+        f.platform.fail("tray");
+        assert!(update(&f.state, |status| status.lines.clear()).is_err());
+        // Kept all the same, for the next try
+        assert!(f.state.tray.lock().unwrap().lines.is_empty());
     }
 
     #[test]

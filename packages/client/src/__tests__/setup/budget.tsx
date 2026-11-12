@@ -97,12 +97,14 @@ export async function startBudget(seed: Seed = {}) {
   setShell(shell);
   const store = seededStore(seed);
   const core = testCore();
-  const session = new BudgetSession(store, core, 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
+  // Signing out starts the app over: here, it's only noted
+  const restart = vi.fn();
+  const session = new BudgetSession(store, core, 'desk', null, { historyDays: 400, clock: () => TEST_NOW, restart });
   session.start();
   store.setUser(cal());
   if (seed.taskmint === false) store.setTaskMintUser(null);
   await waitFor(() => expect(session.getView().phase).toBe('ready'));
   const user = userEvent.setup();
   const rendered = render(<App session={session} core={core} extensions={seed.extensions} />);
-  return { store, core, session, shell, user, ...rendered };
+  return { store, core, session, shell, user, restart, ...rendered };
 }

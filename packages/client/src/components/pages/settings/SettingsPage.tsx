@@ -5,9 +5,10 @@
  */
 
 import { useEffect } from 'react';
-import { Box, Link, Typography } from '@mui/material';
+import { Box, Button, Link, Typography } from '@mui/material';
 import { Info as AboutIcon, Palette as AppearanceIcon } from '@mui/icons-material';
 import { useAppExtensions } from '../../../app/extensions';
+import { useAppDialogs } from '../../../contexts/AppDialogsContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { getShell } from '../../../shell';
 import { APP_VERSION } from '../../../utils/appVersion';
@@ -25,6 +26,7 @@ import { ThemeSelector } from './ThemeSelector';
 export function SettingsPage() {
   const { settingsSections = [] } = useAppExtensions();
   const { params, clearParams } = useNavigation();
+  const dialogs = useAppDialogs();
 
   useEffect(() => {
     if (!params.section) return;
@@ -75,6 +77,9 @@ export function SettingsPage() {
               Source and releases
             </Link>
           </Typography>
+          <Button variant="outlined" sx={{ mt: 2 }} onClick={() => dialogs.open('about')}>
+            About BudgetMint…
+          </Button>
         </SettingsSection>
       </Box>
     </PageContainer>

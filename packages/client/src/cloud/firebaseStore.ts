@@ -154,6 +154,18 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
       const { authTime } = await session.currentUser!.getIdTokenResult();
       return Date.now() - Date.parse(authTime) < RECENT_SIGN_IN_MS;
     },
+    async clearDevice() {
+      // Firestore erases a cache only once it's stopped
+      for (const firestore of [db, taskmint.db]) {
+        try {
+          await fs.terminate(firestore);
+          await fs.clearIndexedDbPersistence(firestore);
+        } catch (error) {
+          // The web app open in another tab still holds it: it goes when that tab signs out
+          console.warn('Couldn’t erase this device’s copy of the data:', error);
+        }
+      }
+    },
 
     onTaskMint(listener) {
       return auth.onAuthStateChanged(taskmint.session, user => listener(user ? cloudUser(user) : null));

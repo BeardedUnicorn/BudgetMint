@@ -51,6 +51,8 @@ vi.mock('firebase/firestore', () => ({
   persistentMultipleTabManager: vi.fn(() => 'tabs'),
   persistentSingleTabManager: vi.fn(() => 'single'),
   connectFirestoreEmulator: vi.fn(),
+  terminate: vi.fn(async () => undefined),
+  clearIndexedDbPersistence: vi.fn(async () => undefined),
   // A path under the database, or under a collection
   doc: vi.fn((parent: { path?: string }, ...path: string[]) => ({
     path: [parent.path, ...path].filter(Boolean).join('/'),
@@ -178,6 +180,22 @@ describe('the Firebase store', () => {
     expect(await store.signedInRecently()).toBe(true);
     getIdTokenResult.mockResolvedValueOnce(signedInAt(10 * 60_000));
     expect(await store.signedInRecently()).toBe(false);
+  });
+
+  it('erases both projects’ caches on this device, and goes on past one it can’t', async () => {
+    const store = await createFirebaseStore(CONFIG);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.clearDevice();
+    expect(vi.mocked(fs.terminate).mock.calls).toEqual([[sdk.dbs['[DEFAULT]']], [sdk.dbs.taskmint]]);
+    expect(vi.mocked(fs.clearIndexedDbPersistence).mock.calls).toEqual([[sdk.dbs['[DEFAULT]']], [sdk.dbs.taskmint]]);
+    expect(warn).not.toHaveBeenCalled();
+
+    // Another tab still has BudgetMint's open: TaskMint's is erased all the same
+    vi.mocked(fs.clearIndexedDbPersistence).mockRejectedValueOnce({ code: 'failed-precondition' });
+    await store.clearDevice();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(fs.clearIndexedDbPersistence).toHaveBeenCalledTimes(4);
+    warn.mockRestore();
   });
 
   it('signs in to TaskMint with the same Google account, and makes no TaskMint account doing it', async () => {

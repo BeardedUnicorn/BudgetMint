@@ -1,8 +1,9 @@
 /**
  * App-wide keyboard shortcuts (⌘ on macOS, Ctrl elsewhere), as TaskMint's:
  * ⌘1–⌘8 open the pages in sidebar order, and ⌘, opens Settings. Not in a
- * browser, which keeps them: ⌘N adds a bill (income, on its page), and ⌘/
- * lists them all. They wait while a dialog or menu is open.
+ * browser, which keeps them: ⌘N adds a bill (income, on its page), ⇧⌘N
+ * income, ⌘B updates the balance, and ⌘/ lists them all. They wait while
+ * a dialog or menu is open. The macOS menu bar shows the same keys.
  */
 
 import { useEffect, useRef } from 'react';
@@ -34,15 +35,19 @@ export function shortcutView(event: KeyPress, mac: boolean, inBrowser: boolean):
   return Number.isInteger(index) && index >= 0 && index < VIEWS.length ? VIEWS[index] : null;
 }
 
-/** The other shortcuts: adding, and the list of them all (neither in a browser). */
-export function shortcutAction(event: KeyPress, mac: boolean, inBrowser: boolean): 'add' | 'list' | null {
+export type ShortcutAction = 'add' | 'addIncome' | 'balance' | 'list';
+
+/** The other shortcuts: adding, the balance, and the list of them all (none in a browser). */
+export function shortcutAction(event: KeyPress, mac: boolean, inBrowser: boolean): ShortcutAction | null {
   const modifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (!modifier || event.altKey || event.shiftKey || event.repeat || inBrowser) return null;
-  return event.key.toLowerCase() === 'n' ? 'add' : event.key === '/' ? 'list' : null;
+  if (!modifier || event.altKey || event.repeat || inBrowser) return null;
+  const key = event.key.toLowerCase();
+  if (event.shiftKey) return key === 'n' ? 'addIncome' : null;
+  return key === 'n' ? 'add' : key === 'b' ? 'balance' : key === '/' ? 'list' : null;
 }
 
-/** Whether a dialog or menu is open, so a shortcut would act behind it. */
-function somethingOnTop(): boolean {
+/** Whether a dialog or menu is open, so a shortcut (or the menu bar) would act behind it. */
+export function somethingOnTop(): boolean {
   return document.querySelector('[role="dialog"], [role="menu"], [role="presentation"]') !== null;
 }
 
@@ -63,6 +68,8 @@ export function useKeyboardShortcuts(inBrowser: boolean, onList: () => void): vo
       if (view !== null) navigation.navigate(view);
       // Income on its own page; a bill anywhere else
       else if (action === 'add') navigation.navigate(navigation.view === 'income' ? 'income' : 'bills', { add: true });
+      else if (action === 'addIncome') navigation.navigate('income', { add: true });
+      else if (action === 'balance') navigation.navigate('overview', { open: 'balance' });
       else onList();
     };
     window.addEventListener('keydown', onKeyDown);

@@ -63,6 +63,22 @@ export interface Platform {
   saveFile?: (name: string, text: string, type: string) => Promise<boolean>;
   /** Which pages are opened (the web and Android apps; the desktop has none). */
   analytics?: AnalyticsPlatform;
+  /** The menu bar's and the tray's items that the app does (the desktop's). */
+  menu?: MenuPlatform;
+}
+
+/**
+ * The desktop's menus (the macOS menu bar, the tray): a click on one of
+ * the items the app does comes as its id (menuCommands.ts lists them).
+ */
+export interface MenuPlatform {
+  /** Each click, until the returned stop. */
+  subscribe(listener: (id: string) => void): () => void;
+  /**
+   * Whether the budget is open (signed in, past onboarding): the items for
+   * it (New Bill, the pages, Sign Out…) are greyed out until it is.
+   */
+  setBudgetOpen(open: boolean): void;
 }
 
 export interface Shell {
@@ -77,8 +93,12 @@ export interface SettingsExtension {
   Section: ComponentType;
 }
 
-/** What a shell adds to the app: Settings sections, and work behind the pages (the update prompt). */
+/**
+ * What a shell adds to the app: Settings sections, work behind the pages
+ * (the update prompt), and About's word on updates (the desktop's check).
+ */
 export interface AppExtensions {
   settingsSections?: SettingsExtension[];
   Background?: ComponentType;
+  AboutUpdates?: ComponentType;
 }

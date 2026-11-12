@@ -22,7 +22,11 @@ const RENT = item({
 
 function started(store: FakeStore = createFakeStore(), google: (() => Promise<string | null>) | null = null) {
   const core = testCore();
-  const session = new BudgetSession(store, core, 'desk', google, { historyDays: 400, clock: () => TEST_NOW });
+  const session = new BudgetSession(store, core, 'desk', google, {
+    historyDays: 400,
+    clock: () => TEST_NOW,
+    restart: vi.fn(),
+  });
   session.start();
   return { store, core, session };
 }
@@ -54,6 +58,32 @@ describe('the session', () => {
     await google.session.signInToTaskMintWithGoogle();
     expect(google.store.signInToTaskMintWithGoogle).toHaveBeenCalledWith('token');
     expect(SESSION_OPTIONS.historyDays).toBe(400);
+  });
+
+  it('erases this device’s copy of the data when the account signs out, then starts the app over', async () => {
+    const restart = vi.fn();
+    const store = createFakeStore();
+    const session = new BudgetSession(store, testCore(), 'desk', null, {
+      historyDays: 400,
+      clock: () => TEST_NOW,
+      restart,
+    });
+    session.start();
+    store.setUser(cal());
+    await waitFor(() => expect(session.getView().phase).toBe('ready'));
+    expect(store.clearDevice).not.toHaveBeenCalled();
+
+    // Signed out here, in another tab, or by deleting the account: the same
+    await session.signOut();
+    expect(session.getView().phase).toBe('signedOut');
+    expect(store.clearDevice).toHaveBeenCalledOnce();
+    await waitFor(() => expect(restart).toHaveBeenCalledOnce());
+    // In the app: the page loads again
+    const reload = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload });
+    SESSION_OPTIONS.restart();
+    expect(reload).toHaveBeenCalledOnce();
+    vi.restoreAllMocks();
   });
 
   it('starts the account’s data on its first epoch and reads it in', async () => {

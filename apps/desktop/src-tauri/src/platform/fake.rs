@@ -23,6 +23,8 @@ pub struct Recorded {
     pub windows_hidden: usize,
     /// The tray's menus, in order: the first one created the icon.
     pub menus: Vec<TrayMenu>,
+    /// The menu bar's items greyed out (false) or not, in order.
+    pub menu_enabled: Vec<(Vec<String>, bool)>,
     pub quits: usize,
     pub restarts: usize,
     pub update_checks: usize,
@@ -161,6 +163,11 @@ impl Platform for FakePlatform {
 
     fn has_tray(&self) -> bool {
         !self.recorded.lock().unwrap().menus.is_empty()
+    }
+
+    fn set_menu_enabled(&self, ids: &[&str], enabled: bool) {
+        let ids = ids.iter().map(|id| id.to_string()).collect();
+        self.record(|r| r.menu_enabled.push((ids, enabled)));
     }
 
     fn quit(&self) {
