@@ -111,7 +111,7 @@ const DOT_SHAPES = {
   earned: { width: 9, height: 3, alignSelf: 'center', borderRadius: '1px' },
 } as const;
 
-function Dot({
+export function Dot({
   tone,
   shape = tone,
   hollow = false,

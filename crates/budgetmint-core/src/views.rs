@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 pub const UPCOMING_DAYS: i64 = 14;
 /// "Due this week": today and the six days after.
 pub const WEEK_DAYS: i64 = 7;
+/// How far back the overview asks what autopay bills that vary came to.
+pub const NEEDS_AMOUNT_DAYS: i64 = 45;
 
 /// One occurrence of an item, as the pages list it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +40,8 @@ pub struct OccurrenceView {
     pub expected_cents: Cents,
     /// The expected amount is the average of the last few paid (its amount varies).
     pub estimated: bool,
+    /// Its item's amount varies: what it came to is asked, not assumed.
+    pub varies: bool,
     pub status: OccStatus,
     /// Still open after its due day, not on autopay, and not settled by the
     /// balance (which has taken what was due by its day as paid).
@@ -66,6 +70,7 @@ pub(crate) fn occurrence_view(
         due: occurrence.due,
         expected_cents: occurrence.expected_cents,
         estimated: occurrence.estimated,
+        varies: item.varies,
         status: occurrence.status.clone(),
         late: occurrence.status == OccStatus::Open
             && !item.autopay
@@ -138,6 +143,10 @@ pub struct Overview {
     pub overdue: Vec<OccurrenceView>,
     /// Income past due, not yet in.
     pub late_income: Vec<OccurrenceView>,
+    /// Autopay items whose amount varies, due in the last NEEDS_AMOUNT_DAYS
+    /// and taken at their estimate: what they really came to is asked, so
+    /// the estimate learns from it.
+    pub needs_amount: Vec<OccurrenceView>,
     /// The next 14 days with something on them.
     pub upcoming: Vec<UpcomingDay>,
     pub taskmint: ForecastStatus,
@@ -295,6 +304,23 @@ pub fn overview(
             .cloned(),
         overdue: late_views(snapshot, &projection.overdue, today),
         late_income: late_views(snapshot, &projection.late_income, today),
+        needs_amount: occurrences(
+            snapshot,
+            today - Duration::days(NEEDS_AMOUNT_DAYS),
+            today,
+            false,
+        )
+        .iter()
+        .filter(|occurrence| {
+            occurrence.item.autopay
+                && occurrence.item.varies
+                && occurrence.status == OccStatus::Open
+                && occurrence.due <= today
+                // This time's own amount is already what it is
+                && occurrence.over.and_then(|over| over.amount_cents).is_none()
+        })
+        .map(|occurrence| occurrence_view(occurrence, today, settled))
+        .collect(),
         upcoming,
         taskmint: status.clone(),
         uses_taskmint: settings.taskmint.use_forecast,
@@ -547,6 +573,10 @@ fn monthly_cents(item: &Item, today: NaiveDate, each: Option<Cents>) -> Cents {
     let Some(segment) = current_segment(item, today) else {
         return 0;
     };
+    // Ended: nothing more comes round
+    if segment.until.is_some_and(|until| until < today) {
+        return 0;
+    }
     let cents = i128::from(each.unwrap_or(segment.amount_cents));
     let per_month = match segment.repeat {
         Repeat::Once => 0,
@@ -703,6 +733,62 @@ mod tests {
             ),
         );
         s
+    }
+
+    #[test]
+    fn the_overview_asks_what_autopay_bills_that_vary_came_to() {
+        let mut s = budget();
+        // Electric on autopay, varying: Sep 22 (too long ago), Oct 22 (taken
+        // at its estimate), Nov 22 (still ahead); water on autopay but not
+        // varying; gas varying, not on autopay; heat's Oct 24 has its own amount
+        let mut electric = item(
+            "electric",
+            ItemKind::Bill,
+            d(2026, 9, 22),
+            Repeat::Months { n: 1, day: 22 },
+            9_000,
+        );
+        electric.autopay = true;
+        electric.varies = true;
+        let mut heat = electric.clone();
+        heat.id = "heat".into();
+        heat.schedule[0].repeat = Repeat::Months { n: 1, day: 24 };
+        let mut water = electric.clone();
+        water.id = "water".into();
+        water.varies = false;
+        let mut gas = electric.clone();
+        gas.id = "gas".into();
+        gas.autopay = false;
+        for one in [electric, heat, water, gas] {
+            put_item(&mut s, one);
+        }
+        let mut own = over("heat", d(2026, 10, 24), OccStatus::Open);
+        own.amount_cents = Some(12_000);
+        put_over(&mut s, own);
+        let status = TaskMint::default().status;
+        let asked = |s: &Snapshot| {
+            overview(s, None, &status, &ctx())
+                .needs_amount
+                .iter()
+                .map(|view| (view.item_id.clone(), view.scheduled))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(asked(&s), [("electric".to_string(), d(2026, 10, 22))]);
+        let view = overview(&s, None, &status, &ctx());
+        assert!(view.needs_amount[0].varies);
+        // Once it's said, it isn't asked again
+        put_over(
+            &mut s,
+            over(
+                "electric",
+                d(2026, 10, 22),
+                OccStatus::Done {
+                    on: d(2026, 10, 22),
+                    amount_cents: 11_250,
+                },
+            ),
+        );
+        assert!(asked(&s).is_empty());
     }
 
     #[test]
@@ -908,6 +994,10 @@ mod tests {
             weekday: 4,
         };
         assert_eq!(monthly_cents(&every, d(2025, 1, 1), None), 50);
+        // Ended (a loan paid off): nothing a month, until then as before
+        every.schedule[2].until = Some(d(2027, 3, 1));
+        assert_eq!(monthly_cents(&every, d(2027, 3, 1), None), 999);
+        assert_eq!(monthly_cents(&every, d(2027, 3, 2), None), 0);
         every.schedule.clear();
         assert_eq!(monthly_cents(&every, today, None), 0);
         assert_eq!(monday_first(d(2026, 11, 9)), 0);

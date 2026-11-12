@@ -41,9 +41,12 @@ function flowLabel(flow: Flow): string {
   if (flow.kind === 'spending') return 'Everyday spending';
   if (flow.kind === 'withdrawal')
     return flow.status === 'projected' ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal';
-  const note = { overdue: ' (overdue)', done: flow.kind === 'bill' ? ' (paid)' : ' (received)', autopay: ' (autopay)' }[
-    flow.status as 'overdue' | 'done' | 'autopay'
-  ];
+  const bill = flow.kind === 'bill';
+  const note = {
+    overdue: ' (overdue)',
+    done: bill ? ' (paid)' : ' (received)',
+    autopay: bill ? ' (autopay)' : ' (automatic)',
+  }[flow.status as 'overdue' | 'done' | 'autopay'];
   return `${flow.name}${note ?? ''}`;
 }
 
@@ -125,7 +128,18 @@ function BalanceChart({ view }: { view: ForecastView }) {
           />
           <ReferenceLine y={0} stroke={theme.palette.error.main} />
           {view.lowBalanceCents > 0 && (
-            <ReferenceLine y={view.lowBalanceCents / 100} stroke={theme.palette.warning.main} strokeDasharray="4 4" />
+            // Dotted and named, so it isn't taken for the dashed balance line
+            <ReferenceLine
+              y={view.lowBalanceCents / 100}
+              stroke={theme.palette.warning.main}
+              strokeDasharray="2 4"
+              label={{
+                value: 'Low mark',
+                position: 'insideBottomRight',
+                fill: theme.palette.text.secondary,
+                fontSize: 11,
+              }}
+            />
           )}
           <Line type="monotone" dataKey="balance" stroke={theme.palette.primary.main} strokeWidth={3} dot={false} />
           {setAside && (
@@ -158,7 +172,7 @@ export function ForecastPage() {
         title="Forecast"
         subtitle={`The next ${view.days.length - 1} days: ${formatCents(view.days[0].closingCents)} today, ${formatCents(last.closingCents)} on ${formatDay(last.date)}.`}
         actions={
-          <Button variant="outlined" onClick={() => navigate('settings', { section: 'taskmint' })}>
+          <Button variant="outlined" onClick={() => navigate('settings', { section: 'forecast' })}>
             Assumptions
           </Button>
         }
@@ -170,7 +184,7 @@ export function ForecastPage() {
           ...assumptions(view),
           ...(spending ? [spending] : []),
           ...(view.days.some(day => day.setAsideCents > 0)
-            ? ['The dashed line leaves out the money set aside for bills.']
+            ? ['The dashed balance line leaves out the money set aside for bills.']
             : []),
         ].map(line => (
           <Typography key={line} variant="caption" color="text.secondary" component="p">

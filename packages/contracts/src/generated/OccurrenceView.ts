@@ -13,7 +13,11 @@ scheduled: string, due: string, expectedCents: number,
 /**
  * The expected amount is the average of the last few paid (its amount varies).
  */
-estimated: boolean, status: OccStatus, 
+estimated: boolean, 
+/**
+ * Its item's amount varies: what it came to is asked, not assumed.
+ */
+varies: boolean, status: OccStatus, 
 /**
  * Still open after its due day, not on autopay, and not settled by the
  * balance (which has taken what was due by its day as paid).

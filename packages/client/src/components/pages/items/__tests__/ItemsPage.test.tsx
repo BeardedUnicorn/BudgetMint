@@ -27,6 +27,7 @@ describe('bills and income', () => {
           id: 'pay',
           kind: 'income',
           name: 'Paycheck',
+          autopay: true,
           schedule: [
             {
               from: '2026-11-13',
@@ -46,6 +47,8 @@ describe('bills and income', () => {
     expect(rows[2]).toHaveTextContent('RentHomeAutopay$1,200.00Monthly on the 1st');
     expect(screen.queryByText('Paycheck')).not.toBeInTheDocument();
     await open(user, 'Income');
+    // Income that comes in on its own isn't "autopay"
+    expect(screen.getAllByRole('row')[1]).toHaveTextContent('PaycheckAutomatic$800.00');
     expect(screen.getByText('Every 2 weeks on Friday')).toBeInTheDocument();
     expect(screen.getByText('Fri, Nov 13')).toBeInTheDocument();
   });
@@ -226,14 +229,22 @@ describe('bills and income', () => {
       items: [
         monthly('rent', 'Rent', 1, 120_000, { category: 'Home' }),
         monthly('power', 'Power', 20, 9_000, { category: 'Home' }),
-        monthly('phone', 'Phone', 31, 6_000, { category: 'Utilities', note: 'Family plan' }),
+        // Its amount varies, and last came to $150: that's what it's sorted and summed by
+        monthly('phone', 'Phone', 31, 6_000, { category: 'Utilities', note: 'Family plan', varies: true }),
         monthly('gym', 'Gym', 5, 3_000),
         monthly('old', 'Old lease', 3, 100_000, { category: 'Home', archived: true }),
+      ],
+      overrides: [
+        override({
+          itemId: 'phone',
+          date: '2026-10-31',
+          status: { state: 'done', on: '2026-10-31', amountCents: 15_000 },
+        }),
       ],
     });
     await open(user, 'Bills');
     expect(screen.getByLabelText('A month, by category')).toHaveTextContent(
-      'A month by category: Home $1,290.00 · Utilities $60.00 · Uncategorized $30.00'
+      'A month by category: Home $1,290.00 · Utilities $150.00 · No category $30.00'
     );
     expect(screen.getByText('Family plan')).toBeInTheDocument();
     const names = () =>
@@ -255,8 +266,8 @@ describe('bills and income', () => {
     await user.click(screen.getByRole('option', { name: 'Every category' }));
 
     for (const [order, expected] of [
-      ['Amount', ['Rent', 'Power', 'Phone', 'Gym', 'Old lease']],
-      ['A month', ['Rent', 'Power', 'Phone', 'Gym', 'Old lease']],
+      ['Amount', ['Rent', 'Phone', 'Power', 'Gym', 'Old lease']],
+      ['A month', ['Rent', 'Phone', 'Power', 'Gym', 'Old lease']],
       ['Name', ['Gym', 'Phone', 'Power', 'Rent', 'Old lease']],
     ] as const) {
       await user.click(screen.getByLabelText('Order'));
@@ -278,7 +289,9 @@ describe('bills and income', () => {
     await user.click(await screen.findByRole('option', { name: 'Home' }));
     expect(within(dialog).getByLabelText('Category (optional)')).toHaveValue('Home');
     await user.keyboard('{Escape}');
+    // Something's typed: Escape asks before throwing it away
     await user.keyboard('{Escape}');
+    await user.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     await user.click(screen.getByLabelText('Category'));

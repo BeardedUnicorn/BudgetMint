@@ -275,6 +275,7 @@ describe('the calendar', () => {
       due: '2026-11-12',
       expectedCents: 1_000,
       estimated: false,
+      varies: false,
       status: { state: 'open' as const },
       late: false,
       amountCents: null,

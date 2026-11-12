@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/types/ui.ts and types/form.ts @ 1623bee (the props the copied components take).
+// Adapted from TaskMint packages/client/src/types/ui.ts and types/form.ts @ 1623bee (the props the copied components take): FormDialog's dirty and CurrencyInput's autoFocus are BudgetMint's.
 import type { ReactNode } from 'react';
 import type { SxProps, Theme } from '@mui/material/styles';
 
@@ -24,6 +24,8 @@ export interface CurrencyInputProps {
   onKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void;
   /** The input itself, to move focus to it (a refused amount). */
   inputRef?: React.Ref<HTMLInputElement>;
+  /** It has the focus when it appears. */
+  autoFocus?: boolean;
 }
 
 /** An open dialog around a form, with Cancel and Save. */
@@ -32,6 +34,8 @@ export interface FormDialogProps {
   title: string;
   children: ReactNode;
   onSubmit: () => void;
+  /** Something was changed: Escape asks before throwing it away. */
+  dirty?: boolean;
 }
 
 export interface ConfirmDialogProps {

@@ -175,7 +175,7 @@ describe('an occurrence’s dialog', () => {
     );
   });
 
-  it('starts a past one’s payment on its due day, and words income as received', async () => {
+  it('starts a payment today, as Mark paid does, and words income as received', async () => {
     const pay = item({
       id: 'pay',
       kind: 'income',
@@ -189,7 +189,7 @@ describe('an occurrence’s dialog', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Pay on Nov 13: details' }));
     let dialog = screen.getByRole('dialog', { name: 'Pay, Nov 13' });
-    expect(within(dialog).getByText('$90.00 due Nov 13, on autopay')).toBeInTheDocument();
+    expect(within(dialog).getByText('$90.00 due Nov 13, comes in automatically')).toBeInTheDocument();
     expect(within(dialog).getByRole('radio', { name: 'Still to come' })).toBeChecked();
     await user.click(within(dialog).getByRole('radio', { name: 'Received' }));
     expect(within(dialog).getByLabelText('Received on')).toHaveValue('2026-11-10');
@@ -197,7 +197,65 @@ describe('an occurrence’s dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Water on Nov 9: details' }));
     dialog = screen.getByRole('dialog', { name: 'Water, Nov 9' });
     await user.click(within(dialog).getByRole('radio', { name: 'Paid' }));
-    expect(within(dialog).getByLabelText('Paid on')).toHaveValue('2026-11-09');
+    expect(within(dialog).getByLabelText('Paid on')).toHaveValue('2026-11-10');
+  });
+
+  it('asks what a bill whose amount varies came to, instead of taking its estimate', async () => {
+    const { user, store } = await startBudget({
+      items: [
+        monthly('gas', 'Gas', 12, 4_000, { varies: true }),
+        monthly('power', 'Power', 8, 6_000, { varies: true, autopay: true }),
+      ],
+    });
+    // Mark paid opens it, paid today, with the amount to type
+    await user.click(screen.getByRole('button', { name: 'Mark Gas paid' }));
+    let dialog = screen.getByRole('dialog', { name: 'Gas, Nov 12' });
+    expect(within(dialog).getByRole('radio', { name: 'Paid' })).toBeChecked();
+    expect(within(dialog).getByLabelText('Paid on')).toHaveValue('2026-11-10');
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('');
+    expect(within(dialog).getByLabelText('Amount')).toHaveFocus();
+    // Nothing typed yet: Escape just closes it, and nothing was recorded
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(store.docs.has('occ~2026-11-12~gas')).toBe(false);
+
+    // On autopay, it's asked once it's due: paid on its day
+    const asked = screen.getByRole('region', { name: 'What did these come to?' });
+    await user.click(within(asked).getByRole('button', { name: 'Enter what Power came to on Nov 8' }));
+    dialog = screen.getByRole('dialog', { name: 'Power, Nov 8' });
+    expect(within(dialog).getByLabelText('Paid on')).toHaveValue('2026-11-08');
+    await user.type(within(dialog).getByLabelText('Amount'), '71.25');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(JSON.parse(store.docs.get('occ~2026-11-08~power')!.json).status).toEqual({
+        state: 'done',
+        on: '2026-11-08',
+        amountCents: 7_125,
+      })
+    );
+    // October's is still to say
+    await waitFor(() =>
+      expect(within(asked).queryByRole('button', { name: 'Enter what Power came to on Nov 8' })).toBeNull()
+    );
+    expect(within(asked).getByRole('button', { name: 'Enter what Power came to on Oct 8' })).toBeInTheDocument();
+  });
+
+  it('asks before Escape throws a change away', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
+    await user.click(screen.getByRole('button', { name: 'Rent on Nov 12: details' }));
+    const dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    await user.type(within(dialog).getByLabelText('Note (optional)'), 'Late fee waived');
+    await user.keyboard('{Escape}');
+    const asking = await screen.findByRole('dialog', { name: 'Discard your changes?' });
+    // Keep editing (where the focus starts) leaves the form as it was
+    expect(within(asking).getByRole('button', { name: 'Keep editing' })).toHaveFocus();
+    await user.click(within(asking).getByRole('button', { name: 'Keep editing' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Discard your changes?' })).toBeNull());
+    expect(within(dialog).getByLabelText('Note (optional)')).toHaveValue('Late fee waived');
+    await user.keyboard('{Escape}');
+    await user.click(await screen.findByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(store.writes).toHaveLength(0);
   });
 });
 

@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import type { Balance, OccRef, OccurrenceView } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { useDirty } from '../../hooks/useDirty';
 import { formatDay } from '../../utils/dates';
 import { centsToInput, currencySymbol, formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
@@ -98,6 +99,7 @@ export function BalanceDialog({
   /** The balance isn't an amount: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState(false);
   const balanceInput = useRef<HTMLInputElement>(null);
+  const dirty = useDirty([amount, asOf, stillOpen]);
   const cents = parseDollars(amount);
   const typed = cents !== null && DAY.test(asOf) ? { cents, asOf } : null;
 
@@ -130,7 +132,7 @@ export function BalanceDialog({
   };
 
   return (
-    <FormDialog onClose={onClose} title="Your balance" onSubmit={submit}>
+    <FormDialog onClose={onClose} dirty={dirty} title="Your balance" onSubmit={submit}>
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
           What your account holds now. Bills and income after that day move it from there.
