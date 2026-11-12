@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import { Box, Checkbox, FormControlLabel, Typography } from '@mui/material';
-import type { ItemKind } from '@budgetmint/contracts';
+import type { Balance, ItemKind } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
@@ -26,9 +26,8 @@ export interface FromBalance {
   checked: boolean;
   /** The user's own choice, over the default. */
   choose: (checked: boolean) => void;
-  /** The balance's day and amount (null: none set). */
-  asOf: string | null;
-  cents: number;
+  /** The balance (null: none set, so it never applies). */
+  balance: Balance | null;
 }
 
 /**
@@ -46,8 +45,7 @@ export function useFromBalance(on: string | null, autopay = false): FromBalance 
     // On the balance's own day it may have gone after: moved unless unticked
     checked: applies && (chosen ?? (on === balance.asOf && !autopay)),
     choose: setChosen,
-    asOf: balance?.asOf ?? null,
-    cents: balance?.cents ?? 0,
+    balance,
   };
 }
 
@@ -64,19 +62,21 @@ export function FromBalanceField({
   on: string;
   state: FromBalance;
 }) {
-  if (!state.applies || state.asOf === null) return null;
+  if (!state.applies) return null;
+  // It applies only with a balance
+  const { cents, asOf } = state.balance!;
   const bill = kind === 'bill';
-  const moved = amountCents === null ? null : state.cents + (bill ? -amountCents : amountCents);
+  const moved = amountCents === null ? null : cents + (bill ? -amountCents : amountCents);
   return (
     <Box>
       <FormControlLabel
         control={<Checkbox checked={state.checked} onChange={event => state.choose(event.target.checked)} />}
-        label={`${bill ? 'Take it off your balance' : 'Add it to your balance'}: ${formatCents(state.cents)}${moved === null ? '' : ` → ${formatCents(moved)}`}`}
+        label={`${bill ? 'Take it off your balance' : 'Add it to your balance'}: ${formatCents(cents)}${moved === null ? '' : ` → ${formatCents(moved)}`}`}
       />
       <Typography variant="caption" color="text.secondary" component="p">
-        {on === state.asOf
-          ? `Your balance is from the same day, ${formatDay(state.asOf)}. Untick this if it counts it already.`
-          : `It’s before your balance’s day, ${formatDay(state.asOf)}: the balance likely counts it already.`}
+        {on === asOf
+          ? `Your balance is from the same day, ${formatDay(asOf)}. Untick this if it counts it already.`
+          : `It’s before your balance’s day, ${formatDay(asOf)}: the balance likely counts it already.`}
       </Typography>
     </Box>
   );
