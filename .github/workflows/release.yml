@@ -91,7 +91,7 @@ jobs:
           VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           if [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_ID" ] || [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_SECRET" ]; then
-            echo "::error::The VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET secrets aren't both set, so the desktop would have no Google sign-in (the README's \"Firebase setup still to do\")"
+            echo "::error::The VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET secrets aren't both set, so the desktop would have no Google sign-in (the README's \"Firebase setup\")"
             exit 1
           fi
 
@@ -221,8 +221,8 @@ jobs:
 
   deploy-web:
     name: Deploy the web app
-    # Skipped until the repository has both variables: the budgetmint Hosting
-    # site and the provider aren't set up yet
+    # Skipped when the repository lacks either variable (the README's
+    # "Firebase setup" names the provider and the service account)
     if: >-
       github.ref_type == 'tag' &&
       vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' &&

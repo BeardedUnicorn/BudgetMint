@@ -227,39 +227,37 @@ commits and tags. Pushing the `vX.Y.Z` tag runs the Release workflow, which
 builds the macOS and Windows apps with their signed updates and
 `latest.json`, and the web app, and creates the GitHub release.
 
-## Firebase setup still to do
+## Firebase setup
 
-The project `budgetmint` exists, with the "BudgetMint web" and "BudgetMint
-desktop" apps, Firestore in nam5 and the Hosting site `budgetmint`. Before
-a release it needs these one-time steps, in the Firebase or Google Cloud
-console:
+The project `budgetmint` (Spark plan) has the "BudgetMint web" and
+"BudgetMint desktop" apps, Firestore in nam5 and the Hosting site
+`budgetmint`, and:
 
-1. **Auth in `budgetmint`:** turn on Email/Password and Google. In its
-   Google provider, safelist the "BudgetMint desktop" OAuth client ID. That
-   client is in `taskmint-f9a05`'s Credentials, and it's what the desktop
-   signs in to both projects with. Add `budgetmint.web.app` and
-   `budgetmint.firebaseapp.com` to the authorized domains.
-2. **Auth in `taskmint-f9a05`:** in its Google provider, safelist
-   `budgetmint`'s web client ID ("Web client (auto created by Google
-   Service)"), so the web's Google sign-in also signs in to TaskMint. Add
-   `budgetmint.web.app` and `budgetmint.firebaseapp.com` to its authorized
-   domains, for Settings' Google sign-in to TaskMint. The desktop's Google
-   sign-in uses BudgetMint's own "Desktop app" OAuth client, "BudgetMint
-   desktop", from `.env` locally and the repository secrets
-   `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET` in a release. A build without
-   them hides Continue with Google (a development build says so in the
-   console), and a release tag's build stops.
-3. **Deploys:** a Workload Identity Federation provider in `budgetmint` that
-   trusts only this repository's `v*` tags, and a service account with
-   Firebase Hosting Admin and Firebase Rules Admin only. Set the repository
-   variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and
-   `GCP_DEPLOY_SERVICE_ACCOUNT`; until then a release skips the web deploy.
-4. **The move** from `taskmint-f9a05`, once, when the first release on
-   `budgetmint` is out ([the runbook](docs/runbook.md#moving-from-taskmints-project)).
-5. **The Android app** (`pnpm tauri android init`, then MainActivity's
-   bridges as TaskMint's: `BudgetMintSplash`, `BudgetMintSystemBars`,
-   `BudgetMintGoogleSignIn`), registered in `budgetmint` with its signing
-   certificates, and its release keystore.
+- **Auth:** Email/Password and Google. Its Google provider safelists the
+  "BudgetMint desktop" OAuth client, which is in `taskmint-f9a05`'s
+  Credentials and is what the desktop signs in to both projects with. In
+  `taskmint-f9a05`, the Google provider safelists `budgetmint`'s web client
+  ("Web client (auto created by Google Service)"), so the web's Google
+  sign-in also signs in to TaskMint. Its authorized domains include
+  `budgetmint.web.app` and `budgetmint.firebaseapp.com`, for Settings'
+  Google sign-in to TaskMint. The desktop's client comes from `.env` locally
+  and from the repository secrets `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET`
+  in a release. A build without them hides Continue with Google (a
+  development build says so in the console), and a release tag's build
+  stops.
+- **Deploys:** the Workload Identity pool `github`, with the provider
+  `budgetmint-releases`. It takes only GitHub's tokens for this repository
+  (by its id), on a `v*` tag, from `release.yml`. It can act as
+  `github-deploy@budgetmint.iam.gserviceaccount.com`, which has no key and
+  only Firebase Hosting Admin, Firebase Rules Admin and Service Usage
+  Consumer (firebase-tools checks the APIs are on). The repository
+  variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT`
+  name them. Without them, a release skips the web deploy.
+
+Still to do: **the Android app** (`pnpm tauri android init`, then
+MainActivity's bridges as TaskMint's: `BudgetMintSplash`,
+`BudgetMintSystemBars`, `BudgetMintGoogleSignIn`), registered in
+`budgetmint` with its signing certificates, and its release keystore.
 
 ## Repository layout
 

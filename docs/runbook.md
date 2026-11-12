@@ -103,8 +103,8 @@ scheduled backups (Blaze plan) is the fix if that ever matters.
 - **Nobody is signed in to TaskMint after signing in** (Settings → TaskMint
   says Not signed in, though the accounts match): TaskMint's project refuses
   BudgetMint's sign-in. With Google, check that each project's Google
-  provider safelists the other's client (the README's "Firebase setup still
-  to do"); with email, that TaskMint's Email/Password sign-in is on.
+  provider safelists the other's client (the README's "Firebase setup");
+  with email, that TaskMint's Email/Password sign-in is on.
 - **A leaked update signing key:** make a new key, replace the secrets and
   `plugins.updater.pubkey`, and release (the README's "Desktop updates").
 - **A leaked Google desktop client secret:** Google treats it as public
@@ -114,7 +114,7 @@ scheduled backups (Blaze plan) is the fix if that ever matters.
 
 ## Moving from TaskMint's project
 
-Done once, when the first release on `budgetmint` is out. Until then,
+Done once, on 2026-11-11, after 2.0.0 (kept for the record). Until then,
 BudgetMint's accounts are TaskMint's and its data is `budgetmint/` in
 `taskmint-f9a05`. Copying both over keeps every uid and password, so
 everyone signs in as before and finds their budget.
