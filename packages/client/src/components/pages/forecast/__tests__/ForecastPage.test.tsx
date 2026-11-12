@@ -41,6 +41,19 @@ describe('the forecast', () => {
     expect(screen.queryByRole('region', { name: 'TaskMint withdrawals ahead' })).not.toBeInTheDocument();
   });
 
+  it('says how much income is due and unmarked, and so left out', async () => {
+    const pay = item({
+      id: 'pay',
+      kind: 'income',
+      name: 'Paycheck',
+      schedule: [{ from: '2026-11-10', until: null, repeat: { every: 'once' }, amountCents: 80_000, weekends: 'keep' }],
+    });
+    await forecast({ items: [pay] });
+    expect(
+      screen.getByText('$800.00 of income is due but not marked received, so it isn’t counted.')
+    ).toBeInTheDocument();
+  });
+
   it('lists TaskMint’s withdrawals ahead, with what’s estimated', async () => {
     await forecast({
       settings: { balance: { cents: 0, asOf: '2026-11-09' } },

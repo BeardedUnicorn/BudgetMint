@@ -181,7 +181,7 @@ pub fn balance_check(
     ctx: &Ctx,
 ) -> BalanceCheckView {
     let today = ctx.today();
-    let settled = open_settled_through(&snapshot.settings(), today);
+    let settled = crate::views::Settled::of(&snapshot.settings(), today);
     let open = open_since(snapshot, balance, ctx);
     let views = open
         .iter()

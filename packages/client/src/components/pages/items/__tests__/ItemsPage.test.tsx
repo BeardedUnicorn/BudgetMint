@@ -565,6 +565,31 @@ describe('bills and income', () => {
     expect(await screen.findByText('No bills yet')).toBeInTheDocument();
   });
 
+  it('asks before archiving a bill that’s still overdue', async () => {
+    // Rent was due on the 5th, after the balance's day (the 1st), and today is the 10th: overdue
+    const { user, store } = await startBudget({
+      settings: { balance: { cents: 100_000, asOf: '2026-11-01' } },
+      items: [monthly('rent', 'Rent', 5, 120_000), monthly('gym', 'Gym', 20, 3_000)],
+    });
+    await open(user, 'Bills');
+    const archived = (id: string) => JSON.parse(store.docs.get(`item~${id}`)!.json).archived;
+    // Nothing overdue on it: archived at once
+    await user.click(screen.getByRole('button', { name: 'Archive Gym' }));
+    await waitFor(() => expect(archived('gym')).toBe(true));
+    // Overdue: asked first, and left alone on Cancel
+    await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
+    const dialog = screen.getByRole('dialog', { name: 'Archive Rent?' });
+    expect(dialog).toHaveTextContent('$1,200.00 is still overdue on it.');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(archived('rent')).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Archive Rent?' })).getByRole('button', { name: 'Archive' })
+    );
+    await waitFor(() => expect(archived('rent')).toBe(true));
+  });
+
   it('shows a bill’s history, and changes one of its occurrences there', async () => {
     const { user, store } = await startBudget({
       items: [

@@ -306,6 +306,25 @@ describe('the overview', () => {
     expect(balance()).toBe(102_500);
   });
 
+  it('says which of today’s the balance has already, and takes off the bill nobody marked', async () => {
+    // The balance was set today: autopay's went by itself, the bill by hand may not have
+    await startBudget({
+      settings: { balance: { cents: 100_000, asOf: '2026-11-10' } },
+      items: [
+        monthly('gym', 'Gym', 10, 3_000, { autopay: true }),
+        monthly('net', 'Internet', 10, 6_500),
+        monthly('rent', 'Rent', 20, 50_000),
+      ],
+    });
+    const upcoming = screen.getByRole('region', { name: 'The next 14 days' });
+    const row = (name: string) => within(upcoming).getByText(name).closest('li')!;
+    expect(within(row('Gym')).getByText('In your balance already')).toBeInTheDocument();
+    expect(within(row('Internet')).queryByText('In your balance already')).not.toBeInTheDocument();
+    expect(within(row('Rent')).queryByText('In your balance already')).not.toBeInTheDocument();
+    // Internet still comes off: $1,000 less its $65
+    expect(within(upcoming).getByText('Balance $935.00')).toBeInTheDocument();
+  });
+
   it('adds income from Add, and says when everyday spending isn’t counted', async () => {
     // With nothing yet, income can be the first thing added
     const empty = await startBudget();

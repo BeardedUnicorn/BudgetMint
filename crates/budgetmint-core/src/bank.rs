@@ -8,7 +8,6 @@ use crate::docs::Snapshot;
 use crate::error::{invalid, CoreError};
 use crate::model::{Balance, Cents, ItemKind, OccStatus, MAX_CENTS};
 use crate::occur::occurrences;
-use crate::project::settled_through;
 use crate::time::{in_calendar, Ctx};
 use crate::views::{occurrence_view, OccurrenceView};
 use chrono::{Duration, NaiveDate};
@@ -139,7 +138,7 @@ fn unmatched_open(
     };
     let window = Duration::days(MATCH_DAYS);
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = crate::views::Settled::of(&snapshot.settings(), today);
     occurrences(snapshot, first - window, last + window, false)
         .iter()
         .filter(|o| o.status == OccStatus::Open)
@@ -569,7 +568,7 @@ fn match_open(
     let window = Duration::days(MATCH_DAYS);
     let all = occurrences(snapshot, first - window, last + window, false);
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = crate::views::Settled::of(&snapshot.settings(), today);
     let kind_of = |t: &BankTransaction| {
         if t.amount_cents < 0 {
             ItemKind::Bill

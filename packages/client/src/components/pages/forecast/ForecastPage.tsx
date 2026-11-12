@@ -188,6 +188,10 @@ export function ForecastPage() {
           // TaskMint's only once it's connected: without it, there's nothing to assume
           ...(taskmintShown ? assumptions(view) : []),
           ...(spending ? [spending] : []),
+          // Left out until it's marked received: the balance ahead runs low by it
+          ...(view.lateIncomeCents > 0
+            ? [`${formatCents(view.lateIncomeCents)} of income is due but not marked received, so it isn’t counted.`]
+            : []),
           ...(view.days.some(day => day.setAsideCents > 0)
             ? ['The dashed balance line leaves out the money set aside.']
             : []),
