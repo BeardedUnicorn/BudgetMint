@@ -195,6 +195,10 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
           >
             {parseDay(day.date).getDate()}
           </Box>
+          {/* A phone has no room for the balance: a low or short day is marked beside its date */}
+          <Box component="span" sx={{ display: 'none', [PHONE]: { display: 'inline-flex' } }}>
+            <BalanceFlag short={day.short} low={day.low} hidden />
+          </Box>
           {/* Dots where there's no room for badges */}
           <Box sx={{ display: 'flex', gap: 0.25, [WIDE]: { display: 'none' } }}>
             {bills > 0 && <Dot tone="error" />}

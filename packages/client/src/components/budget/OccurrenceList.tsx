@@ -14,6 +14,7 @@ import { useBudgetChange } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { occurrenceLabel } from '../../utils/describe';
 import { formatCents, formatMaybeCents } from '../../utils/money';
+import { PHONE } from '../../theme/media';
 import { useNotification } from '../../contexts/NotificationContext';
 import { OccurrenceDialog } from './OccurrenceDialog';
 
@@ -68,9 +69,18 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
             <ListItem
               key={`${occurrence.itemId} ${occurrence.scheduled}`}
               disableGutters
-              sx={{ gap: 1, py: 0.5, flexWrap: 'wrap', opacity: occurrence.status.state === 'skipped' ? 0.6 : 1 }}
+              sx={{
+                // Name, amount, actions; on a phone the actions go under, so amounts line up
+                display: 'grid',
+                gridTemplateColumns: '1fr auto auto',
+                alignItems: 'center',
+                columnGap: 1,
+                py: 0.5,
+                opacity: occurrence.status.state === 'skipped' ? 0.6 : 1,
+                [PHONE]: { gridTemplateColumns: '1fr auto', gridTemplateAreas: '"name amount" "actions actions"' },
+              }}
             >
-              <Box sx={{ flex: 1, minWidth: 140 }}>
+              <Box sx={{ minWidth: 0, [PHONE]: { gridArea: 'name' } }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   {occurrence.name}
                 </Typography>
@@ -81,21 +91,26 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     {occurrence.note}
                   </Typography>
                 )}
+                {/* Under the name, so it never pushes the amount out of line */}
+                {label && (
+                  <Box>
+                    <Chip
+                      size="small"
+                      label={label}
+                      color={CHIP_COLORS[label]}
+                      variant={label === 'Autopay' || label === 'Automatic' ? 'outlined' : 'filled'}
+                      sx={{ mt: 0.25 }}
+                    />
+                  </Box>
+                )}
               </Box>
-              {label && (
-                <Chip
-                  size="small"
-                  label={label}
-                  color={CHIP_COLORS[label]}
-                  variant={label === 'Autopay' || label === 'Automatic' ? 'outlined' : 'filled'}
-                />
-              )}
               <Typography
                 sx={{
                   fontFamily: MONO,
                   fontWeight: 600,
                   minWidth: 110,
                   textAlign: 'right',
+                  [PHONE]: { gridArea: 'amount', minWidth: 0 },
                   color: occurrence.kind === 'income' ? 'success.main' : 'text.primary',
                 }}
               >
@@ -104,7 +119,11 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   ? formatCents(occurrence.status.amountCents)
                   : formatMaybeCents(occurrence.expectedCents, occurrence.estimated)}
               </Typography>
-              <Stack direction="row" spacing={0.5}>
+              <Stack
+                direction="row"
+                spacing={0.5}
+                sx={{ justifyContent: 'flex-end', [PHONE]: { gridArea: 'actions' } }}
+              >
                 {!done && !occurrence.autopay ? (
                   <Button
                     size="small"

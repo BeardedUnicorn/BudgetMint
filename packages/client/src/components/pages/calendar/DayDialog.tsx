@@ -21,9 +21,73 @@ import type { CalendarDay } from '@budgetmint/contracts';
 import { useBackDismiss } from '../../../contexts/NavigationContext';
 import { formatLongDay } from '../../../utils/dates';
 import { formatCents, formatMaybeCents } from '../../../utils/money';
+import { BalanceFlag } from '../../budget/BalanceFlag';
 import { OccurrenceList } from '../../budget/OccurrenceList';
 
 const MONO = '"Roboto Mono", monospace';
+
+/** A day's details: what's due, TaskMint's money, the everyday spending, and the balance it ends on. */
+export function DayAgenda({ day, today }: { day: CalendarDay; today: string }) {
+  return (
+    <>
+      {day.occurrences.length > 0 && <OccurrenceList occurrences={day.occurrences} today={today} />}
+      {day.occurrences.length === 0 && day.withdrawalCents === 0 && day.earnedCents === 0 && (
+        <Typography variant="body2" color="text.secondary">
+          Nothing due.
+        </Typography>
+      )}
+      {day.withdrawalCents > 0 && (
+        <Stack direction="row" sx={{ py: 1, justifyContent: 'space-between' }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {day.withdrawalProjected ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal'}
+          </Typography>
+          <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
+            +{formatMaybeCents(day.withdrawalCents, day.withdrawalUncertainCents > 0)}
+          </Typography>
+        </Stack>
+      )}
+      {day.earnedCents > 0 && (
+        <Box sx={{ py: 1 }}>
+          <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Earned in TaskMint, not withdrawn yet
+            </Typography>
+            <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
+              {formatMaybeCents(day.earnedCents, day.earnedUncertainCents > 0)}
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            {day.earnedArrivesOn
+              ? `In the bank ${formatLongDay(day.earnedArrivesOn)}, with the withdrawal that takes it.`
+              : 'No withdrawal ahead takes it yet.'}
+          </Typography>
+        </Box>
+      )}
+      {day.spendingCents > 0 && (
+        <Stack direction="row" sx={{ py: 1, justifyContent: 'space-between' }}>
+          <Typography variant="body2" color="text.secondary">
+            Everyday spending (assumed)
+          </Typography>
+          <Typography sx={{ fontFamily: MONO, color: 'text.secondary' }}>−{formatCents(day.spendingCents)}</Typography>
+        </Stack>
+      )}
+      {day.closingCents !== null && (
+        <Typography
+          variant="body2"
+          sx={{
+            mt: 2,
+            fontFamily: MONO,
+            color: day.short ? 'error.main' : day.low ? 'warning.main' : 'text.secondary',
+          }}
+        >
+          {/* Below zero or low: said with a mark, not only a colour */}
+          <BalanceFlag short={day.short} low={day.low} />
+          Balance at the end of the day: {formatCents(day.closingCents)}
+        </Typography>
+      )}
+    </>
+  );
+}
 
 export function DayDialog({
   day,
@@ -57,57 +121,7 @@ export function DayDialog({
         </IconButton>
       </Box>
       <DialogContent>
-        {day.occurrences.length > 0 && <OccurrenceList occurrences={day.occurrences} today={today} />}
-        {day.occurrences.length === 0 && day.withdrawalCents === 0 && day.earnedCents === 0 && (
-          <Typography variant="body2" color="text.secondary">
-            Nothing due.
-          </Typography>
-        )}
-        {day.withdrawalCents > 0 && (
-          <Stack direction="row" sx={{ py: 1, justifyContent: 'space-between' }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {day.withdrawalProjected ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal'}
-            </Typography>
-            <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
-              +{formatMaybeCents(day.withdrawalCents, day.withdrawalUncertainCents > 0)}
-            </Typography>
-          </Stack>
-        )}
-        {day.earnedCents > 0 && (
-          <Box sx={{ py: 1 }}>
-            <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Earned in TaskMint, not withdrawn yet
-              </Typography>
-              <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
-                {formatMaybeCents(day.earnedCents, day.earnedUncertainCents > 0)}
-              </Typography>
-            </Stack>
-            <Typography variant="caption" color="text.secondary">
-              {day.earnedArrivesOn
-                ? `In the bank ${formatLongDay(day.earnedArrivesOn)}, with the withdrawal that takes it.`
-                : 'No withdrawal ahead takes it yet.'}
-            </Typography>
-          </Box>
-        )}
-        {day.spendingCents > 0 && (
-          <Stack direction="row" sx={{ py: 1, justifyContent: 'space-between' }}>
-            <Typography variant="body2" color="text.secondary">
-              Everyday spending (assumed)
-            </Typography>
-            <Typography sx={{ fontFamily: MONO, color: 'text.secondary' }}>
-              −{formatCents(day.spendingCents)}
-            </Typography>
-          </Stack>
-        )}
-        {day.closingCents !== null && (
-          <Typography
-            variant="body2"
-            sx={{ mt: 2, fontFamily: MONO, color: day.short ? 'error.main' : 'text.secondary' }}
-          >
-            Balance at the end of the day: {formatCents(day.closingCents)}
-          </Typography>
-        )}
+        <DayAgenda day={day} today={today} />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>

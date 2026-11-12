@@ -163,166 +163,174 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         }
       />
 
-      {!balance && (
-        <Alert
-          severity="info"
-          sx={{ mb: 3 }}
-          action={
-            <Button color="inherit" size="small" onClick={() => setDialog('balance')}>
-              Set balance
-            </Button>
-          }
-        >
-          Until you set your balance, the forecast starts from {formatWholeCents(0)}.
-        </Alert>
-      )}
-      {firstShort ? (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Your balance goes below zero on {formatWeekday(firstShort.date)}, to {formatCents(firstShort.cents)}.
-          {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
-        </Alert>
-      ) : (
-        // Not short: a low day is below a mark above zero
-        firstLow && (
-          <Alert severity="warning" sx={{ mb: 3 }}>
-            Your balance goes below {formatCents(overview.lowBalanceCents)} on {formatWeekday(firstLow.date)}, to{' '}
-            {formatCents(firstLow.cents)}.
+      {/* A column on a phone, so the cards can go after what's due */}
+      <Box sx={{ [PHONE]: { display: 'flex', flexDirection: 'column' } }}>
+        {!balance && (
+          <Alert
+            severity="info"
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => setDialog('balance')}>
+                Set balance
+              </Button>
+            }
+          >
+            Until you set your balance, the forecast starts from {formatWholeCents(0)}.
+          </Alert>
+        )}
+        {firstShort ? (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Your balance goes below zero on {formatWeekday(firstShort.date)}, to {formatCents(firstShort.cents)}.
             {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
           </Alert>
-        )
-      )}
-
-      {staleImport && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          TaskMint’s work logs were last imported {formatMoment(taskmint.lastImportMs!)}: its withdrawals may be out of
-          date until you import again.
-        </Alert>
-      )}
-
-      <Paper component="section" aria-label="Balance today" sx={SECTION}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 6 }}>
-          <Box>
-            <Typography variant="overline" color="text.secondary">
-              Balance today
-            </Typography>
-            <Typography
-              variant="h4"
-              component="p"
-              sx={{ fontFamily: MONO, fontWeight: 700, color: overview.todayCents < 0 ? 'error.main' : 'success.main' }}
-            >
-              {formatCents(overview.todayCents)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Lowest in the next {overview.horizonDays} days: {formatCents(lowest.cents)} on{' '}
-              {formatWeekday(lowest.date)}
-            </Typography>
-          </Box>
-          <Box role="group" aria-label="Safe to spend">
-            <Typography variant="overline" color="text.secondary">
-              Safe to spend
-            </Typography>
-            <Typography variant="h4" component="p" sx={{ fontFamily: MONO, fontWeight: 700 }}>
-              {formatCents(overview.safeToSpend.cents)}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {safeLine(overview)}
-            </Typography>
-            {overview.safeToSpend.spendingWeeklyCents === 0 && (
-              // Without it, all of the balance but the bills looks free to spend
-              <Typography variant="body2" color="warning.main">
-                Everyday spending (food, fuel) isn’t counted yet.{' '}
-                <Link component="button" onClick={() => navigate('settings', { section: 'forecast' })}>
-                  Set it
-                </Link>
-              </Typography>
-            )}
-          </Box>
-        </Stack>
-      </Paper>
-
-      <Box sx={STATS_GRID}>
-        <StatsCard
-          title="Due this week"
-          value={formatCents(overview.dueThisWeek.cents)}
-          subtitle={overview.dueThisWeek.count === 1 ? '1 bill' : `${overview.dueThisWeek.count} bills`}
-          icon={<DueIcon fontSize="large" />}
-          color="warning"
-        />
-        <StatsCard
-          title="Coming in"
-          value={formatCents(overview.incomeAheadCents)}
-          subtitle="In the next 14 days"
-          icon={<IncomeIcon fontSize="large" />}
-          color="success"
-        />
-        {taskmintShown && (
-          <StatsCard
-            title="Next TaskMint withdrawal"
-            value={withdrawalValue}
-            subtitle={withdrawalSubtitle}
-            icon={<WithdrawalIcon fontSize="large" />}
-            color="info"
-          />
+        ) : (
+          // Not short: a low day is below a mark above zero
+          firstLow && (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              Your balance goes below {formatCents(overview.lowBalanceCents)} on {formatWeekday(firstLow.date)}, to{' '}
+              {formatCents(firstLow.cents)}.
+              {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
+            </Alert>
+          )
         )}
-      </Box>
 
-      {overview.overdue.length + overview.lateIncome.length > 0 && (
-        <Paper component="section" aria-labelledby="overdue-title" sx={SECTION}>
-          <Typography id="overdue-title" variant="h6" component="h2" sx={{ mb: 1 }}>
-            Past due
-          </Typography>
-          <OccurrenceList occurrences={[...overview.overdue, ...overview.lateIncome]} today={today} />
+        {staleImport && (
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            TaskMint’s work logs were last imported {formatMoment(taskmint.lastImportMs!)}: its withdrawals may be out
+            of date until you import again.
+          </Alert>
+        )}
+
+        <Paper component="section" aria-label="Balance today" sx={SECTION}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 2, sm: 6 }}>
+            <Box>
+              <Typography variant="overline" color="text.secondary">
+                Balance today
+              </Typography>
+              <Typography
+                variant="h4"
+                component="p"
+                sx={{
+                  fontFamily: MONO,
+                  fontWeight: 700,
+                  color: overview.todayCents < 0 ? 'error.main' : 'success.main',
+                }}
+              >
+                {formatCents(overview.todayCents)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Lowest in the next {overview.horizonDays} days: {formatCents(lowest.cents)} on{' '}
+                {formatWeekday(lowest.date)}
+              </Typography>
+            </Box>
+            <Box role="group" aria-label="Safe to spend">
+              <Typography variant="overline" color="text.secondary">
+                Safe to spend
+              </Typography>
+              <Typography variant="h4" component="p" sx={{ fontFamily: MONO, fontWeight: 700 }}>
+                {formatCents(overview.safeToSpend.cents)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {safeLine(overview)}
+              </Typography>
+              {overview.safeToSpend.spendingWeeklyCents === 0 && (
+                // Without it, all of the balance but the bills looks free to spend
+                <Typography variant="body2" color="warning.main">
+                  Everyday spending (food, fuel) isn’t counted yet.{' '}
+                  <Link component="button" onClick={() => navigate('settings', { section: 'forecast' })}>
+                    Set it
+                  </Link>
+                </Typography>
+              )}
+            </Box>
+          </Stack>
         </Paper>
-      )}
 
-      {overview.needsAmount.length > 0 && (
-        <Paper component="section" aria-labelledby="needs-amount-title" sx={SECTION}>
-          <Typography id="needs-amount-title" variant="h6" component="h2">
-            What did these come to?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            They’re paid automatically and their amount varies: what each really was keeps the next ones’ estimate
-            right.
-          </Typography>
-          <OccurrenceList occurrences={overview.needsAmount} today={today} />
-        </Paper>
-      )}
+        {/* On a phone the cards come after what's due: it's what the page is opened for */}
+        <Box sx={{ ...STATS_GRID, [PHONE]: { ...STATS_GRID[PHONE], order: 1 } }}>
+          <StatsCard
+            title="Due this week"
+            value={formatCents(overview.dueThisWeek.cents)}
+            subtitle={overview.dueThisWeek.count === 1 ? '1 bill' : `${overview.dueThisWeek.count} bills`}
+            icon={<DueIcon fontSize="large" />}
+            color="warning"
+          />
+          <StatsCard
+            title="Coming in"
+            value={formatCents(overview.incomeAheadCents)}
+            subtitle="In the next 14 days"
+            icon={<IncomeIcon fontSize="large" />}
+            color="success"
+          />
+          {taskmintShown && (
+            <StatsCard
+              title="Next TaskMint withdrawal"
+              value={withdrawalValue}
+              subtitle={withdrawalSubtitle}
+              icon={<WithdrawalIcon fontSize="large" />}
+              color="info"
+            />
+          )}
+        </Box>
 
-      {items.length === 0 ? (
-        <EmptyState
-          icon={<DueIcon sx={{ fontSize: 48 }} />}
-          title="No bills yet"
-          description="Add your bills and other income, and see your balance ahead."
-          action={
-            <Stack direction="row" spacing={1} sx={{ justifyContent: 'center' }}>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
-                Add your first bill
-              </Button>
-              <Button variant="outlined" onClick={() => setDialog('income')}>
-                Add income
+        {overview.overdue.length + overview.lateIncome.length > 0 && (
+          <Paper component="section" aria-labelledby="overdue-title" sx={SECTION}>
+            <Typography id="overdue-title" variant="h6" component="h2" sx={{ mb: 1 }}>
+              Past due
+            </Typography>
+            <OccurrenceList occurrences={[...overview.overdue, ...overview.lateIncome]} today={today} />
+          </Paper>
+        )}
+
+        {overview.needsAmount.length > 0 && (
+          <Paper component="section" aria-labelledby="needs-amount-title" sx={SECTION}>
+            <Typography id="needs-amount-title" variant="h6" component="h2">
+              What did these come to?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              They’re paid automatically and their amount varies: what each really was keeps the next ones’ estimate
+              right.
+            </Typography>
+            <OccurrenceList occurrences={overview.needsAmount} today={today} />
+          </Paper>
+        )}
+
+        {items.length === 0 ? (
+          <EmptyState
+            icon={<DueIcon sx={{ fontSize: 48 }} />}
+            title="No bills yet"
+            description="Add your bills and other income, and see your balance ahead."
+            action={
+              <Stack direction="row" spacing={1} sx={{ justifyContent: 'center' }}>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
+                  Add your first bill
+                </Button>
+                <Button variant="outlined" onClick={() => setDialog('income')}>
+                  Add income
+                </Button>
+              </Stack>
+            }
+          />
+        ) : (
+          <Paper component="section" aria-labelledby="upcoming-title" sx={SECTION}>
+            <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', mb: 2 }}>
+              <Typography id="upcoming-title" variant="h6" component="h2">
+                The next 14 days
+              </Typography>
+              <Button size="small" onClick={() => navigate('calendar')}>
+                Calendar
               </Button>
             </Stack>
-          }
-        />
-      ) : (
-        <Paper component="section" aria-labelledby="upcoming-title" sx={SECTION}>
-          <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', mb: 2 }}>
-            <Typography id="upcoming-title" variant="h6" component="h2">
-              The next 14 days
-            </Typography>
-            <Button size="small" onClick={() => navigate('calendar')}>
-              Calendar
-            </Button>
-          </Stack>
-          {overview.upcoming.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Nothing due or coming in.
-            </Typography>
-          ) : (
-            <UpcomingDays days={overview.upcoming} today={today} />
-          )}
-        </Paper>
-      )}
+            {overview.upcoming.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Nothing due or coming in.
+              </Typography>
+            ) : (
+              <UpcomingDays days={overview.upcoming} today={today} />
+            )}
+          </Paper>
+        )}
+      </Box>
 
       {dialog === 'balance' && <BalanceDialog balance={balance} today={today} onClose={() => setDialog(null)} />}
       {(dialog === 'bill' || dialog === 'income') && (

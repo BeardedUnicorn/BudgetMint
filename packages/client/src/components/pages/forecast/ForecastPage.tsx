@@ -11,6 +11,7 @@ import {
   Button,
   Chip,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -25,8 +26,8 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import type { ForecastView, Flow } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
-import { useTaskMint } from '../../../hooks/useTaskMint';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { formatDay, formatMoment, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
 import { LEFT_OUT } from '../../../utils/taskmint';
@@ -163,6 +164,7 @@ export function ForecastPage() {
   const view = useCoreQuery('get_forecast');
   const { navigate } = useNavigation();
   const { shown: taskmintShown } = useTaskMint();
+  const compact = useCompactLayout();
   // The days money moves besides the everyday spending (each day has that)
   const moving = view.days.filter(day => day.flows.some(flow => flow.kind !== 'spending'));
   const spending = spendingAssumption(view);
@@ -247,6 +249,42 @@ export function ForecastPage() {
           <Typography variant="body2" color="text.secondary">
             No money moves before {formatDay(last.date)}.
           </Typography>
+        ) : compact ? (
+          // A phone has no room for four columns: each day, its money, and the balance it leaves
+          <Stack spacing={2}>
+            {moving.map(day => (
+              <Box key={day.date}>
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <Typography variant="subtitle2" component="h3" sx={{ fontWeight: 600 }}>
+                    {formatWeekday(day.date)}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontFamily: MONO,
+                      fontWeight: 600,
+                      color: day.short ? 'error.main' : day.low ? 'warning.main' : 'text.secondary',
+                    }}
+                  >
+                    <BalanceFlag short={day.short} low={day.low} />
+                    Balance {formatCents(day.closingCents)}
+                  </Typography>
+                </Stack>
+                {day.flows.map((flow, index) => (
+                  <Stack key={index} direction="row" sx={{ justifyContent: 'space-between', gap: 1 }}>
+                    <Typography variant="body2">{flowLabel(flow)}</Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontFamily: MONO, color: flow.amountCents > 0 ? 'success.main' : 'text.primary' }}
+                    >
+                      {flow.amountCents > 0 ? '+' : ''}
+                      {formatMaybeCents(flow.amountCents, flow.uncertainCents > 0)}
+                    </Typography>
+                  </Stack>
+                ))}
+              </Box>
+            ))}
+          </Stack>
         ) : (
           <TableContainer>
             <Table size="small" sx={PHONE_TABLE}>

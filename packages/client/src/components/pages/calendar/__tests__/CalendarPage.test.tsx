@@ -295,4 +295,25 @@ describe('the calendar', () => {
     expect(describeDay(busy)).toBe('Thursday, November 12, 2026: bills $19.00; balance $0.50, low');
     expect(override).toBeDefined();
   });
+
+  it('shows the day picked under the month on a phone, and marks a low day', async () => {
+    const { setPhoneViewport } = await import('../../../../__tests__/setup/viewport');
+    setPhoneViewport();
+    const { user } = await startBudget({
+      items: [monthly('rent', 'Rent', 12, 50_000)],
+      settings: { ...SETTLED, lowBalanceCents: 60_000 },
+    });
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('button', { name: 'Calendar' })
+    );
+    // Today's, to start with
+    expect(screen.getByRole('region', { name: 'Tuesday, November 10, 2026' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Thursday, November 12, 2026/ }));
+    const picked = screen.getByRole('region', { name: 'Thursday, November 12, 2026' });
+    expect(within(picked).getByText('Rent')).toBeInTheDocument();
+    // Low (below the $600 mark), with a mark as well as a colour
+    expect(within(picked).getByText(/Balance at the end of the day: \$500\.00/)).toBeInTheDocument();
+    expect(within(picked).getByTitle('Low')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
