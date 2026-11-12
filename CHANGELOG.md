@@ -8,6 +8,12 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.0.2 – 2026-11-11
+
+### Fixed
+
+- After you sign in with Google in the browser, BudgetMint comes back to the front (your browser asks first), and the browser's page now has BudgetMint's look instead of a plain white page.
+
 ## 2.0.1 – 2026-11-11
 
 No user-facing changes.

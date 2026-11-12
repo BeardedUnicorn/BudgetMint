@@ -1,7 +1,7 @@
 {
   "name": "@budgetmint/contracts",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "license": "MIT",
   "description": "The wire types and constants every BudgetMint app shares, generated from crates/budgetmint-core",

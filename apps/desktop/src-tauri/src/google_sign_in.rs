@@ -7,7 +7,7 @@
 //! webview can't do it itself: Google refuses sign-in inside embedded
 //! webviews, and Firebase's popup can't open from one.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
 use serde::Deserialize;
 use serde_json::Value;
@@ -43,18 +43,90 @@ pub const GOOGLE: Endpoints<'static> = Endpoints {
     listen: "127.0.0.1:0",
 };
 
-/// What the browser shows once it's back: `message`, on a plain page. (The
-/// app finishes signing in after it, so the page promises nothing more.)
-fn done_page(message: &str) -> String {
-    format!(
-        "<!doctype html><meta charset=utf-8><title>BudgetMint</title>\
-         <body style=\"font:16px system-ui;margin:4em;text-align:center\"><p>{}</p>",
-        message
-    )
+/// The page the browser shows once it's back, with `{{…}}`s to fill in.
+const PAGE: &str = include_str!("google_sign_in_page.html");
+/// The app's wordmarks (Wordmark.tsx's) and favicon, in the page itself.
+const LOGO: &[u8] = include_bytes!("../../../../packages/client/public/budgetmint-logo.png");
+const LOGO_DARK: &[u8] =
+    include_bytes!("../../../../packages/client/public/budgetmint-logo-dark.png");
+const FAVICON: &[u8] = include_bytes!("../../../../packages/client/public/favicon.png");
+
+const CHECK: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>"#;
+const ALERT: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 6.5v7"/><path d="M12 17.5v.01"/></svg>"#;
+
+/// A `budgetmint://` link, which brings the app forward (window.rs).
+fn app_link(path: &str) -> String {
+    format!("{}://{}", crate::window::SCHEME, path)
 }
 
-const BACK_PAGE: &str = "Google's part is done. Close this tab and go back to BudgetMint.";
-const FAILED_PAGE: &str = "Signing in didn't finish. Close this tab and try again from BudgetMint.";
+/// What the browser shows once it's back, signed in to Google or not. (The
+/// app finishes signing in after it, so the page promises nothing more.)
+/// Signed in, it opens the app as it loads: the browser asks first, then
+/// the app comes forward, which it can't do by itself from behind the
+/// browser (macOS). Its button opens the app again, for when the browser's
+/// question was turned down. Failed, it doesn't open the app, which stays
+/// where it was; its button goes back there.
+fn done_page(signed_in: bool) -> String {
+    let (outcome, mark, title, message, button, link) = if signed_in {
+        (
+            "done",
+            CHECK,
+            "Google's part is done",
+            "BudgetMint is finishing signing you in. You can close this tab.",
+            "Open BudgetMint",
+            app_link("signed-in"),
+        )
+    } else {
+        (
+            "failed",
+            ALERT,
+            "Signing in didn't finish",
+            "Close this tab and try again from BudgetMint.",
+            "Back to BudgetMint",
+            app_link("sign-in"),
+        )
+    };
+    let script = if signed_in {
+        format!("<script>location.href = \"{}\";</script>", link)
+    } else {
+        String::new()
+    };
+    [
+        ("outcome", outcome),
+        ("mark", mark),
+        ("title", title),
+        ("message", message),
+        ("button", button),
+        ("link", &link),
+        ("script", &script),
+        ("logo", &STANDARD.encode(LOGO)),
+        ("logo_dark", &STANDARD.encode(LOGO_DARK)),
+        ("favicon", &STANDARD.encode(FAVICON)),
+    ]
+    .iter()
+    .fold(PAGE.to_string(), |page, (key, value)| {
+        page.replace(&format!("{{{{{}}}}}", key), value)
+    })
+}
+
+/// done_page as the listener's reply. It isn't kept, and it may run its
+/// own script but load nothing (the address has the sign-in's code in it).
+fn done_reply(signed_in: bool) -> tiny_http::Response<std::io::Cursor<Vec<u8>>> {
+    [
+        "Content-Type: text/html; charset=utf-8",
+        "Cache-Control: no-store",
+        "Referrer-Policy: no-referrer",
+        "Content-Security-Policy: default-src 'none'; img-src data:; style-src 'unsafe-inline'; \
+         script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    ]
+    .iter()
+    .fold(
+        tiny_http::Response::from_string(done_page(signed_in)),
+        |reply, header| {
+            reply.with_header(header.parse::<tiny_http::Header>().expect("a valid header"))
+        },
+    )
+}
 
 /// A random URL-safe text: 32 bytes of the system's randomness (v4 UUIDs).
 fn random_text() -> String {
@@ -151,17 +223,7 @@ pub fn sign_in(
         };
         match read_redirect(request.url(), &state) {
             Some(outcome) => {
-                let message = if outcome.is_ok() {
-                    BACK_PAGE
-                } else {
-                    FAILED_PAGE
-                };
-                let page = tiny_http::Response::from_string(done_page(message)).with_header(
-                    "Content-Type: text/html; charset=utf-8"
-                        .parse::<tiny_http::Header>()
-                        .expect("a valid header"),
-                );
-                let _ = request.respond(page);
+                let _ = request.respond(done_reply(outcome.is_ok()));
                 break outcome?;
             }
             None => {
@@ -169,7 +231,9 @@ pub fn sign_in(
             }
         }
     };
-    // Google's part is done: back to the app, which finishes signing in
+    // Google's part is done: back to the app, which finishes signing in.
+    // Where the system won't let the app come forward by itself from behind
+    // the browser (macOS), the page's budgetmint:// link brings it.
     platform.show_main_window();
 
     let reply: TokenReply = ureq::post(endpoints.token)
@@ -307,7 +371,15 @@ mod tests {
             assert!(come_back(&url, "code=c&state=forged").starts_with("HTTP/1.1 404"));
             let state = param(&url, "state");
             let page = come_back(&url, &format!("code=the-code&state={}", state));
-            assert!(page.contains("go back to BudgetMint"));
+            assert!(page.contains("Google's part is done"));
+            // It opens the app, which comes forward from behind the browser
+            assert!(page.contains(r#"<script>location.href = "budgetmint://signed-in";</script>"#));
+            // Not kept, and loading nothing with the code in the address
+            let page = page.to_lowercase();
+            assert!(page.contains("content-type: text/html; charset=utf-8"));
+            assert!(page.contains("cache-control: no-store"));
+            assert!(page.contains("referrer-policy: no-referrer"));
+            assert!(page.contains("content-security-policy: default-src 'none';"));
         });
         assert_eq!(result, Ok(serde_json::json!({ "idToken": "eyJ.id.token" })));
         // The window came forward from behind the browser
@@ -324,6 +396,30 @@ mod tests {
             .unwrap();
         let opened = url::Url::parse(&platform.recorded().opened_urls[0]).unwrap();
         assert_eq!(param(&opened, "code_challenge"), pkce_challenge(verifier));
+    }
+
+    #[test]
+    fn the_page_back_from_google_is_the_apps() {
+        for signed_in in [true, false] {
+            let page = done_page(signed_in);
+            // Every blank filled in
+            assert!(!page.contains("{{"), "{}", page);
+            // The wordmark for each theme, and the favicon, in the page itself
+            for image in [LOGO, LOGO_DARK, FAVICON] {
+                assert!(page.contains(&format!("data:image/png;base64,{}", STANDARD.encode(image))));
+            }
+        }
+        let done = done_page(true);
+        assert!(done.contains(r#"<div class="card done">"#));
+        assert!(
+            done.contains(r#"<a class="button" href="budgetmint://signed-in">Open BudgetMint</a>"#)
+        );
+        // Failed, the button goes back to the app, which isn't opened for it
+        let failed = done_page(false);
+        assert!(failed.contains(r#"<div class="card failed">"#));
+        assert!(failed
+            .contains(r#"<a class="button" href="budgetmint://sign-in">Back to BudgetMint</a>"#));
+        assert!(!failed.contains("<script"));
     }
 
     #[test]
@@ -350,8 +446,10 @@ mod tests {
                         "" => format!("state={}", state),
                         error => format!("error={}&state={}", error, state),
                     };
-                    // The browser isn't told it worked
-                    assert!(come_back(&url, &query).contains("Signing in didn't finish"));
+                    // The browser isn't told it worked, and doesn't open the app
+                    let page = come_back(&url, &query);
+                    assert!(page.contains("Signing in didn't finish"));
+                    assert!(!page.contains("<script"));
                 });
             assert_eq!(result, Err(message.to_string()));
             assert_eq!(platform.recorded().windows_shown, 0);
