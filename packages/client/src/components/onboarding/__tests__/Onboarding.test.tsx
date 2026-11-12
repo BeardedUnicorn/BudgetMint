@@ -31,7 +31,7 @@ describe('onboarding', () => {
 
     // Back: it's there as it was saved, and says so
     await user.click(screen.getByRole('button', { name: 'Back' }));
-    expect(screen.getByLabelText('Each pays')).toHaveValue('1820');
+    expect(screen.getByLabelText('Each pays')).toHaveValue('1,820.00');
     expect(screen.getByText('Saved. A change here changes it.')).toBeInTheDocument();
     // On again, unchanged: still the one
     await next(user);
@@ -114,7 +114,7 @@ describe('onboarding', () => {
     await user.type(amount, '40');
     await user.click(screen.getByRole('checkbox', { name: 'Phone' }));
     expect(amount).not.toBeVisible();
-    expect(amount).toHaveValue('40');
+    expect(amount).toHaveValue('40.00');
   });
 
   it('says which currency amounts are in, and changes it', async () => {
