@@ -3,7 +3,7 @@
 //! and the TypeScript `CommandMap` (packages/contracts, from
 //! tests/contracts.rs).
 
-use crate::backup::BudgetExport;
+use crate::backup::{BudgetExport, MonthExport};
 use crate::balance::{self, BalanceCheckView, OccRef, PaidInput, SpendingEstimate};
 use crate::bank::{self, CsvColumns, StatementView};
 use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
@@ -58,6 +58,7 @@ pub enum Command {
     ReadStatement(ReadStatementArgs),
     GetScheduleDates(ScheduleDatesArgs),
     Record(RecordArgs),
+    ExportMonth(MonthArgs),
 }
 
 macro_rules! command_types {
@@ -121,6 +122,7 @@ command_types! {
     "read_statement": ReadStatementArgs => StatementView,
     "get_schedule_dates": ScheduleDatesArgs => Vec<ScheduleDate>,
     "record": RecordArgs => Planned,
+    "export_month": MonthArgs => MonthExport,
 }
 
 /// `reply` read as a `T` and written back.
@@ -480,6 +482,10 @@ pub fn execute(
         }
         Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
         Command::Record(args) => to_value(plan::record(snapshot, args.record, ctx)?),
+        Command::ExportMonth(args) => to_value(
+            crate::backup::month_csv(snapshot, &args.month)
+                .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
+        ),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),

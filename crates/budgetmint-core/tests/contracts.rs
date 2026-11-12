@@ -7,7 +7,7 @@
 // Writing files is this test's job; core's own code stays free of I/O.
 #![allow(clippy::disallowed_methods, clippy::disallowed_types)]
 
-use budgetmint_core::backup::BudgetExport;
+use budgetmint_core::backup::{BudgetExport, MonthExport};
 use budgetmint_core::balance::{BalanceCheckView, OccRef, PaidInput, SpendingEstimate};
 use budgetmint_core::bank::{
     BankTransaction, CsvColumns, StatementFormat, StatementMatch, StatementView,
@@ -96,6 +96,7 @@ fn export_types(cfg: &Config) {
         Planned,
         DocWrite,
         BudgetExport,
+        MonthExport,
         GoalsView,
         GoalView,
         GoalPart,

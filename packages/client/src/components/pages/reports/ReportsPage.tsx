@@ -9,6 +9,7 @@ import { useState } from 'react';
 import {
   Alert,
   Box,
+  Button,
   IconButton,
   Paper,
   Table,
@@ -27,8 +28,13 @@ import {
   ReceiptLong as BillsIcon,
   Savings as WithdrawalIcon,
 } from '@mui/icons-material';
-import type { CategoryReport } from '@budgetmint/contracts';
-import { useCoreQuery } from '../../../data/BudgetContext';
+import { useTheme } from '@mui/material/styles';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from 'recharts';
+import type { CategoryReport, MonthTotals } from '@budgetmint/contracts';
+import { useNotification } from '../../../contexts/NotificationContext';
+import { useBudget, useCoreQuery } from '../../../data/BudgetContext';
+import { getShell } from '../../../shell';
+import { saveFile } from '../../../utils/saveFile';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { addMonths, formatDay, formatMonth } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
@@ -42,8 +48,34 @@ const MONO = '"Roboto Mono", monospace';
 const categoryName = (row: CategoryReport) =>
   `${row.category ?? 'No category'}${row.kind === 'income' ? ' (income)' : ''}`;
 
+/** The six months as bars: bills paid and money in, side by side (whole dollars on the axis). */
+function MonthsChart({ months, taskmint }: { months: MonthTotals[]; taskmint: boolean }) {
+  const theme = useTheme();
+  const data = months.map(row => ({
+    month: formatMonth(row.month).slice(0, 3),
+    bills: row.billsCents / 100,
+    income: (row.incomeCents + (taskmint ? row.withdrawalsCents : 0)) / 100,
+  }));
+  return (
+    <Box sx={{ height: 200, mb: 2 }} aria-hidden>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data}>
+          <CartesianGrid stroke={theme.palette.divider} strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="month" stroke={theme.palette.text.secondary} fontSize={12} />
+          <YAxis stroke={theme.palette.text.secondary} fontSize={12} width={56} />
+          <Legend />
+          <Bar dataKey="income" name="Money in" fill={theme.palette.success.main} />
+          <Bar dataKey="bills" name="Bills paid" fill={theme.palette.error.main} />
+        </BarChart>
+      </ResponsiveContainer>
+    </Box>
+  );
+}
+
 export function ReportsPage() {
   const { today } = useCoreQuery('get_overview');
+  const { core } = useBudget();
+  const { showError } = useNotification();
   const [month, setMonth] = useState(today.slice(0, 7));
   const report = useCoreQuery('get_report', { month });
   const { shown: taskmintShown } = useTaskMint();
@@ -55,7 +87,18 @@ export function ReportsPage() {
         title="Reports"
         subtitle={`${formatMonth(report.month)}: what came in and went out.`}
         actions={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                const { csv, fileStem } = core.call('export_month', { month });
+                saveFile(getShell(), `${fileStem}.csv`, csv, 'text/csv').catch((error: Error) =>
+                  showError(`It wasn’t saved: ${error.message}`)
+                );
+              }}
+            >
+              Download this month
+            </Button>
             <IconButton aria-label="The month before" onClick={() => setMonth(addMonths(month, -1))}>
               <ChevronLeft />
             </IconButton>
@@ -104,7 +147,11 @@ export function ReportsPage() {
         <StatsCard
           title="Left over"
           value={formatCents(report.netCents)}
-          subtitle={report.unfinished ? 'So far this month' : 'Money in, less the bills paid'}
+          subtitle={`${report.unfinished ? 'So far: money in' : 'Money in'}, less the bills paid${
+            report.spendingAssumedCents > 0
+              ? `, before about ${formatCents(report.spendingAssumedCents)} of everyday spending`
+              : ''
+          }`}
           icon={<LeftIcon fontSize="large" />}
           color={report.netCents < 0 ? 'error' : 'primary'}
         />
@@ -182,6 +229,7 @@ export function ReportsPage() {
         <Typography id="months-title" variant="h6" component="h2" sx={{ mb: 2 }}>
           Six months
         </Typography>
+        <MonthsChart months={report.months} taskmint={taskmintShown} />
         <TableContainer>
           <Table size="small" sx={PHONE_TABLE}>
             <TableHead>

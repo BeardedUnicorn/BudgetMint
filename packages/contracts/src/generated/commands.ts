@@ -16,6 +16,7 @@ import type { ItemHistoryArgs } from "./ItemHistoryArgs";
 import type { ItemIdArgs } from "./ItemIdArgs";
 import type { ItemView } from "./ItemView";
 import type { MonthArgs } from "./MonthArgs";
+import type { MonthExport } from "./MonthExport";
 import type { MonthView } from "./MonthView";
 import type { OccurrenceView } from "./OccurrenceView";
 import type { Overview } from "./Overview";
@@ -68,6 +69,7 @@ export interface CommandMap {
   read_statement: { args: ReadStatementArgs; reply: StatementView };
   get_schedule_dates: { args: ScheduleDatesArgs; reply: Array<ScheduleDate> };
   record: { args: RecordArgs; reply: Planned };
+  export_month: { args: MonthArgs; reply: MonthExport };
 }
 
 export type CommandName = keyof CommandMap;

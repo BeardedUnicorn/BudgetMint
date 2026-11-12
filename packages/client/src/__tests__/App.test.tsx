@@ -101,6 +101,8 @@ describe('the app', () => {
     await user.type(screen.getByLabelText('Name'), 'Acme pay');
     await user.click(screen.getByLabelText('Repeats'));
     await user.click(screen.getByRole('option', { name: 'Every week' }));
+    // (its menu gone, so "Repeats" names the field alone)
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
     await user.click(screen.getByLabelText('Repeats'));
     await user.click(screen.getByRole('option', { name: 'Something else…' }));
     fireEvent.change(screen.getByLabelText('Every how many weeks'), { target: { value: '2' } });

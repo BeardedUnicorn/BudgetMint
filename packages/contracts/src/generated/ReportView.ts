@@ -36,6 +36,11 @@ categories: Array<CategoryReport>,
  */
 paidLate: Array<PaidLate>, outside: OutsideSpending | null, 
 /**
+ * The everyday spending the forecast assumes for the month's days so
+ * far: what "left over" is before.
+ */
+spendingAssumedCents: number, 
+/**
  * The months up to this one, oldest first.
  */
 months: Array<MonthTotals>, };
