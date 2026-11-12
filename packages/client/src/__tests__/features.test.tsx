@@ -787,3 +787,33 @@ describe('a bank statement', () => {
     expect(within(dialog).queryByText('BudgetMint ran into a problem')).not.toBeInTheDocument();
   });
 });
+
+describe('without TaskMint', () => {
+  it('is a bill tracker: TaskMint shows nowhere but a way to connect it', async () => {
+    const { user } = await startBudget({ taskmint: false, items: [monthly('rent', 'Rent', 12, 50_000)] });
+    expect(screen.queryByText('Next TaskMint withdrawal')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Income' }));
+    expect(screen.getByText('Paychecks and other money coming in.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    expect(screen.getByText('Bills and income, with the balance each day ends on.')).toBeInTheDocument();
+    expect(screen.queryByText('TaskMint withdrawal')).not.toBeInTheDocument();
+    expect(screen.queryByText(/includes time tracked in TaskMint/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Forecast' }));
+    expect(screen.queryByText(/TaskMint/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reports' }));
+    expect(screen.queryByText('From TaskMint')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'TaskMint' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const taskmint = section('TaskMint');
+    expect(within(taskmint).getByText(/Use TaskMint\? Connect it/)).toBeInTheDocument();
+    expect(within(taskmint).queryByLabelText('You withdraw')).not.toBeInTheDocument();
+  });
+
+  it('leaves TaskMint out of onboarding', async () => {
+    await startBudget({ taskmint: false, settings: null });
+    expect(
+      await screen.findByText('Start with what your bank account holds: your bills and income come next.')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Count TaskMint’s withdrawals' })).not.toBeInTheDocument();
+  });
+});

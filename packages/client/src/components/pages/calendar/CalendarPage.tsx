@@ -1,7 +1,8 @@
 /**
- * Calendar: a month of bills, income, TaskMint's withdrawals and each work
- * day's TaskMint earnings not withdrawn yet, with each day's closing
- * balance; the month's totals above, a day's details a click away.
+ * Calendar: a month of bills, income and (with TaskMint connected) its
+ * withdrawals and each work day's earnings not withdrawn yet, with each
+ * day's closing balance; the month's totals above, a day's details a click
+ * away.
  */
 
 import { ReactNode, useId, useState } from 'react';
@@ -9,6 +10,7 @@ import { Box, Button, IconButton, Paper, Typography } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { useCoreQuery } from '../../../data/BudgetContext';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { PHONE } from '../../../theme/media';
 import { addDays, addMonths, formatMonth } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
@@ -78,6 +80,7 @@ export function CalendarPage() {
   const view = useCoreQuery('get_month', { month });
   const titleId = useId();
   const open = view.days.find(day => day.date === openDay);
+  const { shown: taskmintShown } = useTaskMint();
 
   const goToMonth = (next: string) => {
     setMonth(next);
@@ -93,7 +96,11 @@ export function CalendarPage() {
     <PageContainer>
       <PageHeader
         title="Calendar"
-        subtitle="Bills, income, and TaskMint’s earnings and withdrawals, with the balance each day ends on."
+        subtitle={
+          taskmintShown
+            ? 'Bills, income, and TaskMint’s earnings and withdrawals, with the balance each day ends on.'
+            : 'Bills and income, with the balance each day ends on.'
+        }
       />
       <Paper sx={{ p: { xs: 1.5, sm: 2.5 } }}>
         <Box
@@ -140,7 +147,7 @@ export function CalendarPage() {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, sm: 3 } }}>
             <Stat label="Bills" value={formatCents(view.billsCents)} />
             <Stat label="Income" value={formatCents(view.incomeCents)} />
-            <Stat label="TaskMint" value={formatCents(view.withdrawalsCents)} />
+            {taskmintShown && <Stat label="TaskMint" value={formatCents(view.withdrawalsCents)} />}
           </Box>
         </Box>
 
@@ -162,18 +169,22 @@ export function CalendarPage() {
             <LegendItem tone="success" dot={<Dot tone="success" />}>
               Income
             </LegendItem>
-            <LegendItem tone="secondary" dot={<Dot tone="secondary" />}>
-              TaskMint withdrawal
-            </LegendItem>
-            <LegendItem tone="secondary" dashed dot={<Dot tone="secondary" hollow />}>
-              Expected withdrawal
-            </LegendItem>
-            <LegendItem tone="secondary" dotted dot={<Dot tone="secondary" shape="earned" />}>
-              Earned, not withdrawn yet
-            </LegendItem>
-            <Typography variant="caption" color="text.secondary">
-              ~ includes time tracked in TaskMint and not imported yet
-            </Typography>
+            {taskmintShown && (
+              <>
+                <LegendItem tone="secondary" dot={<Dot tone="secondary" />}>
+                  TaskMint withdrawal
+                </LegendItem>
+                <LegendItem tone="secondary" dashed dot={<Dot tone="secondary" hollow />}>
+                  Expected withdrawal
+                </LegendItem>
+                <LegendItem tone="secondary" dotted dot={<Dot tone="secondary" shape="earned" />}>
+                  Earned, not withdrawn yet
+                </LegendItem>
+                <Typography variant="caption" color="text.secondary">
+                  ~ includes time tracked in TaskMint and not imported yet
+                </Typography>
+              </>
+            )}
           </Box>
         </Box>
       </Paper>

@@ -1,8 +1,9 @@
 /**
  * Overview: where the balance is going. Today's balance, what's safe to
  * spend and the lowest it gets, what's overdue, what's due this week and
- * coming in, TaskMint's next withdrawal (and, when the balance goes short,
- * what more TaskMint work would cover it), and the next two weeks day by day.
+ * coming in, TaskMint's next withdrawal when TaskMint is connected (and,
+ * when the balance goes short, what more TaskMint work would cover it), and
+ * the next two weeks day by day.
  */
 
 import { useState } from 'react';
@@ -12,11 +13,11 @@ import {
   CallReceived as IncomeIcon,
   EventNote as DueIcon,
   Savings as WithdrawalIcon,
-  TrendingDown as LowestIcon,
 } from '@mui/icons-material';
 import type { EarnToCover, Overview, UpcomingDay } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { PHONE } from '../../../theme/media';
 import { formatDay, formatMoment, formatRelativeDay, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
@@ -121,6 +122,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
       : `${formatWeekday(nextWithdrawal.arrivesOn)}, in the bank`
     : WITHDRAWALS_NOTE[overview.taskmint.state];
   const { taskmint } = overview;
+  const { shown: taskmintShown } = useTaskMint();
   const staleImport = taskmint.state === 'ready' && settings.taskmint.useForecast && importIsStale(taskmint, nowMs);
 
   return (
@@ -227,20 +229,15 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
           icon={<IncomeIcon fontSize="large" />}
           color="success"
         />
-        <StatsCard
-          title="Next TaskMint withdrawal"
-          value={withdrawalValue}
-          subtitle={withdrawalSubtitle}
-          icon={<WithdrawalIcon fontSize="large" />}
-          color="info"
-        />
-        <StatsCard
-          title="Lowest ahead"
-          value={formatCents(lowest.cents)}
-          subtitle={formatWeekday(lowest.date)}
-          icon={<LowestIcon fontSize="large" />}
-          color={lowest.cents < 0 ? 'error' : 'primary'}
-        />
+        {taskmintShown && (
+          <StatsCard
+            title="Next TaskMint withdrawal"
+            value={withdrawalValue}
+            subtitle={withdrawalSubtitle}
+            icon={<WithdrawalIcon fontSize="large" />}
+            color="info"
+          />
+        )}
       </Box>
 
       {overview.overdue.length + overview.lateIncome.length > 0 && (

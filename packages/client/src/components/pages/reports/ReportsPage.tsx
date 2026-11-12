@@ -1,7 +1,7 @@
 /**
  * Reports: a month looked back on (core's get_report). What the bills and
  * income came to against what was expected, by category; TaskMint's money
- * in; the bills paid late; what went out besides the bills, by the
+ * in (with TaskMint connected); the bills paid late; what went out besides the bills, by the
  * balance's updates; and the six months up to it side by side.
  */
 
@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import type { CategoryReport } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { addMonths, formatDay, formatMonth } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
@@ -45,6 +46,7 @@ export function ReportsPage() {
   const { today } = useCoreQuery('get_overview');
   const [month, setMonth] = useState(today.slice(0, 7));
   const report = useCoreQuery('get_report', { month });
+  const { shown: taskmintShown } = useTaskMint();
   const current = today.slice(0, 7);
 
   return (
@@ -90,13 +92,15 @@ export function ReportsPage() {
           icon={<IncomeIcon fontSize="large" />}
           color="success"
         />
-        <StatsCard
-          title="From TaskMint"
-          value={formatCents(report.withdrawalsCents)}
-          subtitle="Withdrawals in the bank"
-          icon={<WithdrawalIcon fontSize="large" />}
-          color="info"
-        />
+        {taskmintShown && (
+          <StatsCard
+            title="From TaskMint"
+            value={formatCents(report.withdrawalsCents)}
+            subtitle="Withdrawals in the bank"
+            icon={<WithdrawalIcon fontSize="large" />}
+            color="info"
+          />
+        )}
         <StatsCard
           title="Left over"
           value={formatCents(report.netCents)}
@@ -185,7 +189,7 @@ export function ReportsPage() {
                 <TableCell>Month</TableCell>
                 <TableCell align="right">Bills paid</TableCell>
                 <TableCell align="right">Income</TableCell>
-                <TableCell align="right">TaskMint</TableCell>
+                {taskmintShown && <TableCell align="right">TaskMint</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -198,9 +202,11 @@ export function ReportsPage() {
                   <TableCell align="right" sx={{ fontFamily: MONO }}>
                     {formatCents(row.incomeCents)}
                   </TableCell>
-                  <TableCell align="right" sx={{ fontFamily: MONO }}>
-                    {formatCents(row.withdrawalsCents)}
-                  </TableCell>
+                  {taskmintShown && (
+                    <TableCell align="right" sx={{ fontFamily: MONO }}>
+                      {formatCents(row.withdrawalsCents)}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

@@ -30,7 +30,7 @@ describe('the overview', () => {
   it('warns before the balance goes short or low', async () => {
     const { store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 150_000)] });
     expect(screen.getByText('Your balance goes below zero on Thu, Nov 12, to -$500.00.')).toBeInTheDocument();
-    expect(screen.getByText('Lowest ahead').parentElement).toHaveTextContent('-$2,000.00');
+    expect(screen.getByText(/^Lowest in the next 60 days:/)).toHaveTextContent('-$2,000.00');
 
     store.putDoc('item~rent', JSON.stringify(monthly('rent', 'Rent', 12, 95_000)));
     store.putDoc(
