@@ -51,7 +51,7 @@ interface SidebarProps {
 const SIDEBAR_WIDTH = 240;
 const SIDEBAR_WIDTH_COLLAPSED = 72;
 
-const VIEW_ICONS: Record<SidebarView, typeof OverviewIcon> = {
+export const VIEW_ICONS: Record<SidebarView, typeof OverviewIcon> = {
   overview: OverviewIcon,
   bills: BillsIcon,
   income: IncomeIcon,

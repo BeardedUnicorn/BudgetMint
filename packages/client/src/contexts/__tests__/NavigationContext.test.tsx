@@ -1,8 +1,8 @@
 // Adapted from TaskMint packages/client/src/contexts/__tests__/NavigationContext.test.tsx @ 1623bee.
-import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { ReactNode } from 'react';
-import { NavigationProvider, useNavigation, ACTIVE_VIEW_KEY } from '../NavigationContext';
+import { NavigationProvider, useBackDismiss, useNavigation, ACTIVE_VIEW_KEY } from '../NavigationContext';
 import { readLocal, writeLocal } from '../../utils/localStore';
 
 const persisted = ({ children }: { children: ReactNode }) => (
@@ -58,5 +58,96 @@ describe('NavigationProvider', () => {
 
   it('needs the provider', () => {
     expect(() => renderHook(() => useNavigation())).toThrow(/NavigationProvider/);
+  });
+
+  it('goes back to the page before, and leaves entries that aren’t its own alone', async () => {
+    const { result } = renderHook(() => useNavigation(), { wrapper: persisted });
+    act(() => result.current.navigate('bills'));
+    act(() => result.current.navigate('forecast'));
+    // Opening the page already showing adds nothing to go back through
+    act(() => result.current.navigate('forecast', { add: true }));
+    act(() => window.history.back());
+    await waitFor(() => expect(result.current.view).toBe('bills'));
+    expect(readLocal(ACTIVE_VIEW_KEY, null)).toBe('bills');
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: { someone: 'else' } }));
+    });
+    expect(result.current.view).toBe('bills');
+  });
+
+  describe('with something open on top', () => {
+    const top = (initialProps: { open: boolean; onBack: () => unknown }) =>
+      renderHook(
+        ({ open, onBack }) => {
+          useBackDismiss(open, onBack);
+          return useNavigation();
+        },
+        { wrapper: NavigationProvider, initialProps }
+      );
+    const onTop = () => (window.history.state as { budgetmint: { overlay?: true } }).budgetmint.overlay === true;
+
+    it('closes it on Back, and stays on the page', async () => {
+      const onBack = vi.fn();
+      const { result, rerender } = top({ open: false, onBack });
+      act(() => result.current.navigate('bills'));
+      rerender({ open: true, onBack });
+      expect(onTop()).toBe(true);
+      act(() => window.history.back());
+      await waitFor(() => expect(onBack).toHaveBeenCalled());
+      rerender({ open: false, onBack });
+      await act(async () => undefined);
+      expect(onTop()).toBe(false);
+      expect(result.current.view).toBe('bills');
+    });
+
+    it('keeps it open when it asks first, and takes its entry off once it closes itself', async () => {
+      const onBack = vi.fn(() => false);
+      const { result, rerender } = top({ open: true, onBack });
+      act(() => window.history.back());
+      await waitFor(() => expect(onBack).toHaveBeenCalled());
+      // Still open: Back again would ask again
+      expect(onTop()).toBe(true);
+      rerender({ open: false, onBack });
+      await waitFor(() => expect(onTop()).toBe(false));
+      // Its going back wasn't the user's: the page stays
+      await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+      expect(result.current.view).toBe('overview');
+    });
+
+    it('hands its entry to a page opened from it', async () => {
+      const onBack = vi.fn();
+      const { result, rerender } = top({ open: true, onBack });
+      const depth = window.history.length;
+      act(() => result.current.navigate('reports'));
+      expect(window.history.length).toBe(depth);
+      expect(onTop()).toBe(false);
+      rerender({ open: false, onBack });
+      await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+      expect(result.current.view).toBe('reports');
+      expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('closes the top one of two first, keeping an entry for the one under it', async () => {
+      const under = vi.fn();
+      const over = vi.fn();
+      const { rerender } = renderHook(
+        ({ second }: { second: boolean }) => {
+          useBackDismiss(true, under);
+          useBackDismiss(second, over);
+        },
+        { wrapper: NavigationProvider, initialProps: { second: true } }
+      );
+      act(() => window.history.back());
+      await waitFor(() => expect(over).toHaveBeenCalled());
+      expect(under).not.toHaveBeenCalled();
+      expect(onTop()).toBe(true);
+      rerender({ second: false });
+      act(() => window.history.back());
+      await waitFor(() => expect(under).toHaveBeenCalled());
+    });
+  });
+
+  it('has no Back to take outside the pages', () => {
+    expect(() => renderHook(() => useBackDismiss(true, vi.fn()))).not.toThrow();
   });
 });

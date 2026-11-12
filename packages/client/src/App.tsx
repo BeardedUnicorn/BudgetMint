@@ -12,6 +12,7 @@ import { AppExtensionsContext } from './app/extensions';
 import { AuthLayout } from './components/auth/AuthLayout';
 import { SignInForm, type FormMode } from './components/auth/SignInForm';
 import { BalanceFooter } from './components/layout/BalanceFooter';
+import { BottomNav } from './components/layout/BottomNav';
 import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { ShortcutsDialog } from './components/layout/ShortcutsDialog';
 import { CompactTopBar } from './components/layout/CompactTopBar';
@@ -25,7 +26,7 @@ import { OverviewPage } from './components/pages/overview/OverviewPage';
 import { ReportsPage } from './components/pages/reports/ReportsPage';
 import { SavingsPage } from './components/pages/savings/SavingsPage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
-import { NavigationProvider, useNavigation } from './contexts/NavigationContext';
+import { NavigationProvider, useBackDismiss, useNavigation } from './contexts/NavigationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BudgetProvider, useBudget, useCoreQuery } from './data/BudgetContext';
@@ -166,14 +167,24 @@ function AppShell() {
   const { view: activeView, navigate } = useNavigation();
   const compact = useCompactLayout();
   const [navigationOpen, setNavigationOpen] = useState(false);
+  // Back closes the phone's slid-in sidebar first
+  useBackDismiss(compact && navigationOpen, () => setNavigationOpen(false));
   const Page = PAGES[activeView];
   const footer = (collapsed: boolean) => <BalanceFooter collapsed={collapsed} />;
 
   return (
     <>
       <BackgroundJobs />
-      {/* dvh: a phone's browser bars and keyboard don't hide the bottom */}
-      <Box sx={{ height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, display: 'flex' }}>
+      {/* dvh: a phone's browser bars and keyboard don't hide the bottom. On a phone the page is
+          above the bottom bar; the sidebar slides in over both */}
+      <Box
+        sx={{
+          height: '100vh',
+          '@supports (height: 100dvh)': { height: '100dvh' },
+          display: 'flex',
+          flexDirection: compact ? 'column' : 'row',
+        }}
+      >
         <Sidebar
           variant={compact ? 'temporary' : 'permanent'}
           open={navigationOpen}
@@ -190,15 +201,17 @@ function AppShell() {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'auto',
-            pb: 'env(safe-area-inset-bottom)',
+            // The bottom bar keeps clear of the gesture bar on a phone
+            pb: compact ? 0 : 'env(safe-area-inset-bottom)',
           }}
         >
-          {compact && (
-            <CompactTopBar title={VIEW_LABELS[activeView]} onOpenNavigation={() => setNavigationOpen(true)} />
-          )}
+          {compact && <CompactTopBar title={VIEW_LABELS[activeView]} />}
           <StatusNotices />
           <Page />
         </Box>
+        {compact && (
+          <BottomNav activeView={activeView} onViewChange={navigate} onMore={() => setNavigationOpen(true)} />
+        )}
       </Box>
     </>
   );

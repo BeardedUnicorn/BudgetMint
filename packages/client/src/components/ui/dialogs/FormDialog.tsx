@@ -1,7 +1,8 @@
-// Adapted from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: a click outside doesn't close it, and Escape asks before throwing a change away.
+// Adapted from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: a click outside doesn't close it, Escape (or Back) asks before throwing a change away.
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box } from '@mui/material';
 import { FormDialogProps } from '../../../types/ui';
+import { useBackDismiss } from '../../../contexts/NavigationContext';
 import { ConfirmDialog } from './ConfirmDialog';
 
 /**
@@ -10,6 +11,12 @@ import { ConfirmDialog } from './ConfirmDialog';
  */
 export function FormDialog({ onClose, title, children, onSubmit, dirty = false }: FormDialogProps) {
   const [asking, setAsking] = useState(false);
+  // Back (Android's gesture, the browser's button) closes it as Escape does
+  useBackDismiss(true, () => {
+    if (!dirty) return onClose();
+    setAsking(true);
+    return false;
+  });
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     onSubmit();

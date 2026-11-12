@@ -1,18 +1,19 @@
-// Adapted from TaskMint packages/client/src/components/layout/CompactTopBar.tsx @ 1623bee.
-import { AppBar, IconButton, Toolbar, Typography } from '@mui/material';
-import { Menu as MenuIcon } from '@mui/icons-material';
+// Adapted from TaskMint packages/client/src/components/layout/CompactTopBar.tsx @ 1623bee: no menu button (the bottom bar has More), and whether changes are still on their way.
+import { AppBar, Chip, Toolbar, Typography } from '@mui/material';
+import { useBudget } from '../../data/BudgetContext';
 
 interface CompactTopBarProps {
   /** The page on screen. */
   title: string;
-  onOpenNavigation: () => void;
 }
 
 /**
- * The phone's stand-in for the sidebar: a menu button that slides the
- * sidebar in, and the page's name.
+ * The phone's top: the page's name, and (the sidebar's foot being out of
+ * sight) whether changes are still being saved, or it's offline.
  */
-export function CompactTopBar({ title, onOpenNavigation }: CompactTopBarProps) {
+export function CompactTopBar({ title }: CompactTopBarProps) {
+  const { view } = useBudget();
+  const status = view.offline ? 'Offline' : view.saving ? 'Saving…' : null;
   return (
     <AppBar
       position="static"
@@ -26,13 +27,11 @@ export function CompactTopBar({ title, onOpenNavigation }: CompactTopBarProps) {
         pt: 'env(safe-area-inset-top)',
       }}
     >
-      <Toolbar sx={{ gap: 1, px: 1 }}>
-        <IconButton aria-label="Open navigation" onClick={onOpenNavigation}>
-          <MenuIcon />
-        </IconButton>
+      <Toolbar sx={{ gap: 1, px: 2 }}>
         <Typography component="div" variant="h6" noWrap sx={{ flex: 1, minWidth: 0, fontWeight: 600 }}>
           {title}
         </Typography>
+        {status && <Chip size="small" label={status} variant="outlined" />}
       </Toolbar>
     </AppBar>
   );
