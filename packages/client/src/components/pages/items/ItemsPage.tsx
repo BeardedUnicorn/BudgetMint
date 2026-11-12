@@ -231,7 +231,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                         color="info"
                       />
                     )}
-                    {item.saveUp && <Chip size="small" label="Saving up" variant="outlined" color="secondary" />}
+                    {item.saveUp && <Chip size="small" label="Setting aside" variant="outlined" color="secondary" />}
                     {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
                   </Stack>
                   {item.note && (

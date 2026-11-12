@@ -102,7 +102,7 @@ describe('paydays and bills on schedules banks keep', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(itemNamed(store, 'Car insurance').saveUp).toEqual({ since: '2026-11-10' });
-    expect(screen.getByText('Saving up')).toBeInTheDocument();
+    expect(screen.getByText('Setting aside')).toBeInTheDocument();
   });
 
   it('edits the new schedules where they are, and a change to weekends counts as one', async () => {
@@ -271,7 +271,7 @@ describe('savings', () => {
     await user.type(within(dialog).getByLabelText('Name'), 'Holiday');
     await user.type(within(dialog).getByLabelText('Amount'), '1000');
     fireEvent.change(within(dialog).getByLabelText('On'), { target: { value: '2027-02-20' } });
-    expect(within(dialog).getByRole('switch', { name: /Save up for it/ })).toBeChecked();
+    expect(within(dialog).getByRole('switch', { name: /Set money aside for it each month until then/ })).toBeChecked();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(itemNamed(store, 'Holiday')).toMatchObject({
@@ -304,7 +304,9 @@ describe('savings', () => {
     const { user, store } = await startBudget();
     await user.click(screen.getByRole('button', { name: 'Savings' }));
     expect(screen.getByText('Nothing saved up for yet')).toBeInTheDocument();
-    expect(screen.getByText('Put money by a month at a time for yearly bills and things to come.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Set money aside a month at a time for yearly bills and things to come.')
+    ).toBeInTheDocument();
     store.putDoc(
       'item~done',
       JSON.stringify(
@@ -573,7 +575,7 @@ describe('checking the balance as it’s updated', () => {
     await user.clear(within(dialog).getByLabelText('Balance'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(
-      within(dialog).getByText('Enter what the account holds (a minus sign if it’s overdrawn)')
+      within(dialog).getByText('Enter what the bank account holds (a minus sign if it’s overdrawn)')
     ).toBeInTheDocument();
     // An amount that varies starts empty when ticked
     fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '2026-11-10' } });

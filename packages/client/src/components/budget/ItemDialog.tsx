@@ -557,7 +557,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             control={<Switch checked={saveUp} onChange={event => setSaveUp(event.target.checked)} />}
             label={
               every === 'once'
-                ? 'Save up for it: set some aside each month until then'
+                ? 'Set money aside for it each month until then'
                 : 'Set money aside for it each month, so it’s ready when it’s due'
             }
           />

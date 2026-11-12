@@ -59,7 +59,7 @@ export function ForecastSection() {
           label="Low balance mark"
           cents={settings.lowBalanceCents}
           onSave={lowBalanceCents => save(current => ({ ...current, lowBalanceCents }))}
-          helperText={`Days that end below it are flagged (and below ${formatWholeCents(0)}, short). Leave it empty for none.`}
+          helperText={`Days that end below it are marked Low (and below ${formatWholeCents(0)}, Below zero). Leave it empty for none.`}
           sx={{ maxWidth: 260 }}
         />
         <AmountSetting

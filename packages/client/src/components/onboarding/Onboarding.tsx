@@ -322,7 +322,7 @@ export function Onboarding() {
                           ? 'Checking TaskMint…'
                           : view.taskmintUser
                             ? 'Not connected yet: turn on cloud sync in TaskMint, and its withdrawals show up here.'
-                            : 'Not signed in to TaskMint: its account isn’t this one. Sign in to it later in Settings → TaskMint.'}
+                            : 'Not signed in to TaskMint: your TaskMint account isn’t this one. Sign in to it later in Settings → TaskMint.'}
                       </Typography>
                     )}
                     <FormControlLabel

@@ -289,7 +289,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         {overview.overdue.length + overview.lateIncome.length > 0 && (
           <Paper component="section" aria-labelledby="overdue-title" sx={SECTION}>
             <Typography id="overdue-title" variant="h6" component="h2" sx={{ mb: 1 }}>
-              Past due
+              Overdue and late
             </Typography>
             <OccurrenceList occurrences={[...overview.overdue, ...overview.lateIncome]} today={today} />
           </Paper>
