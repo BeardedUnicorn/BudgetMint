@@ -12,6 +12,16 @@ import type { AnalyticsPlatform } from '@budgetmint/client/shell';
 type Sdk = typeof import('firebase/analytics');
 type Started = { sdk: Sdk; analytics: ReturnType<Sdk['initializeAnalytics']> } | null;
 
+/**
+ * Google's tag: page views only when BudgetMint says (no automatic one),
+ * and nothing for ads (no Google signals, no ad personalisation).
+ */
+export const TAG_CONFIG = {
+  send_page_view: false,
+  allow_google_signals: false,
+  allow_ad_personalization_signals: false,
+};
+
 const loadSdk = () => Promise.all([import('firebase/analytics'), import('firebase/app')]);
 
 export function createWebAnalytics(
@@ -22,7 +32,7 @@ export function createWebAnalytics(
   const start = () =>
     (ready ??= load().then(async ([sdk, app]) =>
       (await sdk.isSupported())
-        ? { sdk, analytics: sdk.initializeAnalytics(app.getApp(), { config: { send_page_view: false } }) }
+        ? { sdk, analytics: sdk.initializeAnalytics(app.getApp(), { config: TAG_CONFIG }) }
         : null
     ));
   return {

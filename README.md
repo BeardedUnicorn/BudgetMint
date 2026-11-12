@@ -253,7 +253,9 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   services provider, through R8.
 - The manifest asks for exact alarms (`USE_EXACT_ALARM`, and
   `SCHEDULE_EXACT_ALARM` on Android 12), so a bill's reminder comes at its
-  hour.
+  hour. Unlike TaskMint's, it also removes the advertising-ID permissions
+  Firebase Analytics brings in, and turns off Analytics' advertising ID and
+  ad personalisation, as the privacy page says.
 - The launch screen is androidx `core-splashscreen`'s, themed by
   `Theme.budgetmint.Starting` (`values/themes.xml`, and `values-v31` for the
   wordmark, which Android 12 and later show): the leaf on the app icon's
