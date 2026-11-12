@@ -562,6 +562,11 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             }
           />
         )}
+        {item?.saveUp && !saveUp && (
+          <Alert severity="warning">
+            What's set aside for it so far is let go. Turned on again, it starts over from today.
+          </Alert>
+        )}
         {/* One under the other on a phone */}
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
           <FormControlLabel

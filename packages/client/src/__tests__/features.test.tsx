@@ -208,6 +208,41 @@ describe('paydays and bills on schedules banks keep', () => {
 });
 
 describe('savings', () => {
+  it('archives a goal, deletes one, and warns before what’s set aside is let go', async () => {
+    const saved = (id: string, name: string) =>
+      item({
+        id,
+        kind: 'bill',
+        name,
+        saveUp: { since: '2026-01-01' },
+        schedule: [
+          { from: '2027-03-03', until: null, repeat: { every: 'years', n: 1 }, amountCents: 120_000, weekends: 'keep' },
+        ],
+      });
+    const { user, store, core } = await startBudget({
+      items: [saved('car', 'Car insurance'), saved('trip', 'Trip'), saved('tax', 'Tax')],
+    });
+    await user.click(screen.getByRole('button', { name: 'Savings' }));
+    await user.click(screen.getByRole('button', { name: 'Archive Trip' }));
+    expect(await screen.findByText('Trip archived')).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Trip' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete Tax' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete Tax?' })).getByRole('button', { name: 'Delete' })
+    );
+    await waitFor(() => expect(store.docs.has('item~tax')).toBe(false));
+    // Turning it off lets go of what's set aside: said before it's saved
+    // (once the question has gone: until then the page is hidden from screen readers)
+    await user.click(await screen.findByRole('button', { name: 'Edit Car insurance' }));
+    await user.click(screen.getByRole('switch', { name: /Set money aside for it each month/ }));
+    expect(screen.getByText(/What's set aside for it so far is let go/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // Gone on another device meanwhile: said in a toast
+    core.call('apply_docs', { docs: [{ docId: 'item~car', json: null, schema: 1 }] });
+    await user.click(screen.getByRole('button', { name: 'Archive Car insurance' }));
+    expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
+  });
+
   it('adds a goal and shows each bill saved up for', async () => {
     const insurance = item({
       id: 'car',

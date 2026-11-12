@@ -10,11 +10,13 @@ import { useState } from 'react';
 import { Box, Button, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 import { Add as AddIcon, Savings as SavingsIcon } from '@mui/icons-material';
 import type { GoalView } from '@budgetmint/contracts';
-import { useCoreQuery } from '../../../data/BudgetContext';
+import { useNotification } from '../../../contexts/NotificationContext';
+import { useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { formatDayInYear } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
+import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { EmptyState } from '../../ui/display/EmptyState';
 import { SECTION } from '../overview/OverviewPage';
 
@@ -28,7 +30,17 @@ function nextLine(goal: GoalView): string {
   return `Next ${formatCents(goal.nextPart.cents)} on ${formatDayInYear(goal.nextPart.date)}${after}.`;
 }
 
-function Goal({ goal, onEdit }: { goal: GoalView; onEdit: () => void }) {
+function Goal({
+  goal,
+  onEdit,
+  onArchive,
+  onDelete,
+}: {
+  goal: GoalView;
+  onEdit: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+}) {
   const share = goal.targetCents > 0 ? Math.min(100, (goal.setAsideCents / goal.targetCents) * 100) : 100;
   return (
     <Paper component="section" aria-label={goal.name} sx={{ p: 2.5 }}>
@@ -41,9 +53,17 @@ function Goal({ goal, onEdit }: { goal: GoalView; onEdit: () => void }) {
             {goal.once ? 'On' : 'Next due'} {formatDayInYear(goal.due)}
           </Typography>
         </Box>
-        <Button size="small" onClick={onEdit} aria-label={`Edit ${goal.name}`}>
-          Edit
-        </Button>
+        <Stack direction="row" spacing={0.5}>
+          <Button size="small" onClick={onEdit} aria-label={`Edit ${goal.name}`}>
+            Edit
+          </Button>
+          <Button size="small" onClick={onArchive} aria-label={`Archive ${goal.name}`}>
+            Archive
+          </Button>
+          <Button size="small" color="error" onClick={onDelete} aria-label={`Delete ${goal.name}`}>
+            Delete
+          </Button>
+        </Stack>
       </Stack>
       <LinearProgress
         variant="determinate"
@@ -68,6 +88,18 @@ export function SavingsPage() {
   /** A goal being added (null), or the bill being edited. */
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
   const edited = editing ? items.find(view => view.item.id === editing) : undefined;
+  /** The goal asked about deleting. */
+  const [deleting, setDeleting] = useState<GoalView | null>(null);
+  const change = useBudgetChange();
+  const { showError } = useNotification();
+  /** A change to a goal, or a toast saying why not (it's gone already, on another device). */
+  const act = (run: () => void) => {
+    try {
+      run();
+    } catch (error) {
+      showError((error as Error).message);
+    }
+  };
 
   const add = (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEditing(null)}>
@@ -103,7 +135,15 @@ export function SavingsPage() {
           }}
         >
           {view.goals.map(goal => (
-            <Goal key={goal.itemId} goal={goal} onEdit={() => setEditing(goal.itemId)} />
+            <Goal
+              key={goal.itemId}
+              goal={goal}
+              onEdit={() => setEditing(goal.itemId)}
+              onArchive={() =>
+                act(() => change('archive_item', { itemId: goal.itemId, archived: true }, `${goal.name} archived`))
+              }
+              onDelete={() => setDeleting(goal)}
+            />
           ))}
         </Box>
       )}
@@ -117,6 +157,15 @@ export function SavingsPage() {
           onClose={() => setEditing(undefined)}
         />
       )}
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => act(() => change('delete_item', { itemId: deleting!.itemId }, `${deleting!.name} deleted`))}
+        title={`Delete ${deleting?.name ?? ''}?`}
+        message="What's set aside for it is let go, and its history goes too. Undo brings it back for a few seconds."
+        confirmLabel="Delete"
+        severity="error"
+      />
     </PageContainer>
   );
 }
