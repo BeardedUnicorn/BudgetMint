@@ -16,6 +16,7 @@ function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
     varies: false,
     status: { state: 'open' },
     late: false,
+    inBalance: false,
     amountCents: null,
     changed: false,
     note: null,

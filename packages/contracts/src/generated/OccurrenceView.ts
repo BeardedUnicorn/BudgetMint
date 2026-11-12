@@ -24,6 +24,11 @@ varies: boolean, status: OccStatus,
  */
 late: boolean, 
 /**
+ * On the balance's own day, and counted in it: paid (or received) that
+ * day, or due then on autopay. Its amount doesn't move that day's balance.
+ */
+inBalance: boolean, 
+/**
  * This time's amount, when the user set one (else the schedule's).
  */
 amountCents: number | null, 

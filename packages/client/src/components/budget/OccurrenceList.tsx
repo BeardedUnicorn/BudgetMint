@@ -97,6 +97,12 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     {occurrence.note}
                   </Typography>
                 )}
+                {/* Its amount doesn't move the day's balance: say why */}
+                {occurrence.inBalance && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    In your balance already
+                  </Typography>
+                )}
                 {/* Under the name, so it never pushes the amount out of line */}
                 {label && (
                   <Box>

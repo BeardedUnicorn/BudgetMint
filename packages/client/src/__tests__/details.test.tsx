@@ -357,6 +357,21 @@ describe('a bill deleted on another device', () => {
     expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
+
+  it('says so when archiving an overdue bill here is refused', async () => {
+    // Due on the 5th, after the balance's day: overdue, so archiving asks first
+    const { user, core } = await startBudget({
+      settings: { balance: { cents: 100_000, asOf: '2026-11-01' } },
+      items: [monthly('rent', 'Rent', 5, 50_000)],
+    });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
+    core.call('apply_docs', { docs: [{ docId: 'item~rent', json: null, schema: 1 }] });
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Archive Rent?' })).getByRole('button', { name: 'Archive' })
+    );
+    expect(await screen.findByText("That bill isn't there any more (deleted on another device?)")).toBeInTheDocument();
+  });
 });
 
 describe('an error while showing a page', () => {

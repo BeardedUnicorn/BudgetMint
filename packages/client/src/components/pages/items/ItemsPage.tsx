@@ -77,7 +77,7 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
   },
 };
 
-type Dialog = { type: 'edit'; view: ItemView | null } | { type: 'history' | 'delete'; view: ItemView };
+type Dialog = { type: 'edit'; view: ItemView | null } | { type: 'history' | 'delete' | 'archive'; view: ItemView };
 
 interface Action {
   /** Its tooltip (and, without `short`, its menu item). */
@@ -175,7 +175,9 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
             short: 'Archive',
             name: `Archive ${item.name}`,
             icon: <ArchiveIcon fontSize="small" />,
-            run: () => archive(view, true),
+            // A bill still overdue: archived, the forecast lets it go, so that's asked first
+            run: () =>
+              item.kind === 'bill' && view.next?.late ? onOpen({ type: 'archive', view }) : archive(view, true),
           },
           {
             title: 'Delete',
@@ -429,6 +431,21 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
         message="Its history goes too. Undo brings it back for a few seconds; after that it's gone."
         confirmLabel="Delete"
         severity="error"
+      />
+      <ConfirmDialog
+        open={dialog?.type === 'archive'}
+        onClose={() => setDialog(null)}
+        onConfirm={() => {
+          const { item } = dialog!.view!;
+          try {
+            change('archive_item', { itemId: item.id, archived: true }, `${item.name} archived`);
+          } catch (error) {
+            showError((error as Error).message);
+          }
+        }}
+        title={`Archive ${dialog?.view?.item.name ?? ''}?`}
+        message={`${formatCents(dialog?.view?.next?.expectedCents ?? 0)} is still overdue on it. Archived, that’s dropped from your forecast: mark it paid first if it was.`}
+        confirmLabel="Archive"
       />
     </PageContainer>
   );

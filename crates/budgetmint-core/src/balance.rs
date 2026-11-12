@@ -12,7 +12,7 @@ use crate::forecast::contract::PayoutForecast;
 use crate::model::{Balance, BalanceCheck, Cents, OccStatus, Settings};
 use crate::occur::{occurrences, MOVE_DAYS};
 use crate::plan::{self, check_balance, OccurrenceInput, Planned, RecordInput};
-use crate::project::{project, settled_through, spending_between};
+use crate::project::{open_settled_through, project, spending_between};
 use crate::time::Ctx;
 use crate::views::{occurrence_view, OccurrenceView};
 use chrono::{Duration, NaiveDate};
@@ -71,7 +71,7 @@ fn open_since<'a>(
     balance: Balance,
     ctx: &Ctx,
 ) -> Vec<crate::occur::Occurrence<'a>> {
-    let after = settled_through(&snapshot.settings(), ctx.today());
+    let after = open_settled_through(&snapshot.settings(), ctx.today());
     // A day or two short of how far one can be moved, to the day after
     let from = (after + Duration::days(1)).max(balance.as_of - Duration::days(MOVE_DAYS - 1));
     occurrences(snapshot, from, balance.as_of, false)
@@ -181,7 +181,7 @@ pub fn balance_check(
     ctx: &Ctx,
 ) -> BalanceCheckView {
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = crate::views::Settled::of(&snapshot.settings(), today);
     let open = open_since(snapshot, balance, ctx);
     let views = open
         .iter()
@@ -453,6 +453,15 @@ mod tests {
             .map(|view| view.item_id.as_str())
             .collect();
         assert_eq!(names, vec!["phone", "power"]);
+
+        // One due on the last balance's own day and never marked: asked about too
+        let mut first = budget();
+        put_item(
+            &mut first,
+            item("first", ItemKind::Bill, d(2026, 11, 1), Repeat::Once, 700),
+        );
+        let check = balance_check(&first, None, today_balance(70_000), vec![], &[], &ctx());
+        assert_eq!(check.open[0].item_id, "first");
 
         // The power bill hasn't come out yet: it's expected after, so more was expected now
         let later = balance_check(

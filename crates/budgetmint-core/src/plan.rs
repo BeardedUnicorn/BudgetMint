@@ -11,7 +11,7 @@ use crate::model::{
     MIN_HORIZON_DAYS,
 };
 use crate::occur::MOVE_DAYS;
-use crate::recur::is_item_date;
+use crate::recur::{is_item_date, item_dates};
 use crate::time::{in_calendar, Ctx, FIRST_YEAR, LAST_YEAR};
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -337,11 +337,16 @@ pub fn save_item_from(
     let name = text(Some(input.name), MAX_NAME, "name")
         .map_err(at(FormField::Name))?
         .ok_or_else(|| at(FormField::Name)(invalid("Give it a name")))?;
+    let changed_from = change.map(|change| change.from);
     if let Some(change) = change {
         input.schedule = rescheduled(input.schedule, change);
     }
     check_schedule(&input.schedule)?;
     let existing = snapshot.items.get(&input.id);
+    // Where the first one after the change would come in a period settled already
+    let again = existing
+        .zip(changed_from)
+        .and_then(|(old, from)| settled_already(snapshot, old, &input.schedule, from));
     let created_at = existing.map_or(ctx.now, |existing| existing.created_at);
     let save_up = if input.save_up {
         // How often it comes is what refuses it
@@ -391,7 +396,68 @@ pub fn save_item_from(
     }) {
         return Ok(Planned::default());
     }
-    Ok(write_item(snapshot, &saved))
+    let mut planned = write_item(snapshot, &saved);
+    if let Some(date) = again {
+        planned.then(
+            set_occurrence(
+                snapshot,
+                OccurrenceInput {
+                    item_id: saved.id,
+                    date,
+                    status: OccStatus::Skipped,
+                    amount_cents: None,
+                    moved_to: None,
+                    note: Some(SETTLED_ALREADY.into()),
+                },
+                ctx,
+            )
+            .expect("a date of the schedule just saved, with nothing on it, can be skipped"),
+        );
+    }
+    Ok(planned)
+}
+
+/// The note on the one a schedule change would have asked for twice.
+pub const SETTLED_ALREADY: &str = "Paid or skipped already, before its schedule changed.";
+
+/// How many days shorter than the old gap the new one may be and still be the same rhythm.
+const SAME_RHYTHM_DAYS: i64 = 3;
+
+/// The first date of a schedule changed from `from` on, when it would ask
+/// again for what's settled: paid on the 12th and then moved to the 20th,
+/// the same month would be owed twice. That's so when the last one paid (or
+/// skipped) is nearer to it than the next the old schedule had, and the new
+/// one comes no more often than the old (a bill made fortnightly is wanted
+/// each time). None when nothing's settled, or the date holds something.
+fn settled_already(
+    snapshot: &Snapshot,
+    old: &Item,
+    schedule: &[Segment],
+    from: NaiveDate,
+) -> Option<NaiveDate> {
+    let far = Duration::days(366 * 11);
+    let new = Item {
+        schedule: schedule.to_vec(),
+        ..old.clone()
+    };
+    let mut ahead = item_dates(&new, from, from + far)
+        .into_iter()
+        .map(|(date, _)| date);
+    let first = ahead.next()?;
+    let second = ahead.next()?;
+    let last = snapshot
+        .overrides
+        .range((old.id.clone(), from - far)..(old.id.clone(), first))
+        .rev()
+        .find(|(_, over)| over.status != OccStatus::Open)
+        .map(|((_, date), _)| *date)?;
+    let old_next = item_dates(old, last + Duration::days(1), last + far)
+        .first()
+        .map(|(date, _)| *date)?;
+    let nearer_the_last = first < old_next && first - last < old_next - first;
+    let as_often = second - first + Duration::days(SAME_RHYTHM_DAYS) >= old_next - last;
+    let free = !snapshot.overrides.contains_key(&(old.id.clone(), first));
+    (nearer_the_last && as_often && free).then_some(first)
 }
 
 /// Something that happens once, recorded as it happens (or will): what
@@ -1793,6 +1859,92 @@ mod tests {
         refused(save_settings(&mut s, Settings::default()));
         assert_eq!(s.settings().balance.unwrap().cents, 1);
         assert_eq!(s.items["rent"].name, "RENT");
+    }
+
+    #[test]
+    fn a_schedule_change_doesnt_ask_again_for_what_was_settled() {
+        use crate::occur::tests::{over, put_over};
+        let paid = |on| OccStatus::Done {
+            on,
+            amount_cents: 120_000,
+        };
+        // Rent on the 1st (input), or as said; and its schedule changed from a date on
+        let bill = |s: &mut Snapshot, repeat: Repeat, from: NaiveDate| {
+            let mut bill = input("rent");
+            bill.schedule[0].repeat = repeat;
+            bill.schedule[0].from = from;
+            save_item(s, bill.clone(), &ctx()).unwrap();
+            bill
+        };
+        let change = |from, repeat, until| ScheduleChange {
+            from,
+            repeat,
+            amount_cents: 120_000,
+            until,
+            weekends: None,
+        };
+        let on_the = |day| Repeat::Months { n: 1, day };
+        let skipped = |s: &Snapshot| -> Vec<NaiveDate> {
+            s.overrides
+                .values()
+                .filter(|over| over.status == OccStatus::Skipped)
+                .map(|over| over.date)
+                .collect()
+        };
+
+        // Paid on the 1st, then moved to the 5th: November's isn't owed again
+        let mut s = Snapshot::default();
+        let rent = bill(&mut s, on_the(1), d(2026, 11, 1));
+        // Nothing settled yet: nothing to skip
+        let mut unpaid = s.clone();
+        let to_5th = change(d(2026, 11, 2), on_the(5), None);
+        save_item_from(&mut unpaid, rent.clone(), Some(to_5th), true, &ctx()).unwrap();
+        assert!(skipped(&unpaid).is_empty());
+        put_over(&mut s, over("rent", d(2026, 11, 1), paid(d(2026, 11, 1))));
+        let before = s.clone();
+        let planned = save_item_from(&mut s, rent.clone(), Some(to_5th), true, &ctx()).unwrap();
+        assert_eq!(skipped(&s), vec![d(2026, 11, 5)]);
+        let note = s.overrides[&("rent".to_string(), d(2026, 11, 5))]
+            .note
+            .clone();
+        assert_eq!(note.as_deref(), Some(SETTLED_ALREADY));
+        // One change, with one undo for both
+        assert_eq!((planned.writes.len(), planned.undo.len()), (2, 2));
+
+        // Made fortnightly: each one's wanted
+        let mut often = before.clone();
+        let fortnightly = change(d(2026, 11, 2), Repeat::Weeks { n: 2 }, None);
+        save_item_from(&mut often, rent.clone(), Some(fortnightly), true, &ctx()).unwrap();
+        assert!(skipped(&often).is_empty());
+        // Once more only, or ending before it comes again: nothing to compare
+        let mut once = before.clone();
+        let last = change(d(2026, 11, 5), Repeat::Once, None);
+        save_item_from(&mut once, rent.clone(), Some(last), true, &ctx()).unwrap();
+        assert!(skipped(&once).is_empty());
+        let mut ended = before.clone();
+        let never = change(d(2026, 11, 2), on_the(5), Some(d(2026, 11, 3)));
+        save_item_from(&mut ended, rent.clone(), Some(never), true, &ctx()).unwrap();
+        assert!(skipped(&ended).is_empty());
+        // The 5th holds something already: it's left as it is
+        let mut held = before.clone();
+        put_over(&mut held, over("rent", d(2026, 11, 5), OccStatus::Open));
+        save_item_from(&mut held, rent.clone(), Some(to_5th), true, &ctx()).unwrap();
+        assert!(skipped(&held).is_empty());
+
+        // Paid on Oct 28, then moved earlier, to the 15th: that's November's, still owed
+        let mut s = Snapshot::default();
+        let rent = bill(&mut s, on_the(28), d(2026, 10, 28));
+        put_over(&mut s, over("rent", d(2026, 10, 28), paid(d(2026, 10, 28))));
+        let to_15th = change(d(2026, 11, 10), on_the(15), None);
+        save_item_from(&mut s, rent, Some(to_15th), true, &ctx()).unwrap();
+        assert!(skipped(&s).is_empty());
+
+        // A one-off paid, then made monthly: the old schedule had no next to be nearer to
+        let mut s = Snapshot::default();
+        let rent = bill(&mut s, Repeat::Once, d(2026, 11, 1));
+        put_over(&mut s, over("rent", d(2026, 11, 1), paid(d(2026, 11, 1))));
+        save_item_from(&mut s, rent, Some(to_5th), true, &ctx()).unwrap();
+        assert!(skipped(&s).is_empty());
     }
 
     #[test]

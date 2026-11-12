@@ -278,6 +278,7 @@ describe('the calendar', () => {
       varies: false,
       status: { state: 'open' as const },
       late: false,
+      inBalance: false,
       amountCents: null,
       changed: false,
       note: null,

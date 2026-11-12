@@ -17,4 +17,9 @@ assumedPerDayCents: number, taskmint: ForecastStatus,
 /**
  * The everyday spending taken out, a week's.
  */
-spendingWeeklyCents: number, };
+spendingWeeklyCents: number, 
+/**
+ * Income that's late (due, not on autopay, not marked received): left
+ * out of the balance until it's marked, so the forecast runs low by it.
+ */
+lateIncomeCents: number, };
