@@ -8,6 +8,56 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.2.0 – 2026-11-12
+
+### Added
+
+- On a phone, a bar along the bottom opens the Overview, Bills, Calendar and Forecast in one tap, and More the rest. The top bar says when changes are still being saved, or BudgetMint is offline.
+- Back (the browser's button, or Android's back gesture) closes a dialog or the sidebar first, asking before it throws a change away, then returns to the page before.
+- A phone shows each page's line under its title too: when the balance was set, what bills and income come to a month.
+- Record a one-off in a moment: Overview → Add → A one-off spend or income. Say what was spent or came in, how much and when (today unless you say otherwise). It's paid (or received) once its day has come, and still to come before then.
+- The Overview's Add adds a bill, income or a one-off, and its first steps offer income as well as a bill.
+- A one-off that's done, and a bill that has ended, move to a Finished part of the Bills and Income lists, a click away.
+- Reports chart the six months' bills paid against the money that came in, and download a month's bills and income as a spreadsheet.
+- Reports' "Left over" says it's before everyday spending, and about how much that comes to for the month.
+
+### Changed
+
+- Mark paid on a bill whose amount varies (or Mark received on such income) asks what it came to, instead of recording the estimate. A payment marked in its own dialog starts on today's date, as Mark paid does.
+- The Overview asks what autopay bills whose amount varies came to once they're due, so the next ones' estimate learns from what was really paid.
+- Updating the balance starts empty, showing the last one, and nothing is taken as paid until you tick it (or Tick all). Each one ticked takes what it really came to, which is what a bill whose amount varies learns from.
+- A bank statement can be imported from Bills and from the Overview's Add, as well as Settings. What nothing matched is listed: record it as a one-off, or match it to a bill or income by hand.
+- A statement matches a bill whose amount varies by its name even when the amount is well off what was expected.
+- How often a bill or income repeats is chosen as you'd say it: every week, every 2 weeks, twice a month, every month, every 3 or 6 months, every year, or something else (every so many days, weeks, months or years, or a weekday of the month). New income starts at every 2 weeks.
+- A monthly bill's day follows the date it starts on until you choose one, and the form says when it's first due.
+- A bill can end after a number of payments (a loan's last 14), as well as on a date. Counting starts from the next one due.
+- What's wrong with a bill is said under the field it's about, not above the form.
+- A one-off bill doesn't offer to move off a weekend or to vary, and something saved up for doesn't offer autopay.
+- A bill or income can be deleted without archiving it first.
+- Categories that differ only in capital letters ("Utilities", "utilities") are one: a new bill takes the spelling already in use, and lists, filters and reports put them together.
+- Getting started asks for your pay, a week's everyday spending and the bills most people have (rent, phone, internet, electric, car payment and insurance, subscriptions), each a step you can skip, so "Safe to spend" means something from the first day.
+- The Overview says when everyday spending isn't counted yet, with a way to set it.
+- A browser asks to allow notifications once there's a bill with a reminder, not before.
+- On a phone, the Overview puts what's due before its summary cards, and the Calendar shows the day you tap under the month instead of over it, with low and below-zero days marked beside their date.
+- On a phone, the Forecast lists each day with its money and the balance it leaves, instead of a table wider than the screen.
+- Bills and income line up in the Overview's and Calendar's lists, their chip under the name, and a day's balance that's low is marked as one, not only coloured.
+- A savings goal can be archived or deleted from its card on the Savings page.
+- Turning off "Set money aside" on a bill says first that what's set aside for it is let go.
+- Without TaskMint, BudgetMint is a plain bill tracker: TaskMint's withdrawals, its card, its calendar and report columns, its onboarding step and its settings show once a TaskMint account is signed in alongside. Until then, Settings → TaskMint offers to connect it. Signing out of TaskMint there hides it again; a TaskMint sign-in that lapses keeps it, to sign in again.
+- The Overview no longer repeats the lowest balance ahead in a card of its own: the balance panel says it.
+- One word for each thing throughout: the Overview's "Overdue and late" (bills overdue, income late), days marked "Low" or "Below zero", "set money aside" for savings, and "bank account" where it's the bank's.
+
+### Fixed
+
+- Escape no longer throws away a bill, a payment or a balance you've started changing: it asks first. A bank statement asks too, once there's something in it to save.
+- A bill that has ended no longer counts in the Bills list's "A month" column or its monthly total.
+- Forecast's Assumptions opens Settings → Forecast, where the everyday spending, how far ahead it looks and the low mark are.
+- Income that comes in on its own says "Automatic", not "Autopay".
+- Making an account, or resetting a password, says so in the page's title.
+- Bills sorted by amount follow the estimate shown for one whose amount varies.
+- The calendar's legend shows the dots a narrow calendar uses, and the forecast's chart names the low mark's line.
+- Bills says "No category", as Reports does.
+
 ## 2.1.0 – 2026-11-11
 
 ### Added
