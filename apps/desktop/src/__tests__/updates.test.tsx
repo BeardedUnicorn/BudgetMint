@@ -1,4 +1,4 @@
-// Adapted from TaskMint apps/desktop/src/__tests__/updates.test.tsx @ 1623bee.
+// Adapted from TaskMint apps/desktop/src/__tests__/updates.test.tsx @ ded0475.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';

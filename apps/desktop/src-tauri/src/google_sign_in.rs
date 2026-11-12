@@ -1,4 +1,4 @@
-// Adapted from TaskMint apps/desktop/src-tauri/src/google_sign_in.rs @ 1623bee.
+// Adapted from TaskMint apps/desktop/src-tauri/src/google_sign_in.rs @ ebe0b78.
 //! Google sign-in on the desktop, the way Google has
 //! installed apps do it: the system browser opens Google's sign-in page, and
 //! Google sends the browser back to a one-time listener on 127.0.0.1 with a

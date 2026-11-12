@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/hooks/__tests__/useLocalStorage.test.ts @ 1623bee: keep the two in step.
+// Copied from TaskMint packages/client/src/hooks/__tests__/useLocalStorage.test.ts @ ded0475: keep the two in step.
 /**
  * Tests for useLocalStorage hook
  */
@@ -13,7 +13,6 @@ describe('useLocalStorage', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    vi.clearAllMocks();
   });
 
   it('should return initial value when localStorage is empty', () => {
