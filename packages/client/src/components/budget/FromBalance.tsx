@@ -31,8 +31,12 @@ export interface FromBalance {
   cents: number;
 }
 
-/** The choice for money paid on `on` (a day, or null while it isn't paid). */
-export function useFromBalance(on: string | null): FromBalance {
+/**
+ * The choice for money paid on `on` (a day, or null while it isn't paid).
+ * On autopay it went by itself on its day, so the balance is taken to have
+ * it unless the user says otherwise.
+ */
+export function useFromBalance(on: string | null, autopay = false): FromBalance {
   const { settings } = useCoreQuery('get_settings');
   const balance = settings.balance;
   const [chosen, setChosen] = useState<boolean | null>(null);
@@ -40,7 +44,7 @@ export function useFromBalance(on: string | null): FromBalance {
   return {
     applies,
     // On the balance's own day it may have gone after: moved unless unticked
-    checked: applies && (chosen ?? on === balance.asOf),
+    checked: applies && (chosen ?? (on === balance.asOf && !autopay)),
     choose: setChosen,
     asOf: balance?.asOf ?? null,
     cents: balance?.cents ?? 0,

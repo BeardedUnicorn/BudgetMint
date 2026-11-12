@@ -31,7 +31,9 @@ export function BottomNav({
   useEffect(() => {
     const root = document.documentElement.style;
     root.setProperty(BOTTOM_NAV_HEIGHT_VAR, HEIGHT);
-    return () => root.removeProperty(BOTTOM_NAV_HEIGHT_VAR);
+    return () => {
+      root.removeProperty(BOTTOM_NAV_HEIGHT_VAR);
+    };
   }, []);
   return (
     <Paper

@@ -262,7 +262,7 @@ describe('settings', () => {
     );
     // Signing out here forgets TaskMint: Settings only offers to connect it again. Firebase
     // says nobody's signed in only after the sign-out has resolved: it's forgotten even so
-    store.signOutOfTaskMint.mockImplementationOnce(async () => {
+    vi.mocked(store.signOutOfTaskMint).mockImplementationOnce(async () => {
       setTimeout(() => store.setTaskMintUser(null), 20);
     });
     await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));

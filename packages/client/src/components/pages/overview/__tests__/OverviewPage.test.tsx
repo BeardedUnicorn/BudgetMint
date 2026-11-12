@@ -246,7 +246,10 @@ describe('the overview', () => {
     // The balance was set today: what's paid today may have gone after it
     const { user, store } = await startBudget({
       settings: { balance: { cents: 100_000, asOf: '2026-11-10' } },
-      items: [monthly('phone', 'Phone', 12, 6_000)],
+      items: [
+        monthly('phone', 'Phone', 12, 6_000),
+        monthly('power', 'Power', 10, 9_000, { autopay: true, varies: true }),
+      ],
     });
     const balance = () => JSON.parse(store.docs.get('settings~account')!.json).balance.cents;
 
@@ -273,6 +276,12 @@ describe('the overview', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Phone saved')).toBeInTheDocument();
     expect(balance()).toBe(100_000);
+
+    // On autopay it went by itself on its day: taken to be in the balance, unless ticked
+    await user.click(screen.getAllByRole('button', { name: 'Enter what Power came to on Nov 10' })[0]);
+    dialog = screen.getByRole('dialog', { name: 'Power, Nov 10' });
+    expect(within(dialog).getByRole('checkbox', { name: /^Take it off your balance/ })).not.toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
     // A one-off today too; one dated before the balance's day is taken to be in it
     await user.click(screen.getByRole('button', { name: 'Add' }));
