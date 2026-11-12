@@ -65,15 +65,21 @@ describe('bills and income', () => {
     expect(within(dialog).getByLabelText('Amount')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Amount'), '800');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    // Core's refusal, under the field it's about
     expect(within(dialog).getByText('Give it a name')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Name')).toBeInvalid();
+    expect(within(dialog).getByLabelText('Name')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Name'), 'Side job');
-    // Every 2 weeks, from the 13th
-    await user.click(within(dialog).getByLabelText('Repeats'));
-    await user.click(screen.getByRole('option', { name: 'Every… weeks' }));
-    const every = within(dialog).getByLabelText('Every how many weeks');
-    await user.clear(every);
-    await user.type(every, '2');
+    // Income comes every 2 weeks unless said otherwise; from the 13th
+    expect(within(dialog).getByLabelText('Repeats')).toHaveTextContent('Every 2 weeks');
     fireEvent.change(within(dialog).getByLabelText('First on'), { target: { value: '2026-11-13' } });
+    expect(within(dialog).getByText('First comes: Fri, Nov 13')).toBeInTheDocument();
+    // Monthly income comes on a day, as a bill's due on one
+    await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Every month' }));
+    expect(within(dialog).getByLabelText('Comes on')).toHaveTextContent('The 13th');
+    await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Every 2 weeks' }));
     await user.type(within(dialog).getByLabelText('Category (optional)'), 'Work');
     await user.click(within(dialog).getByRole('switch', { name: 'Comes in automatically' }));
     // Income doesn't remind unless asked to
@@ -103,8 +109,14 @@ describe('bills and income', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add bill' });
     await user.type(within(dialog).getByLabelText('Name'), 'Insurance');
     await user.type(within(dialog).getByLabelText('Amount'), '90');
-    await user.click(within(dialog).getByLabelText('On day'));
+    // The day follows the date it starts on until one's chosen
+    fireEvent.change(within(dialog).getByLabelText('Starting'), { target: { value: '2026-11-20' } });
+    expect(within(dialog).getByLabelText('Due on')).toHaveTextContent('The 20th');
+    expect(within(dialog).getByText('First due: Fri, Nov 20')).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText('Due on'));
     await user.click(screen.getByRole('option', { name: 'The last day' }));
+    fireEvent.change(within(dialog).getByLabelText('Starting'), { target: { value: '2026-11-21' } });
+    expect(within(dialog).getByLabelText('Due on')).toHaveTextContent('The last day');
     // Bills remind by default, as Settings say (5 days); 2 days instead
     expect(within(dialog).getByLabelText('When')).toHaveTextContent('5 days before');
     await user.click(within(dialog).getByLabelText('When'));
@@ -127,6 +139,10 @@ describe('bills and income', () => {
     await user.click(screen.getByRole('option', { name: 'Once' }));
     expect(within(once).queryByLabelText(/Every how many/)).not.toBeInTheDocument();
     expect(within(once).getByLabelText('On')).toBeInTheDocument();
+    // Once: nothing to move off a weekend, average or end
+    expect(within(once).queryByLabelText('On a weekend')).not.toBeInTheDocument();
+    expect(within(once).queryByRole('switch', { name: /The amount varies/ })).not.toBeInTheDocument();
+    expect(within(once).queryByLabelText('Ends')).not.toBeInTheDocument();
     await user.click(within(once).getByRole('switch', { name: 'Remind me' }));
     await user.click(within(once).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -178,7 +194,10 @@ describe('bills and income', () => {
     await user.click(screen.getByRole('button', { name: 'Edit Gym' }));
     dialog = screen.getByRole('dialog', { name: 'Edit Gym' });
     expect(within(dialog).getByRole('switch', { name: 'Remind me' })).toBeChecked();
+    // Every day: not an everyday choice, so something else
     await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Something else…' }));
+    await user.click(within(dialog).getByLabelText('Every'));
     await user.click(screen.getByRole('option', { name: 'Every… days' }));
     fireEvent.change(within(dialog).getByLabelText('First on'), { target: { value: '2026-12-07' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
@@ -194,7 +213,8 @@ describe('bills and income', () => {
     await open(user, 'Bills');
     await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
     let dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
-    await user.click(within(dialog).getByRole('switch', { name: 'Ends' }));
+    await user.click(within(dialog).getByLabelText('Ends'));
+    await user.click(screen.getByRole('option', { name: 'On a date' }));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText('Choose the date it ends on')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Last on or before')).toHaveFocus();
@@ -219,9 +239,65 @@ describe('bills and income', () => {
     // Going on again: its last part's end goes
     await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
     dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
-    await user.click(within(dialog).getByRole('switch', { name: 'Ends' }));
+    await user.click(within(dialog).getByLabelText('Ends'));
+    await user.click(screen.getByRole('option', { name: 'Never' }));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(docOf(store, 'rent').schedule[1].until).toBeNull());
+  });
+
+  it('ends a loan after so many payments', async () => {
+    const { user, store } = await startBudget();
+    await open(user, 'Bills');
+    await user.click(screen.getAllByRole('button', { name: 'Add bill' })[0]);
+    const dialog = screen.getByRole('dialog', { name: 'Add bill' });
+    await user.type(within(dialog).getByLabelText('Name'), 'Car loan');
+    await user.type(within(dialog).getByLabelText('Amount'), '389');
+    fireEvent.change(within(dialog).getByLabelText('Starting'), { target: { value: '2026-11-15' } });
+    expect(within(dialog).getByText('First due: Sun, Nov 15')).toBeInTheDocument();
+    // While how often isn't one yet, there's no first date to say
+    await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Something else…' }));
+    fireEvent.change(within(dialog).getByLabelText('Every how many months'), { target: { value: '0' } });
+    expect(within(dialog).queryByText(/First due/)).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Every how many months'), { target: { value: '1' } });
+    await user.click(within(dialog).getByLabelText('Ends'));
+    await user.click(screen.getByRole('option', { name: 'After a number of payments' }));
+    expect(within(dialog).getByText('Payments, counting the next')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter how many payments are left')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('How many')).toHaveFocus();
+    await user.type(within(dialog).getByLabelText('How many'), '14');
+    expect(within(dialog).getByText('The last on Wed, Dec 15')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const loan = [...store.docs.values()].map(doc => JSON.parse(doc.json)).find(doc => doc.name === 'Car loan');
+    expect(loan.schedule[0]).toMatchObject({ from: '2026-11-15', until: '2027-12-15' });
+  });
+
+  it('counts a started bill’s payments left from today', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
+    await open(user, 'Bills');
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
+    await user.click(within(dialog).getByLabelText('Ends'));
+    await user.click(screen.getByRole('option', { name: 'After a number of payments' }));
+    // Dec 1, Jan 1 and Feb 1
+    await user.type(within(dialog).getByLabelText('How many more'), '3');
+    expect(within(dialog).getByText('The last on Mon, Feb 1')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(docOf(store, 'rent').schedule[0].until).toBe('2027-02-01'));
+
+    // A new amount from March: counted from then
+    await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
+    const again = screen.getByRole('dialog', { name: 'Edit Rent' });
+    const amount = within(again).getByLabelText('Amount');
+    await user.clear(amount);
+    await user.type(amount, '1250');
+    fireEvent.change(within(again).getByLabelText('The change starts on'), { target: { value: '2027-03-01' } });
+    await user.click(within(again).getByLabelText('Ends'));
+    await user.click(screen.getByRole('option', { name: 'After a number of payments' }));
+    await user.type(within(again).getByLabelText('How many more'), '2');
+    expect(within(again).getByText('The last on Thu, Apr 1')).toBeInTheDocument();
   });
 
   it('finds a bill by name or category, in another order, and sums each category', async () => {
@@ -416,15 +492,49 @@ describe('bills and income', () => {
     await open(user, 'Bills');
     await user.click(screen.getByRole('button', { name: 'Edit Lunch' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit Lunch' });
-    const every = within(dialog).getByLabelText('Every how many weeks');
-    await user.clear(every);
-    await user.type(every, '2');
+    expect(within(dialog).getByLabelText('Repeats')).toHaveTextContent('Every week');
+    await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Every 2 weeks' }));
     expect(within(dialog).getByText(/It repeats on that day of the week/)).toBeInTheDocument();
-    // A change the rules refuse
+    // A change the rules refuse, said under how often
+    await user.click(within(dialog).getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Something else…' }));
     fireEvent.change(within(dialog).getByLabelText('Every how many weeks'), { target: { value: '99' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText(/Choose how often it repeats/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Every how many weeks')).toBeInvalid();
+    // A start the rules refuse, said under the change's date
+    fireEvent.change(within(dialog).getByLabelText('Every how many weeks'), { target: { value: '3' } });
+    fireEvent.change(within(dialog).getByLabelText('The change starts on'), { target: { value: '1000-01-01' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByLabelText('The change starts on')).toBeInvalid();
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('takes categories that differ only in case as one, and deletes a bill not archived', async () => {
+    const { user, store } = await startBudget({
+      items: [
+        monthly('power', 'Power', 20, 9_000, { category: 'Utilities' }),
+        monthly('water', 'Water', 9, 3_000, { category: 'utilities' }),
+        monthly('gym', 'Gym', 5, 3_000),
+      ],
+    });
+    await open(user, 'Bills');
+    expect(screen.getByLabelText('A month, by category')).toHaveTextContent(
+      'A month by category: Utilities $120.00 · No category $30.00'
+    );
+    await user.click(screen.getByLabelText('Category'));
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['Every category', 'Utilities']);
+    await user.click(screen.getByRole('option', { name: 'Utilities' }));
+    expect(screen.getByText('Power')).toBeInTheDocument();
+    expect(screen.getByText('Water')).toBeInTheDocument();
+    expect(screen.queryByText('Gym')).not.toBeInTheDocument();
+    // No need to archive it first
+    await user.click(screen.getByRole('button', { name: 'Delete Water' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete Water?' })).getByRole('button', { name: 'Delete' })
+    );
+    await waitFor(() => expect(store.docs.has('item~water')).toBe(false));
   });
 
   it('archives, brings back and deletes a bill', async () => {

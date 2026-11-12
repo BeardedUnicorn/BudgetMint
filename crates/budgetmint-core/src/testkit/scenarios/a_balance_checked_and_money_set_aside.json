@@ -105,6 +105,30 @@
       "args": { "text": "Date,Description,Amount\n2026-11-13,ACME PAYROLL,1500.00\n" },
       "expect": { "format": "csv", "matches": [{ "transaction": 0, "occurrence": { "itemId": "pay", "scheduled": "2026-11-13" }, "exact": true }], "already": [] }
     },
-    { "call": "read_statement", "args": { "text": "" }, "error": "That file isn't a bank statement BudgetMint can read: export it as CSV or OFX" }
+    { "call": "read_statement", "args": { "text": "" }, "error": "That file isn't a bank statement BudgetMint can read: export it as CSV or OFX" },
+    {
+      "call": "get_schedule_dates",
+      "args": { "from": "2026-11-11", "repeat": { "every": "months", "n": 1, "day": 1 }, "weekends": "after", "count": 3 },
+      "expect": [
+        { "scheduled": "2026-12-01", "due": "2026-12-01" },
+        { "scheduled": "2027-01-01", "due": "2027-01-01" },
+        { "scheduled": "2027-02-01", "due": "2027-02-01" }
+      ]
+    },
+    {
+      "call": "get_schedule_dates",
+      "args": { "from": "2026-11-11", "repeat": { "every": "weeks", "n": 0 }, "count": 3 },
+      "error": "Choose how often it repeats: every 1–365 days, 1–52 weeks, 1–12 months or 1–10 years"
+    },
+    {
+      "call": "get_schedule_dates",
+      "args": { "from": "1000-01-01", "repeat": { "every": "once" }, "count": 1 },
+      "error": "Choose a date from 1900 to 2199"
+    },
+    {
+      "call": "get_schedule_dates",
+      "args": { "from": "2026-11-11", "repeat": { "every": "once" }, "count": 0 },
+      "error": "Ask for one date or more"
+    }
   ]
 }

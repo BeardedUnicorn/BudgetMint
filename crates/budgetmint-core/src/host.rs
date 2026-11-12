@@ -4,8 +4,14 @@
 //! the user is in. A command that fails changes nothing.
 
 use crate::command::{execute, Budget, Command};
+use crate::error::{CoreError, Refusal};
 use crate::time::Ctx;
 use serde_json::Value;
+
+/// A refusal as JSON text (crate::error::Refusal): what the apps throw.
+fn refused(error: CoreError) -> String {
+    serde_json::to_string(&Refusal::from(&error)).expect("a refusal is plain JSON")
+}
 
 #[derive(Debug, Default)]
 pub struct JsonHost {
@@ -28,15 +34,19 @@ impl JsonHost {
     }
 
     /// Runs a command: its arguments as JSON text; the reply as JSON text,
-    /// or the message to show.
+    /// or a refusal as JSON text (the message to show, and its field).
     pub fn call(&mut self, name: &str, args: &str, now_ms: f64) -> Result<String, String> {
-        let args: Value = serde_json::from_str(args)
-            .map_err(|e| format!("Invalid arguments for {}: {}", name, e))?;
-        let command = Command::parse(name, args).map_err(|e| e.to_string())?;
+        let args: Value = serde_json::from_str(args).map_err(|e| {
+            refused(CoreError::InvalidArgs(format!(
+                "Invalid arguments for {}: {}",
+                name, e
+            )))
+        })?;
+        let command = Command::parse(name, args).map_err(refused)?;
         let ctx = Ctx::new(now_ms as i64, &self.zone);
         // On a copy, so a refusal halfway leaves nothing half done
         let mut draft = self.budget.clone();
-        let reply = execute(command, &mut draft, &ctx).map_err(|e| e.to_string())?;
+        let reply = execute(command, &mut draft, &ctx).map_err(refused)?;
         self.budget = draft;
         Ok(reply.to_string())
     }
@@ -62,11 +72,11 @@ mod tests {
 
         assert_eq!(
             host.call("get_overview", "{", now),
-            Err("Invalid arguments for get_overview: EOF while parsing an object at line 1 column 1".into())
+            Err(r#"{"message":"Invalid arguments for get_overview: EOF while parsing an object at line 1 column 1","field":null}"#.into())
         );
         assert_eq!(
             host.call("nothing", "{}", now),
-            Err("Unknown command: nothing".into())
+            Err(r#"{"message":"Unknown command: nothing","field":null}"#.into())
         );
         assert_eq!(
             host.call(
@@ -74,7 +84,7 @@ mod tests {
                 r#"{"balance":{"cents":1,"asOf":"2030-01-01"}}"#,
                 now
             ),
-            Err("Set the balance as of today or a day before".into())
+            Err(r#"{"message":"Set the balance as of today or a day before","field":null}"#.into())
         );
         let settings: Value =
             serde_json::from_str(&host.call("get_settings", "{}", now).unwrap()).unwrap();
@@ -98,7 +108,20 @@ mod tests {
         };
         assert_eq!(
             host.call("save_item", &save(r#","edit":true"#), now),
-            Err("That bill isn't there any more (deleted on another device?)".into())
+            Err(
+                r#"{"message":"That bill isn't there any more (deleted on another device?)","field":null}"#
+                    .into()
+            )
+        );
+        // A refusal of one field says which
+        assert_eq!(
+            host.call(
+                "save_item",
+                r#"{"item":{"id":"x","kind":"bill","name":" ","schedule":[
+                    {"from":"2026-11-01","repeat":{"every":"once"},"amountCents":100}]}}"#,
+                now
+            ),
+            Err(r#"{"message":"Give it a name","field":"name"}"#.into())
         );
         assert!(host.call("save_item", &save(""), now).is_ok());
         assert!(host

@@ -66,7 +66,8 @@ describe('paydays and bills on schedules banks keep', () => {
     let dialog = screen.getByRole('dialog', { name: 'Add bill' });
     await user.type(within(dialog).getByLabelText('Name'), 'Power');
     await user.type(within(dialog).getByLabelText('Amount'), '80');
-    await pick(user, dialog, 'Repeats', 'Monthly on a weekday');
+    await pick(user, dialog, 'Repeats', 'Something else…');
+    await pick(user, dialog, 'Every', 'Monthly on a weekday');
     // Today's weekday to start with: Nov 10 is a Tuesday
     expect(within(dialog).getByLabelText('Day of the week')).toHaveTextContent('Tuesday');
     await pick(user, dialog, 'On the', 'Third');
@@ -90,13 +91,14 @@ describe('paydays and bills on schedules banks keep', () => {
     dialog = screen.getByRole('dialog', { name: 'Add bill' });
     await user.type(within(dialog).getByLabelText('Name'), 'Car insurance');
     await user.type(within(dialog).getByLabelText('Amount'), '1200');
-    await pick(user, dialog, 'Repeats', 'Every… years');
+    await pick(user, dialog, 'Repeats', 'Every year');
     await user.click(within(dialog).getByRole('switch', { name: /Set money aside for it each month/ }));
     // Every few days, there's no time to save: the switch goes
-    await pick(user, dialog, 'Repeats', 'Every… days');
+    await pick(user, dialog, 'Repeats', 'Something else…');
+    await pick(user, dialog, 'Every', 'Every… days');
     expect(within(dialog).queryByRole('switch', { name: /Set money aside/ })).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText('On a weekend')).not.toBeInTheDocument();
-    await pick(user, dialog, 'Repeats', 'Every… years');
+    await pick(user, dialog, 'Every', 'Every… years');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(itemNamed(store, 'Car insurance').saveUp).toEqual({ since: '2026-11-10' });

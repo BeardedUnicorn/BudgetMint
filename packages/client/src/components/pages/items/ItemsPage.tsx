@@ -176,6 +176,12 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
             icon: <ArchiveIcon fontSize="small" />,
             run: () => archive(view, true),
           },
+          {
+            title: 'Delete',
+            name: `Delete ${item.name}`,
+            icon: <DeleteIcon fontSize="small" />,
+            run: () => onOpen({ type: 'delete', view }),
+          },
         ];
   };
 

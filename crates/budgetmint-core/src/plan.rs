@@ -4,7 +4,7 @@
 //! writes; their echo from Firestore changes nothing more.
 
 use crate::docs::{valid_id, DocKey, DocWrite, Snapshot};
-use crate::error::{invalid, CoreError};
+use crate::error::{invalid, CoreError, FormField};
 use crate::model::{
     Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, OccStatus, Override, Repeat,
     SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAX_CENTS, MAX_HORIZON_DAYS,
@@ -118,7 +118,7 @@ fn cents(value: Cents, what: &str) -> Result<Cents, CoreError> {
 
 /// A date the user gave, in core's calendar (a year typed with a digit
 /// too many isn't).
-fn check_date(date: NaiveDate) -> Result<(), CoreError> {
+pub(crate) fn check_date(date: NaiveDate) -> Result<(), CoreError> {
     if in_calendar(date) {
         Ok(())
     } else {
@@ -129,7 +129,7 @@ fn check_date(date: NaiveDate) -> Result<(), CoreError> {
     }
 }
 
-fn check_repeat(repeat: Repeat) -> Result<(), CoreError> {
+pub(crate) fn check_repeat(repeat: Repeat) -> Result<(), CoreError> {
     let ok = match repeat {
         Repeat::Once => true,
         Repeat::Days { n } => (1..=365).contains(&n),
@@ -162,6 +162,11 @@ fn check_repeat(repeat: Repeat) -> Result<(), CoreError> {
     }
 }
 
+/// A rule's refusal (the checks below give only those), said of one of the form's fields.
+fn at(field: FormField) -> impl Fn(CoreError) -> CoreError {
+    move |error| CoreError::InvalidField(field, error.to_string())
+}
+
 fn check_schedule(schedule: &[Segment]) -> Result<(), CoreError> {
     if schedule.is_empty() || schedule.len() > MAX_SEGMENTS {
         return Err(invalid(format!(
@@ -170,17 +175,22 @@ fn check_schedule(schedule: &[Segment]) -> Result<(), CoreError> {
         )));
     }
     for (index, segment) in schedule.iter().enumerate() {
-        check_date(segment.from)?;
-        segment.until.map_or(Ok(()), check_date)?;
-        check_repeat(segment.repeat)?;
-        cents(segment.amount_cents, "amount")?;
+        check_date(segment.from).map_err(at(FormField::Dates))?;
+        segment
+            .until
+            .map_or(Ok(()), check_date)
+            .map_err(at(FormField::Ends))?;
+        check_repeat(segment.repeat).map_err(at(FormField::Repeat))?;
+        cents(segment.amount_cents, "amount").map_err(at(FormField::Amount))?;
         if segment.until.is_some_and(|until| until < segment.from) {
-            return Err(invalid("It can't end before it starts"));
+            return Err(at(FormField::Ends)(invalid(
+                "It can't end before it starts",
+            )));
         }
         if index > 0 && segment.from <= schedule[index - 1].from {
-            return Err(invalid(
+            return Err(at(FormField::Dates)(invalid(
                 "Each change to the schedule starts after the one before",
-            ));
+            )));
         }
     }
     Ok(())
@@ -221,6 +231,19 @@ fn check_reminder(reminder: Option<ItemReminder>) -> Result<Option<ItemReminder>
         )));
     }
     Ok(Some(reminder))
+}
+
+/// `category` as another item spells it, when one does ignoring case: one
+/// category, not "Utilities" and "utilities".
+fn spelled_as_before(snapshot: &Snapshot, id: &str, category: String) -> String {
+    snapshot
+        .items
+        .values()
+        .filter(|other| other.id != id)
+        .filter_map(|other| other.category.as_ref())
+        .find(|spelled| spelled.to_lowercase() == category.to_lowercase())
+        .cloned()
+        .unwrap_or(category)
 }
 
 /// What a change to a document a newer BudgetMint wrote is refused with.
@@ -306,8 +329,9 @@ pub fn save_item_from(
         item(snapshot, &input.id)?;
     }
     ours(snapshot, &DocKey::Item(input.id.clone()))?;
-    let name =
-        text(Some(input.name), MAX_NAME, "name")?.ok_or_else(|| invalid("Give it a name"))?;
+    let name = text(Some(input.name), MAX_NAME, "name")
+        .map_err(at(FormField::Name))?
+        .ok_or_else(|| at(FormField::Name)(invalid("Give it a name")))?;
     if let Some(change) = change {
         input.schedule = rescheduled(input.schedule, change);
     }
@@ -315,7 +339,8 @@ pub fn save_item_from(
     let existing = snapshot.items.get(&input.id);
     let created_at = existing.map_or(ctx.now, |existing| existing.created_at);
     let save_up = if input.save_up {
-        check_save_up(input.kind, &input.schedule)?;
+        // How often it comes is what refuses it
+        check_save_up(input.kind, &input.schedule).map_err(at(FormField::Repeat))?;
         // Set aside from when it was turned on
         Some(
             existing
@@ -325,16 +350,19 @@ pub fn save_item_from(
     } else {
         None
     };
+    let category = text(input.category, MAX_CATEGORY, "category")
+        .map_err(at(FormField::Category))?
+        .map(|category| spelled_as_before(snapshot, &input.id, category));
     let saved = Item {
         id: input.id,
         kind: input.kind,
         name,
-        category: text(input.category, MAX_CATEGORY, "category")?,
+        category,
         schedule: input.schedule,
         autopay: input.autopay,
-        reminder: check_reminder(input.reminder)?,
+        reminder: check_reminder(input.reminder).map_err(at(FormField::Reminder))?,
         archived: input.archived,
-        note: text(input.note, MAX_NOTE, "note")?,
+        note: text(input.note, MAX_NOTE, "note").map_err(at(FormField::Note))?,
         varies: input.varies,
         save_up,
         created_at,
@@ -676,6 +704,102 @@ mod tests {
             varies: false,
             save_up: false,
         }
+    }
+
+    #[test]
+    fn keeps_a_category_as_another_item_spells_it() {
+        let mut s = Snapshot::default();
+        let mut power = item(
+            "power",
+            ItemKind::Bill,
+            d(2026, 11, 1),
+            Repeat::Months { n: 1, day: 1 },
+            100,
+        );
+        power.category = Some("Utilities".into());
+        put_item(&mut s, power);
+        let mut water = input("water");
+        water.category = Some(" utilities ".into());
+        save_item(&mut s, water, &ctx()).unwrap();
+        assert_eq!(s.items["water"].category.as_deref(), Some("Utilities"));
+        // Another item still spells it so: one item alone can't respell the category
+        let mut power = input("power");
+        power.category = Some("UTILITIES".into());
+        save_item(&mut s, power, &ctx()).unwrap();
+        assert_eq!(s.items["power"].category.as_deref(), Some("Utilities"));
+        let mut gym = input("gym");
+        gym.category = Some("Health".into());
+        save_item(&mut s, gym, &ctx()).unwrap();
+        assert_eq!(s.items["gym"].category.as_deref(), Some("Health"));
+    }
+
+    #[test]
+    fn says_which_field_a_refusal_is_about() {
+        let field = |change: &dyn Fn(&mut ItemInput)| {
+            let mut one = input("x");
+            change(&mut one);
+            save_item(&mut Snapshot::default(), one, &ctx())
+                .unwrap_err()
+                .field()
+        };
+        let segment =
+            |change: fn(&mut Segment)| move |one: &mut ItemInput| change(&mut one.schedule[0]);
+        assert_eq!(field(&|one| one.name = " ".into()), Some(FormField::Name));
+        assert_eq!(
+            field(&|one| one.name = "n".repeat(MAX_NAME + 1)),
+            Some(FormField::Name)
+        );
+        assert_eq!(
+            field(&|one| one.category = Some("c".repeat(MAX_CATEGORY + 1))),
+            Some(FormField::Category)
+        );
+        assert_eq!(
+            field(&|one| one.note = Some("n".repeat(MAX_NOTE + 1))),
+            Some(FormField::Note)
+        );
+        assert_eq!(
+            field(&segment(|s| s.amount_cents = -1)),
+            Some(FormField::Amount)
+        );
+        assert_eq!(
+            field(&segment(|s| s.repeat = Repeat::Weeks { n: 0 })),
+            Some(FormField::Repeat)
+        );
+        assert_eq!(
+            field(&segment(|s| s.from = d(1000, 1, 1))),
+            Some(FormField::Dates)
+        );
+        assert_eq!(
+            field(&segment(|s| s.until = Some(d(1000, 1, 1)))),
+            Some(FormField::Ends)
+        );
+        assert_eq!(
+            field(&segment(|s| s.until = Some(d(2026, 10, 1)))),
+            Some(FormField::Ends)
+        );
+        assert_eq!(
+            field(&|one| {
+                let mut later = one.schedule[0].clone();
+                later.from = d(2026, 10, 1);
+                one.schedule.push(later);
+            }),
+            Some(FormField::Dates)
+        );
+        assert_eq!(
+            field(&|one| one.reminder = Some(ItemReminder {
+                lead_days: vec![99]
+            })),
+            Some(FormField::Reminder)
+        );
+        assert_eq!(
+            field(&|one| {
+                one.save_up = true;
+                one.schedule[0].repeat = Repeat::Weeks { n: 1 };
+            }),
+            Some(FormField::Repeat)
+        );
+        // A refusal that isn't about a field isn't said of one
+        assert_eq!(field(&|one| one.id = "?".into()), None);
     }
 
     fn message(result: Result<Planned, CoreError>) -> String {

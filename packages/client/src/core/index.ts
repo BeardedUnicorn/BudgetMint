@@ -2,10 +2,11 @@
  * BudgetMint's rules (crates/budgetmint-core), in WebAssembly in this
  * webview: every page asks them what to show, and they plan every change.
  * Calls are synchronous and typed by @budgetmint/contracts; a refusal
- * throws an Error with the message to show.
+ * throws a CoreRefusal: the message to show, and the form's field it's
+ * about when it's about one.
  */
 
-import type { CommandArgs, CommandName, CommandReply } from '@budgetmint/contracts';
+import type { CommandArgs, CommandName, CommandReply, FormField, Refusal } from '@budgetmint/contracts';
 import init, { Core, type InitInput } from './wasm/budgetmint_core';
 
 export type CoreArgs<K extends CommandName> = CommandArgs<K> extends void ? [] : [CommandArgs<K>];
@@ -35,6 +36,23 @@ export class CoreStopped extends Error {
   }
 }
 
+/** Core refused a command: `message` says why, and `field` (when it's about one) which of the form's fields. */
+export class CoreRefusal extends Error {
+  constructor(
+    message: string,
+    readonly field: FormField | null = null
+  ) {
+    super(message);
+    this.name = 'CoreRefusal';
+  }
+}
+
+/** Core's refusal (JSON: crates/budgetmint-core/src/error.rs's Refusal), as thrown. */
+function refusal(thrown: unknown): CoreRefusal {
+  const { message, field } = JSON.parse(String(thrown)) as Refusal;
+  return new CoreRefusal(message, field);
+}
+
 /** Core over a loaded wasm `Core`, with the time from `clock`. */
 export function coreClient(core: Pick<Core, 'call' | 'setZone'>, clock: () => number = Date.now): CoreClient {
   let stopped = false;
@@ -50,7 +68,7 @@ export function coreClient(core: Pick<Core, 'call' | 'setZone'>, clock: () => nu
           console.error('BudgetMint’s core stopped:', message);
           throw new CoreStopped();
         }
-        throw new Error(String(message));
+        throw refusal(message);
       }
       return JSON.parse(reply);
     },
