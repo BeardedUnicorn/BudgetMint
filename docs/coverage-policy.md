@@ -33,6 +33,7 @@ Integration tests count toward the total, including the desktop's IPC tests (thr
 | `packages/client` | `src/core/wasm/**` | wasm-bindgen's generated JavaScript (built, not committed) | the same tests |
 | `apps/desktop/src-tauri` | `src/main.rs`, `src/app.rs` | binary entry; `tauri::Builder`, plugins, the menu bar, `generate_context!`, the run loop. They need a real event loop and main thread | [manual QA checklist](qa/excluded-code-checklist.md) |
 | `apps/desktop/src-tauri` | `src/platform/os.rs` | the Platform on Tauri (the menus and tray, OS notifications, the window and the Dock icon, the browser, the logs folder, opening at login, the updater). It needs a real UI session, so it holds calls only | [manual QA checklist](qa/excluded-code-checklist.md) |
+| `apps/desktop/src-tauri/gen/android` | (implicit) | the Android project's Kotlin: `MainActivity.kt`'s bridges (the launch screen, the status bar, Google sign-in, analytics). Kotlin isn't measured | [manual QA checklist](qa/excluded-code-checklist.md#android) |
 | all TS packages | `__tests__/**`, test files, `setupTests.ts`, `*.d.ts` | not shipped runtime code | – |
 
 Each `main.tsx` is **not** excluded: it's a single `startClient` call, covered by a test that imports it.

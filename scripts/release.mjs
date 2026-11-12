@@ -15,8 +15,7 @@
  * apps read to update themselves (the README's "Desktop updates"). The
  * Android APK is always signed with the release key, from
  * BUDGETMINT_ANDROID_KEYSTORE and BUDGETMINT_ANDROID_KEYSTORE_PASSWORD (the
- * README's "Android signing"); a release doesn't ship one yet
- * (RELEASE_TARGETS in release/lib.mjs). github-release adds SHA256SUMS, the
+ * README's "Android signing"). github-release adds SHA256SUMS, the
  * checksums of every file the release ships.
  *
  * Run it in the main checkout, on main: `pnpm release --help`.
@@ -92,10 +91,9 @@ const ANDROID_PROJECT = 'apps/desktop/src-tauri/gen/android';
 /**
  * The SHA-256 of the release key's certificate (`keytool -list -v` shows it;
  * drop the colons). Every APK is signed with it, so each release installs
- * over the one before (the README's "Android signing"). Empty until the
- * release key is made, and android-arm64 doesn't build without it.
+ * over the one before (the README's "Android signing").
  */
-const ANDROID_SIGNER_SHA256 = '';
+const ANDROID_SIGNER_SHA256 = 'f78ef45d507a3dd3b412ede0ed6175546eaeaf98e6cfaf20bac77027adf0fd79';
 /**
  * The release key: a PKCS12 keystore with one key, alias `budgetmint`, and
  * its password (app/build.gradle.kts reads both).

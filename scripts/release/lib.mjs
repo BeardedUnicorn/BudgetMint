@@ -196,15 +196,8 @@ export function setCargoLockVersions(text, names, version) {
 // release ships, and a local release builds the computer's own installer
 // unless told which.
 
-/** Every target there's a build for, in the order the release lists them. */
+/** Every target there's a build for, in the order the release lists them; the Release workflow builds each. */
 export const TARGETS = ['macos-arm64', 'macos-x64', 'windows-x64', 'android-arm64'];
-
-/**
- * The targets a release ships, each built by the Release workflow. Not
- * android-arm64 yet: it joins once the Android project
- * (apps/desktop/src-tauri/gen/android) is committed and the workflow builds it.
- */
-export const RELEASE_TARGETS = TARGETS.filter(target => target !== 'android-arm64');
 
 const SUFFIXES = {
   'macos-arm64': 'macos-arm64.dmg',
@@ -267,7 +260,7 @@ export function releaseAssets(product, version) {
     // (Windows' update is its installer)
     return file === assetName(product, version, target) ? [signature] : [file, signature];
   });
-  return [...RELEASE_TARGETS.map(target => assetName(product, version, target)), ...updates];
+  return [...TARGETS.map(target => assetName(product, version, target)), ...updates];
 }
 
 /** Every file a release ships for the version that isn't among `files` (file names). */

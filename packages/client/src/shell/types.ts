@@ -36,6 +36,14 @@ export interface Notifications {
   readonly firesWhenClosed: boolean;
 }
 
+/** Usage analytics (Firebase Analytics): the web app's, and Android's native SDK. */
+export interface AnalyticsPlatform {
+  /** On or off, as Settings → Privacy says. */
+  setEnabled(enabled: boolean): void;
+  /** A page the app showed, by its view's name. */
+  screen(name: string): void;
+}
+
 export interface Platform {
   notifications: Notifications;
   /** A Google ID token, got the shell's own way (desktop, Android). */
@@ -53,6 +61,8 @@ export interface Platform {
    * Without it a browser downloads the file, and an app's webview can't save one.
    */
   saveFile?: (name: string, text: string, type: string) => Promise<boolean>;
+  /** Which pages are opened (the web and Android apps; the desktop has none). */
+  analytics?: AnalyticsPlatform;
 }
 
 export interface Shell {

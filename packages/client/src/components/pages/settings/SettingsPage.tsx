@@ -1,6 +1,7 @@
 /**
- * Settings: one page of sections (TaskMint's layout), with the shell's own
- * (the desktop's Updates) before About. A link can open it at a section.
+ * Settings: one page of sections (TaskMint's layout), with Privacy where the
+ * shell has usage analytics, and the shell's own (the desktop's Updates)
+ * before About. A link can open it at a section.
  */
 
 import { useEffect } from 'react';
@@ -8,11 +9,13 @@ import { Box, Link, Typography } from '@mui/material';
 import { Info as AboutIcon, Palette as AppearanceIcon } from '@mui/icons-material';
 import { useAppExtensions } from '../../../app/extensions';
 import { useNavigation } from '../../../contexts/NavigationContext';
+import { getShell } from '../../../shell';
 import { APP_VERSION } from '../../../utils/appVersion';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { AccountSection } from './AccountSection';
 import { DataSection } from './DataSection';
 import { ForecastSection } from './ForecastSection';
+import { PrivacySection } from './PrivacySection';
 import { RegionSettings } from './RegionSettings';
 import { RemindersSection } from './RemindersSection';
 import { SettingsSection } from './SettingsSection';
@@ -53,6 +56,11 @@ export function SettingsPage() {
           <RegionSettings />
         </SettingsSection>
       </Box>
+      {getShell().platform.analytics && (
+        <Box id="settings-privacy">
+          <PrivacySection />
+        </Box>
+      )}
       {settingsSections.map(({ id, Section }) => (
         <Box key={id} id={`settings-${id}`}>
           <Section />

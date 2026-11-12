@@ -1,0 +1,16 @@
+<!-- Adapted from TaskMint apps/desktop/src-tauri/gen/android/app/src/main/res/values/themes.xml @ ce9f22f. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.budgetmint" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+    </style>
+
+    <!-- BudgetMint: the launch screen (androidx core-splashscreen), the leaf on
+         the app icon's teal. MainActivity holds it until the page has drawn.
+         Android 12 and later also show the wordmark (values-v31). -->
+    <style name="Theme.budgetmint.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/budgetmint_splash</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+        <item name="postSplashScreenTheme">@style/Theme.budgetmint</item>
+    </style>
+</resources>

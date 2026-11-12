@@ -5,11 +5,11 @@
   </picture>
 </h1>
 
-A bill tracker and cash-flow forecast for the desktop and the web (Android
-is planned), and TaskMint's companion. You list your bills and income, mark
-them paid or received, and see your balance day by day, with TaskMint's
-upcoming DataAnnotation withdrawals counted as income. Signed in with your
-TaskMint account, every device shares the same budget through Firebase.
+A bill tracker and cash-flow forecast for the desktop, Android and the web,
+and TaskMint's companion. You list your bills and income, mark them paid or
+received, and see your balance day by day, with TaskMint's upcoming
+DataAnnotation withdrawals counted as income. Signed in with your TaskMint
+account, every device shares the same budget through Firebase.
 
 Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 [TaskMint](https://github.com/BeardedUnicorn/taskmint).
@@ -24,7 +24,7 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 | **Calendar** | Each day's bills, income and withdrawals, and the balance at the end of it, in red below your low-balance mark. Click a day for its details. |
 | **Forecast** | The balance line over the next 14 to 366 days (and what's left of it besides the money set aside), with your low-balance mark, a day-by-day table, and the assumptions it rests on, everyday spending among them. |
 | **Reports** | A month looked back on: bills paid against what was expected, by category; income and TaskMint's withdrawals; bills paid late; spending besides the bills; and the six months up to it. |
-| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, and (on the desktop) updates. |
+| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop) updates. |
 
 **TaskMint's withdrawals.** TaskMint publishes a forecast of what each
 withdrawal would take, and when the next one opens (only numbers: no task
@@ -45,8 +45,7 @@ arrive, and when the balance would go short), at the hour you choose:
   (in the last day) come when it opens.
 - **The web app** shows them while a BudgetMint tab is open, and the ones it
   missed when it's opened again.
-- **Android**, once there's an app for it, will set them with the system, so
-  they'll come with the app closed.
+- **Android** sets them with the system, so they come with the app closed.
 
 **The web app** is at [budgetmint.web.app](https://budgetmint.web.app). It
 can be installed from the browser, and opens without a connection once it has been opened online: its
@@ -203,29 +202,154 @@ Updates are signed with BudgetMint's own minisign key (not TaskMint's):
 
 The desktop crate also builds as a Tauri Android app (`apps/desktop`, the
 same Rust and webview), package `com.budgetmint.android`
-(`tauri.android.conf.json`). The Android project
-(`apps/desktop/src-tauri/gen/android`) isn't made yet: `pnpm tauri android
-init`, then MainActivity's bridges as TaskMint's (`BudgetMintSplash`,
-`BudgetMintSystemBars`, `BudgetMintGoogleSignIn`, see
-`apps/desktop/src/tauriShell.ts`) and the launcher icons from
-`assets/brand/icon-macos.png`. TaskMint's README lists the prerequisites
-(Android Studio's SDK and NDK, JDK 17 or later, `JAVA_HOME`, `ANDROID_HOME`,
-`NDK_HOME`). Until then a release ships no APK
-(`RELEASE_TARGETS` in `scripts/release/lib.mjs`, and the Release workflow's
-matrix).
+(`tauri.android.conf.json` sets it; the desktop app stays
+`com.budgetmint.desktop`). Each release has
+`BudgetMint-X.Y.Z-android-arm64.apk` for arm64 phones, every phone from
+roughly the last eight years.
+
+**Installing it.** Open the release on the phone and download the APK.
+Opening it asks you to let the browser (or Files) install unknown apps;
+allow it, go back and install. A later release's APK installs the same way,
+over the app, and keeps its data: they're all signed with the same key (see
+[Android signing](#android-signing)). The app doesn't update itself.
+
+**Prerequisites**, besides the ones above:
+
+- Android Studio, or the command-line tools, with SDK Manager's Android SDK
+  Platform, Platform-Tools, Build-Tools, Command-line Tools and NDK (Side by
+  side), 29.0.13599879 as the Release workflow's.
+- JDK 17 or later; Android Studio's own works
+  (`/Applications/Android Studio.app/Contents/jbr/Contents/Home` on macOS,
+  which is 21, so the Firestore emulator can use it too).
+- `JAVA_HOME`, `ANDROID_HOME` (usually `~/Library/Android/sdk`) and
+  `NDK_HOME` (`$ANDROID_HOME/ndk/<version>`) set in your shell.
+- The Rust Android targets. `tauri android init` installs them; by hand:
+
+```bash
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+```
+
+The Android project, `apps/desktop/src-tauri/gen/android`, is committed. It
+was made by `pnpm tauri android init` from `tauri.conf.json` and
+`tauri.android.conf.json`, and changed as TaskMint's is, in these places
+(each marked `BudgetMint:`):
+
+- `app/build.gradle.kts` signs release builds with the release key when
+  `BUDGETMINT_ANDROID_KEYSTORE` and `BUDGETMINT_ANDROID_KEYSTORE_PASSWORD`
+  are set ([Android signing](#android-signing)). Without them a release
+  build is unsigned.
+- Firebase: `app/google-services.json` (the "BudgetMint Android" app's
+  public config, in the `budgetmint` project), the `google-services` Gradle
+  plugin (in the root `build.gradle.kts`, applied in `app/build.gradle.kts`),
+  and the Firebase BoM with Analytics, Credential Manager and googleid as
+  dependencies. Firebase and googleid need Kotlin 2.3, which the root
+  `build.gradle.kts` and `buildSrc/build.gradle.kts` pin.
+- `MainActivity.kt` gives the webview four bridges (`tauriShell.ts` uses
+  them): `BudgetMintSplash` (the launch screen stays until the app has
+  drawn), `BudgetMintSystemBars` (the status bar follows the app's theme),
+  `BudgetMintGoogleSignIn` (Credential Manager's Google sign-in) and
+  `BudgetMintAnalytics` (Firebase Analytics, and its off switch).
+  `app/proguard-rules.pro` keeps them, and Credential Manager's Play
+  services provider, through R8.
+- The manifest asks for exact alarms (`USE_EXACT_ALARM`, and
+  `SCHEDULE_EXACT_ALARM` on Android 12), so a bill's reminder comes at its
+  hour.
+- The launch screen is androidx `core-splashscreen`'s, themed by
+  `Theme.budgetmint.Starting` (`values/themes.xml`, and `values-v31` for the
+  wordmark, which Android 12 and later show): the leaf on the app icon's
+  teal. `MainActivity` keeps it up until the page calls
+  `BudgetMintSplash.hide()` (or 10 s pass), then fades it out. Its images,
+  `drawable-*/splash_icon.png` and `splash_branding.png`, come from
+  `assets/brand/mark.png` and `logo-dark.png`. After changing those, make
+  them again (macOS):
+
+```bash
+swift scripts/brand/android-splash.swift
+```
+
+- The launcher icons in `app/src/main/res` (`mipmap-*`, and the adaptive
+  icon's background in `values/ic_launcher_background.xml`) come from
+  `assets/brand/icon-macos.png`. Its padding keeps the coins and leaf inside
+  the circle a launcher crops to, and the background is the tile's colour,
+  so no edge shows. After changing the icon, make them again and copy
+  `android/` over `res`:
+
+```bash
+cd apps/desktop && pnpm tauri icon ../../assets/brand/icon-macos.png --ios-color '#0A3A3E' -o /tmp/budgetmint-icons && cp -R /tmp/budgetmint-icons/android/. src-tauri/gen/android/app/src/main/res/
+```
+
+Tauri writes its per-build files into the project (they're gitignored), so a
+fresh checkout builds without an `init`. A Tauri upgrade can change the
+template: `tauri android init` in a scratch copy shows what's new.
+
+Run it in an emulator or on a phone plugged in over USB, or build a debug
+APK:
+
+```bash
+cd apps/desktop && pnpm tauri android dev
+```
+
+```bash
+cd apps/desktop && pnpm tauri android build --debug --apk --target aarch64
+```
+
+For a phone on the network, `pnpm tauri android dev --host` serves Vite on
+this computer's network address (`vite.config.ts` reads `TAURI_DEV_HOST`;
+`tauri.android.conf.json` lets live reload connect to it). With the
+emulators, set `VITE_FIREBASE_EMULATOR_HOST=10.0.2.2`: the Android
+emulator's address for this computer.
+
+On Android the Rust side reports the runtime `mobile` (`get_capabilities`).
+The app has the budget, reminders as system alarms (they come with the app
+closed), Google sign-in and usage analytics. Google sign-in needs Google
+Play services, and the build's signing certificate registered on the
+"BudgetMint Android" app (Firebase console → Project settings → Your apps):
+the debug key's and the release key's SHA-1 and SHA-256 are. A new key needs
+its own, and `google-services.json` downloaded again. The ID token is for
+`budgetmint`'s web client, which TaskMint's project safelists, so it signs
+in to both. The parts only a desktop has are left out, in the Rust
+(`#[cfg(desktop)]`, and those crates are desktop-only dependencies) and in
+the webview (`tauriShell.ts`, `extensions.tsx`): the tray, opening at login,
+the save dialog (so Settings → Your data's backup and spreadsheet can't be
+saved there yet) and updates.
+
+To check the Rust compiles for Android without the Gradle build, point Cargo
+at the NDK's compiler (the `tauri android` commands do this themselves):
+
+```bash
+TC=$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin CC_aarch64_linux_android=$TC/aarch64-linux-android24-clang AR_aarch64_linux_android=$TC/llvm-ar cargo clippy -p budgetmint --target aarch64-linux-android -- -D warnings
+```
 
 ### Android signing
 
 Android installs an APK over the app only when both are signed with the same
-key, so every release's APK will be signed with one release key: a PKCS12
+key, so every release's APK is signed with one release key: a PKCS12
 keystore with one key, alias `budgetmint`, whose password is the
-keystore's. The keystore (base64) and its password go in the repository
-secrets `ANDROID_KEYSTORE` and `ANDROID_KEYSTORE_PASSWORD`; the build reads
-them as `BUDGETMINT_ANDROID_KEYSTORE` and
-`BUDGETMINT_ANDROID_KEYSTORE_PASSWORD`, and checks the APK's certificate
-against `ANDROID_SIGNER_SHA256` in `scripts/release.mjs` (empty until the key
-exists). Keep a copy of the keystore and its password away from this
-computer: an APK signed with another key won't install over the app.
+keystore's. It's `~/.android/budgetmint-release.p12` on the computer that
+made it, with its password in `~/.android/budgetmint-release.password`. The
+keystore (base64) and its password are the repository secrets
+`ANDROID_KEYSTORE` and `ANDROID_KEYSTORE_PASSWORD`; the build reads them as
+`BUDGETMINT_ANDROID_KEYSTORE` and `BUDGETMINT_ANDROID_KEYSTORE_PASSWORD`,
+and `pnpm release --rebuild` checks the APK's certificate against
+`ANDROID_SIGNER_SHA256` in `scripts/release.mjs`.
+
+- **Keep a copy of the keystore and its password** away from this computer
+  (a password manager). An APK signed with another key won't install over
+  the app.
+- **A release APK on this computer:**
+
+```bash
+BUDGETMINT_ANDROID_KEYSTORE=~/.android/budgetmint-release.p12 BUDGETMINT_ANDROID_KEYSTORE_PASSWORD="$(cat ~/.android/budgetmint-release.password)" pnpm release --rebuild --target android-arm64
+```
+
+- **A new key** (lost or leaked):
+  `keytool -genkeypair -storetype PKCS12 -alias budgetmint -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=BudgetMint" -keystore <file>`,
+  then replace both secrets, set `ANDROID_SIGNER_SHA256` to its SHA-256
+  (`keytool -list -v`, without the colons), register its SHA-1 and SHA-256
+  on the Firebase Android app and download `google-services.json` again.
+  Installed apps can't take an APK signed with the new key: each phone
+  uninstalls BudgetMint and installs the new one (the budget is in the
+  cloud, so nothing is lost but the device's own settings).
 
 ### Releases
 
@@ -233,9 +357,9 @@ Change notes go in `changes/` ([changes/README.md](changes/README.md));
 `pnpm release` turns them into the next CHANGELOG section and version,
 commits and tags. Pushing the `vX.Y.Z` tag runs the Release workflow, which
 builds the macOS and Windows apps with their signed updates and
-`latest.json`, and the web app, then creates the GitHub release with
-`SHA256SUMS`, every file's checksum (`sha256sum -c --ignore-missing
-SHA256SUMS` checks a download).
+`latest.json`, the Android APK, and the web app, then creates the GitHub
+release with `SHA256SUMS`, every file's checksum (`sha256sum -c
+--ignore-missing SHA256SUMS` checks a download).
 
 **The web app**, as TaskMint's: once every build has passed, a tag deploys
 BudgetMint's Firestore rules (`rules/firestore.rules`), then the web app, to
@@ -253,9 +377,10 @@ verify BudgetMint: open System Settings → Privacy & Security and click
 
 ## Firebase setup
 
-The project `budgetmint` (Spark plan) has the "BudgetMint web" and
-"BudgetMint desktop" apps, Firestore in nam5 and the Hosting site
-`budgetmint`, and:
+The project `budgetmint` (Spark plan) has the "BudgetMint web",
+"BudgetMint desktop" and "BudgetMint Android" apps (the Android one with
+the debug and release keys' fingerprints), Firestore in nam5, the Hosting
+site `budgetmint` and Google Analytics, and:
 
 - **Auth:** Email/Password and Google. Its Google provider safelists the
   "BudgetMint desktop" OAuth client, which is in `taskmint-f9a05`'s
@@ -277,11 +402,6 @@ The project `budgetmint` (Spark plan) has the "BudgetMint web" and
   Consumer (firebase-tools checks the APIs are on). The repository
   variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT`
   name them. Without them, a release skips the web deploy.
-
-Still to do: **the Android app** (`pnpm tauri android init`, then
-MainActivity's bridges as TaskMint's: `BudgetMintSplash`,
-`BudgetMintSystemBars`, `BudgetMintGoogleSignIn`), registered in
-`budgetmint` with its signing certificates, and its release keystore.
 
 ## Repository layout
 

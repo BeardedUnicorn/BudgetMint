@@ -37,6 +37,12 @@ describe('the web shell', () => {
     expect(platform.tray).toBeUndefined();
     expect(platform.googleSignIn).toBeUndefined();
     expect(platform.notifications.firesWhenClosed).toBe(false);
+    expect(platform.analytics).toBeUndefined();
+  });
+
+  it('carries the build’s usage analytics, when it has them', () => {
+    const analytics = { setEnabled: vi.fn(), screen: vi.fn() };
+    expect(createWebShell(Date.now, analytics).platform.analytics).toBe(analytics);
   });
 
   it('asks for permission only when the browser hasn’t been answered', async () => {

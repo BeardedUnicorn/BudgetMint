@@ -18,7 +18,15 @@ export const VIEW_LABELS: Record<SidebarView, string> = {
 };
 
 /** Settings' sections, as the page anchors them (a shell's own are its ids). */
-export type SettingsSectionId = 'account' | 'data' | 'forecast' | 'taskmint' | 'reminders' | 'appearance' | 'about';
+export type SettingsSectionId =
+  | 'account'
+  | 'data'
+  | 'forecast'
+  | 'taskmint'
+  | 'reminders'
+  | 'appearance'
+  | 'privacy'
+  | 'about';
 
 /** What a page is opened for: a settings section, or (Bills, Income, Overview) adding one. */
 export interface NavigationParams {

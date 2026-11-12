@@ -19,6 +19,7 @@
     "@emotion/styled": "catalog:",
     "@mui/icons-material": "catalog:",
     "@mui/material": "catalog:",
+    "firebase": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

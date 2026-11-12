@@ -1,15 +1,16 @@
 /**
  * The client's Shell in a browser. There's no tray, and reminders come only
  * while a BudgetMint tab is open: each waits on a timer and shows as a web
- * notification at its time. Google sign-in is Firebase's popup.
+ * notification at its time. Google sign-in is Firebase's popup. Usage
+ * analytics, when the build has them, are Firebase Analytics (analytics.ts).
  */
 
-import type { ScheduledNotification, Shell } from '@budgetmint/client/shell';
+import type { AnalyticsPlatform, ScheduledNotification, Shell } from '@budgetmint/client/shell';
 
 /** The longest a browser's timer waits (about 24.8 days); a later reminder waits in steps. */
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 
-export function createWebShell(clock: () => number = Date.now): Shell {
+export function createWebShell(clock: () => number = Date.now, analytics?: AnalyticsPlatform): Shell {
   let timers: ReturnType<typeof setTimeout>[] = [];
   let waiting: ScheduledNotification[] = [];
   /** Shown already (this page): one missed while closed stays in the list, and isn't shown again. */
@@ -65,6 +66,7 @@ export function createWebShell(clock: () => number = Date.now): Shell {
         },
         firesWhenClosed: false,
       },
+      ...(analytics ? { analytics } : {}),
     },
   };
 }

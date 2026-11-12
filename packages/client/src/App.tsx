@@ -37,6 +37,7 @@ import { useTrayStatus } from './hooks/useTrayStatus';
 import { VIEW_LABELS, type SidebarView } from './navigation/views';
 import { getShell } from './shell';
 import type { AppExtensions } from './shell/types';
+import { useAnalyticsScreens } from './utils/analytics';
 
 const PAGES: Record<SidebarView, ComponentType> = {
   overview: OverviewPage,
@@ -96,7 +97,7 @@ function Gate() {
     case 'signedOut':
       return (
         <AuthLayout title="Sign in to BudgetMint">
-          <SignInForm engine={session} />
+          <SignInForm engine={session} onPhone={getShell().capabilities.runtime === 'mobile'} />
         </AuthLayout>
       );
     case 'error':
@@ -134,12 +135,16 @@ function Ready() {
   );
 }
 
-/** What runs behind the pages once signed in: reminders, the tray, the system bars and shortcuts. */
+/**
+ * What runs behind the pages once signed in: reminders, the tray, the
+ * system bars, the pages opened (for usage analytics) and shortcuts.
+ */
 function BackgroundJobs() {
   const [listing, setListing] = useState(false);
   useReminders();
   useTrayStatus();
   useSystemBarsTheme();
+  useAnalyticsScreens();
   useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => setListing(true));
   return <ShortcutsDialog open={listing} onClose={() => setListing(false)} />;
 }

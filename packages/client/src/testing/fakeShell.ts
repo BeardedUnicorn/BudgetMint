@@ -26,6 +26,7 @@ export function createFakeShell(
     systemBars: { setDark: vi.fn() },
     splashScreen: { hide: vi.fn() },
     saveFile: vi.fn(async () => true),
+    analytics: { setEnabled: vi.fn(), screen: vi.fn() },
   };
   for (const member of options.without ?? []) delete (platform as Partial<FakePlatform>)[member];
   return { capabilities: { runtime: options.runtime ?? 'desktop' }, platform };
