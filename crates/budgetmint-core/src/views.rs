@@ -137,6 +137,9 @@ pub struct UpcomingDay {
     /// Of it, estimated or assumed.
     pub withdrawal_uncertain_cents: Cents,
     pub closing_cents: Cents,
+    /// It closes below zero, or below the low mark (project::DayRow's).
+    pub short: bool,
+    pub low: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,6 +317,8 @@ pub fn overview(
             withdrawal_cents,
             withdrawal_uncertain_cents: withdrawals.map(|flow| flow.uncertain_cents).sum(),
             closing_cents: day.closing_cents,
+            short: day.short,
+            low: day.low,
         });
     }
 

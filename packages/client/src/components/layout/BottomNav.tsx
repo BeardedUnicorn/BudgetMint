@@ -53,7 +53,8 @@ export function BottomNav({
         showLabels
         value={value}
         onChange={(_event, next: SidebarView | 'more') => (next === 'more' ? onMore() : onViewChange(next))}
-        sx={{ bgcolor: 'background.paper' }}
+        // Five share a phone's width: MUI's 80px each is more than a 375px screen has
+        sx={{ bgcolor: 'background.paper', '& .MuiBottomNavigationAction-root': { minWidth: 0, px: 0.5 } }}
       >
         {BAR_VIEWS.map(view => {
           const Icon = VIEW_ICONS[view];

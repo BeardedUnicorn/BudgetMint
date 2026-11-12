@@ -321,5 +321,10 @@ describe('the calendar', () => {
     expect(within(picked).getByText(/Balance at the end of the day: \$500\.00/)).toBeInTheDocument();
     expect(within(picked).getByTitle('Low')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Another month: its first day is shown under it, and back in this one, today
+    await user.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(screen.getByRole('region', { name: 'Tuesday, December 1, 2026' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Today' }));
+    expect(screen.getByRole('region', { name: 'Tuesday, November 10, 2026' })).toBeInTheDocument();
   });
 });

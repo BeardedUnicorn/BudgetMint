@@ -26,6 +26,7 @@ import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { RecordDialog } from '../../budget/RecordDialog';
 import { StatementImport } from '../../budget/StatementImport';
+import { BalanceFlag } from '../../budget/BalanceFlag';
 import { OccurrenceList } from '../../budget/OccurrenceList';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { EmptyState } from '../../ui/display/EmptyState';
@@ -56,6 +57,7 @@ function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
               variant="caption"
               sx={{ fontFamily: MONO, color: day.closingCents < 0 ? 'error.main' : 'text.secondary' }}
             >
+              <BalanceFlag short={day.short} low={day.low} />
               Balance {formatCents(day.closingCents)}
             </Typography>
           </Stack>

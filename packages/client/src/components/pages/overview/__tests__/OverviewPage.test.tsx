@@ -30,6 +30,9 @@ describe('the overview', () => {
   it('warns before the balance goes short or low', async () => {
     const { store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 150_000)] });
     expect(screen.getByText('Your balance goes below zero on Thu, Nov 12, to -$500.00.')).toBeInTheDocument();
+    // In the list too, with a mark as well as a colour
+    const upcoming = screen.getByRole('region', { name: 'The next 14 days' });
+    expect(within(upcoming).getByTitle('Below zero')).toBeInTheDocument();
     expect(screen.getByText(/^Lowest in the next 60 days:/)).toHaveTextContent('-$2,000.00');
 
     store.putDoc('item~rent', JSON.stringify(monthly('rent', 'Rent', 12, 95_000)));
@@ -39,6 +42,7 @@ describe('the overview', () => {
       JSON.stringify({ balance: { cents: 100_000, asOf: '2026-11-09' }, lowBalanceCents: 10_000, horizonDays: 30 })
     );
     expect(await screen.findByText('Your balance goes below $100.00 on Thu, Nov 12, to $50.00.')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: 'The next 14 days' })).getByTitle('Low')).toBeInTheDocument();
   });
 
   it('keeps a bill’s moved date and its own amount when it’s marked paid', async () => {
