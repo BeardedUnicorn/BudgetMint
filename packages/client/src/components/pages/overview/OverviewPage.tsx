@@ -25,6 +25,7 @@ import { importIsStale, WITHDRAWALS_NOTE } from '../../../utils/taskmint';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { RecordDialog } from '../../budget/RecordDialog';
+import { StatementImport } from '../../budget/StatementImport';
 import { OccurrenceList } from '../../budget/OccurrenceList';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { EmptyState } from '../../ui/display/EmptyState';
@@ -154,11 +155,23 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             >
               Add
             </Button>
-            <Menu anchorEl={adding} open={adding !== null} onClose={() => setAdding(null)}>
-              <MenuItem onClick={() => add('bill')}>A bill</MenuItem>
-              <MenuItem onClick={() => add('income')}>Income</MenuItem>
-              <MenuItem onClick={() => add('record')}>A one-off spend or income</MenuItem>
-            </Menu>
+            <StatementImport>
+              {choose => (
+                <Menu anchorEl={adding} open={adding !== null} onClose={() => setAdding(null)}>
+                  <MenuItem onClick={() => add('bill')}>A bill</MenuItem>
+                  <MenuItem onClick={() => add('income')}>Income</MenuItem>
+                  <MenuItem onClick={() => add('record')}>A one-off spend or income</MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setAdding(null);
+                      choose();
+                    }}
+                  >
+                    What a bank statement shows…
+                  </MenuItem>
+                </Menu>
+              )}
+            </StatementImport>
           </>
         }
       />

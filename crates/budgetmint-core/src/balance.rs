@@ -11,7 +11,7 @@ use crate::error::{invalid, CoreError};
 use crate::forecast::contract::PayoutForecast;
 use crate::model::{Balance, BalanceCheck, Cents, OccStatus, Settings};
 use crate::occur::{occurrences, MOVE_DAYS};
-use crate::plan::{self, check_balance, OccurrenceInput, Planned};
+use crate::plan::{self, check_balance, OccurrenceInput, Planned, RecordInput};
 use crate::project::{project, settled_through, spending_between};
 use crate::time::Ctx;
 use crate::views::{occurrence_view, OccurrenceView};
@@ -170,12 +170,14 @@ fn expected_by(
 }
 
 /// What `balance` compares with, the open ones in `still_open` left to come
-/// after it, and every other one listed taken as in it.
+/// after it, and every other one listed taken as in it: at its amount in
+/// `amounts` when given there (what was really paid), else as expected.
 pub fn balance_check(
     snapshot: &Snapshot,
     taskmint: Option<&PayoutForecast>,
     balance: Balance,
     still_open: Vec<OccRef>,
+    amounts: &[PaidInput],
     ctx: &Ctx,
 ) -> BalanceCheckView {
     let today = ctx.today();
@@ -185,7 +187,16 @@ pub fn balance_check(
         .iter()
         .map(|occurrence| occurrence_view(occurrence, today, settled))
         .collect::<Vec<_>>();
-    let paid = paid_on_due(&views, &still_open);
+    let paid = paid_on_due(&views, &still_open)
+        .into_iter()
+        .map(|paid| PaidInput {
+            amount_cents: amounts
+                .iter()
+                .find(|given| given.item_id == paid.item_id && given.date == paid.date)
+                .map_or(paid.amount_cents, |given| given.amount_cents),
+            ..paid
+        })
+        .collect();
     // On a copy: what settling them would leave
     let mut draft = snapshot.clone();
     let settled_draft = settle_occurrences(&mut draft, paid, still_open, Some(balance.as_of), ctx);
@@ -217,12 +228,15 @@ pub fn paid_on_due(open: &[OccurrenceView], still_open: &[OccRef]) -> Vec<PaidIn
         .collect()
 }
 
-/// Marks `paid` paid and leaves `still_open` to come after the balance's day,
-/// then (with one) sets the balance, keeping what was expected by then
-/// against it. All of it, with one undo, or none of it.
+/// Records each one-off in `record` (a bank statement's transaction that's
+/// no bill or income here), marks `paid` paid and leaves `still_open` to
+/// come after the balance's day, then (with one) sets the balance, keeping
+/// what was expected by then against it. All of it, with one undo, or none
+/// of it.
 pub fn settle(
     snapshot: &mut Snapshot,
     taskmint: Option<&PayoutForecast>,
+    record: Vec<RecordInput>,
     paid: Vec<PaidInput>,
     still_open: Vec<OccRef>,
     balance: Option<Balance>,
@@ -231,8 +245,17 @@ pub fn settle(
     if let Some(balance) = balance {
         check_balance(snapshot, balance, ctx)?;
     }
-    let mut planned =
-        settle_occurrences(snapshot, paid, still_open, balance.map(|b| b.as_of), ctx)?;
+    let mut planned = Planned::default();
+    for one in record {
+        planned.then(plan::record(snapshot, one, ctx)?);
+    }
+    planned.then(settle_occurrences(
+        snapshot,
+        paid,
+        still_open,
+        balance.map(|b| b.as_of),
+        ctx,
+    )?);
     let Some(balance) = balance else {
         return Ok(planned);
     };
@@ -353,10 +376,71 @@ mod tests {
     }
 
     #[test]
+    fn takes_what_was_really_paid_where_said_and_records_one_offs_with_it() {
+        let mut s = budget();
+        let spent = spending_between(4_000, d(2026, 11, 1), d(2026, 11, 10));
+        // Power came to $130, not $100
+        let power = PaidInput {
+            item_id: "power".into(),
+            date: d(2026, 11, 8),
+            on: d(2026, 11, 8),
+            amount_cents: 13_000,
+        };
+        let check = balance_check(
+            &s,
+            None,
+            today_balance(70_000),
+            vec![],
+            std::slice::from_ref(&power),
+            &ctx(),
+        );
+        assert_eq!(
+            check.expected_cents,
+            Some(100_000 - 5_000 - 13_000 - 2_000 - spent)
+        );
+        // A statement's coffee, recorded with the rest: one change
+        let coffee = |id: &str, name: &str| RecordInput {
+            id: id.into(),
+            kind: ItemKind::Bill,
+            name: name.into(),
+            amount_cents: 450,
+            on: d(2026, 11, 7),
+            category: None,
+            note: None,
+        };
+        let planned = settle(
+            &mut s,
+            None,
+            vec![coffee("coffee", "Coffee")],
+            vec![power],
+            vec![],
+            None,
+            &ctx(),
+        )
+        .unwrap();
+        assert!(planned.writes.iter().any(|w| w.doc_id == "item~coffee"));
+        assert!(s.items.contains_key("coffee"));
+        // A refused one stops it all
+        let message = |result: Result<Planned, CoreError>| result.unwrap_err().to_string();
+        assert_eq!(
+            message(settle(
+                &mut s,
+                None,
+                vec![coffee("tea", " ")],
+                vec![],
+                vec![],
+                None,
+                &ctx()
+            )),
+            "Give it a name"
+        );
+    }
+
+    #[test]
     fn says_what_was_expected_and_which_bills_are_in_it() {
         let s = budget();
         // 9 days of spending ($51.43 of $40 a week, by its days), the three bills
-        let check = balance_check(&s, None, today_balance(70_000), vec![], &ctx());
+        let check = balance_check(&s, None, today_balance(70_000), vec![], &[], &ctx());
         let spent = spending_between(4_000, d(2026, 11, 1), d(2026, 11, 10));
         let expected = 100_000 - 5_000 - 10_000 - 2_000 - spent;
         assert_eq!(check.expected_cents, Some(expected));
@@ -376,6 +460,7 @@ mod tests {
             None,
             today_balance(70_000),
             vec![at("power", d(2026, 11, 8))],
+            &[],
             &ctx(),
         );
         assert_eq!(later.expected_cents, Some(expected + 10_000));
@@ -386,7 +471,7 @@ mod tests {
         settings.balance = None;
         fresh.write(DocKey::Settings, Some(&settings));
         assert_eq!(
-            balance_check(&fresh, None, today_balance(1), vec![], &ctx()).expected_cents,
+            balance_check(&fresh, None, today_balance(1), vec![], &[], &ctx()).expected_cents,
             None
         );
         let older = Balance {
@@ -394,7 +479,7 @@ mod tests {
             as_of: d(2026, 10, 30),
         };
         assert_eq!(
-            balance_check(&s, None, older, vec![], &ctx()).difference_cents,
+            balance_check(&s, None, older, vec![], &[], &ctx()).difference_cents,
             None
         );
         // One as of a day still to come: nothing to compare yet
@@ -403,7 +488,7 @@ mod tests {
             as_of: d(2026, 11, 11),
         };
         assert_eq!(
-            balance_check(&s, None, ahead, vec![], &ctx()).expected_cents,
+            balance_check(&s, None, ahead, vec![], &[], &ctx()).expected_cents,
             None
         );
     }
@@ -411,13 +496,14 @@ mod tests {
     #[test]
     fn settles_the_bills_and_keeps_the_check_in_one_change() {
         let mut s = budget();
-        let check = balance_check(&s, None, today_balance(70_000), vec![], &ctx());
+        let check = balance_check(&s, None, today_balance(70_000), vec![], &[], &ctx());
         let still = vec![at("power", d(2026, 11, 8))];
         let paid = paid_on_due(&check.open, &still);
         assert_eq!(paid.len(), 1);
         let planned = settle(
             &mut s,
             None,
+            vec![],
             paid,
             still,
             Some(today_balance(70_000)),
@@ -449,6 +535,7 @@ mod tests {
                 None,
                 today_balance(70_000),
                 vec![at("power", d(2026, 11, 8))],
+                &[],
                 &ctx()
             )
             .expected_cents
@@ -478,7 +565,16 @@ mod tests {
             amount_cents: 5_500,
         };
         // Only marking paid: no balance, no check
-        let planned = settle(&mut s, None, vec![paid.clone()], vec![], None, &ctx()).unwrap();
+        let planned = settle(
+            &mut s,
+            None,
+            vec![],
+            vec![paid.clone()],
+            vec![],
+            None,
+            &ctx(),
+        )
+        .unwrap();
         assert_eq!(planned.writes.len(), 1);
         let kept = &s.overrides[&("phone".to_string(), d(2026, 11, 5))];
         assert_eq!(kept.note.as_deref(), Some("Autopay failed"));
@@ -491,6 +587,7 @@ mod tests {
             message(settle(
                 &mut s,
                 None,
+                vec![],
                 vec![paid.clone()],
                 vec![at("phone", d(2026, 11, 5))],
                 None,
@@ -503,6 +600,7 @@ mod tests {
                 &mut s,
                 None,
                 vec![],
+                vec![],
                 vec![at("phone", d(2026, 11, 5))],
                 None,
                 &ctx()
@@ -513,6 +611,7 @@ mod tests {
             message(settle(
                 &mut s,
                 None,
+                vec![],
                 vec![],
                 vec![],
                 Some(Balance {
@@ -527,6 +626,7 @@ mod tests {
         assert!(settle(
             &mut s,
             None,
+            vec![],
             vec![],
             vec![at("nope", d(2026, 11, 5))],
             Some(today_balance(1)),
@@ -543,6 +643,7 @@ mod tests {
             None,
             vec![],
             vec![],
+            vec![],
             Some(today_balance(1)),
             &ctx(),
         )
@@ -554,13 +655,14 @@ mod tests {
             item_id: "nope".into(),
             ..paid
         };
-        assert!(settle(&mut s, None, vec![unknown], vec![], None, &ctx()).is_err());
+        assert!(settle(&mut s, None, vec![], vec![unknown], vec![], None, &ctx()).is_err());
         // The check's copy refusing: nothing expected, nothing kept
         let check = balance_check(
             &s,
             None,
             today_balance(1),
             vec![at("phone", d(2026, 11, 5)), at("phone", d(2026, 11, 5))],
+            &[],
             &ctx(),
         );
         assert_eq!(check.expected_cents, None);
@@ -603,7 +705,16 @@ mod tests {
         let mut full = s.settings();
         full.checks = settings.checks.clone();
         s.write(DocKey::Settings, Some(&full));
-        settle(&mut s, None, vec![], vec![], Some(today_balance(1)), &ctx()).unwrap();
+        settle(
+            &mut s,
+            None,
+            vec![],
+            vec![],
+            vec![],
+            Some(today_balance(1)),
+            &ctx(),
+        )
+        .unwrap();
         let checks = s.settings().checks;
         assert_eq!(checks.len(), MAX_CHECKS);
         assert_eq!(checks.last().unwrap().to, d(2026, 11, 10));

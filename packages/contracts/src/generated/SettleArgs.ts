@@ -2,8 +2,13 @@
 import type { Balance } from "./Balance";
 import type { OccRef } from "./OccRef";
 import type { PaidInput } from "./PaidInput";
+import type { RecordInput } from "./RecordInput";
 
 export type SettleArgs = { 
+/**
+ * One-offs to record with it (a statement's transactions that are no bill or income here).
+ */
+record?: Array<RecordInput>, 
 /**
  * Marked paid (or received), each on a day for an amount.
  */

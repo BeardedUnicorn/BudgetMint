@@ -129,10 +129,10 @@ describe('the overview', () => {
     expect(within(dialog).getByLabelText('Balance')).toBeInvalid();
     expect(within(dialog).getByLabelText('Balance')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Balance'), '-25.50');
-    fireEvent.change(within(dialog).getByLabelText('As of the end of'), { target: { value: '2030-01-01' } });
+    fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '2030-01-01' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText('Set the balance as of today or a day before')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('As of the end of'), { target: { value: '2026-11-10' } });
+    fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '2026-11-10' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(JSON.parse(store.docs.get('settings~account')!.json).balance).toEqual({ cents: -2_550, asOf: '2026-11-10' });

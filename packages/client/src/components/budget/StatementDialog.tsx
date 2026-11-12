@@ -2,9 +2,10 @@
  * A bank statement (CSV or OFX) read and matched to the open bills and
  * income (core's read_statement): the user ticks the ones to mark paid, on
  * the day the bank shows and for its amount, and can take the statement's
- * closing balance too. When a CSV's columns can't be told, they're chosen
- * here. Saving is one change with Undo (core's settle, which also checks the
- * balance against what was expected).
+ * closing balance too. A transaction nothing matched can be matched by hand
+ * to an open bill or income, or recorded as a one-off. When a CSV's columns
+ * can't be told, they're chosen here. Saving is one change with Undo (core's
+ * settle, which also checks the balance against what was expected).
  */
 
 import { useState } from 'react';
@@ -23,7 +24,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { CsvColumns, StatementView } from '@budgetmint/contracts';
+import type { CsvColumns, PaidInput, RecordInput, StatementView } from '@budgetmint/contracts';
+import { LIMITS } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay, formatDayInYear } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
@@ -31,6 +33,9 @@ import { useBackDismiss } from '../../contexts/NavigationContext';
 import { ConfirmDialog } from '../ui/dialogs/ConfirmDialog';
 
 type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit';
+
+/** A transaction left over, recorded as a one-off. */
+const RECORD = 'record';
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
   date: 'Date',
@@ -109,6 +114,8 @@ export function StatementDialog({
   const [unticked, setUnticked] = useState<number[]>([]);
   const [takeBalance, setTakeBalance] = useState(view.balance !== null);
   const [problem, setProblem] = useState<string | null>(null);
+  /** What each transaction left over was, by transaction: a one-off to record, or an open one's key. */
+  const [left, setLeft] = useState<Record<number, string>>({});
   /** Escape was pressed with something to save: asking before it's dropped. */
   const [asking, setAsking] = useState(false);
 
@@ -124,7 +131,37 @@ export function StatementDialog({
   const chosen = view.matches.filter(match => !unticked.includes(match.transaction));
   const balance = takeBalance ? view.balance : null;
   const matchedOrDone = new Set([...view.matches.map(match => match.transaction), ...view.already]);
-  const others = view.transactions.filter(transaction => !matchedOrDone.has(transaction.index)).length;
+  const leftover = view.transactions.filter(
+    transaction => !matchedOrDone.has(transaction.index) && transaction.amountCents !== 0
+  );
+  const others = leftover.length;
+  const keyOf = (occurrence: StatementView['open'][number]) => `${occurrence.itemId} ${occurrence.scheduled}`;
+  // Matched by hand, and recorded as one-offs
+  const byHand: PaidInput[] = leftover.flatMap(transaction => {
+    const occurrence = view.open.find(open => keyOf(open) === left[transaction.index]);
+    return occurrence
+      ? [
+          {
+            itemId: occurrence.itemId,
+            date: occurrence.scheduled,
+            on: transaction.date,
+            amountCents: Math.abs(transaction.amountCents),
+          },
+        ]
+      : [];
+  });
+  const recorded: RecordInput[] = leftover
+    .filter(transaction => left[transaction.index] === RECORD)
+    .map(transaction => ({
+      id: crypto.randomUUID(),
+      kind: transaction.amountCents < 0 ? 'bill' : 'income',
+      name: transaction.description.trim().slice(0, LIMITS.MAX_NAME) || 'From the bank',
+      amountCents: Math.abs(transaction.amountCents),
+      on: transaction.date,
+      category: null,
+      note: null,
+    }));
+  const nothing = chosen.length === 0 && balance === null && byHand.length === 0 && recorded.length === 0;
   const dates = view.transactions.map(transaction => transaction.date).sort();
 
   const save = () => {
@@ -132,15 +169,19 @@ export function StatementDialog({
       change(
         'settle',
         {
-          paid: chosen.map(match => {
-            const transaction = view.transactions[match.transaction];
-            return {
-              itemId: match.occurrence.itemId,
-              date: match.occurrence.scheduled,
-              on: transaction.date,
-              amountCents: Math.abs(transaction.amountCents),
-            };
-          }),
+          record: recorded,
+          paid: [
+            ...byHand,
+            ...chosen.map(match => {
+              const transaction = view.transactions[match.transaction];
+              return {
+                itemId: match.occurrence.itemId,
+                date: match.occurrence.scheduled,
+                on: transaction.date,
+                amountCents: Math.abs(transaction.amountCents),
+              };
+            }),
+          ],
           balance: balance ?? undefined,
         },
         'Statement imported'
@@ -154,7 +195,7 @@ export function StatementDialog({
 
   /** Escape or Back: asks first while there's something to save. */
   const leave = () => {
-    if (chosen.length === 0 && balance === null) return onClose();
+    if (nothing) return onClose();
     setAsking(true);
     return false;
   };
@@ -226,6 +267,40 @@ export function StatementDialog({
                   .
                 </Typography>
               )}
+              {leftover.length > 0 && (
+                <Stack spacing={1} role="group" aria-label="What else it shows">
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    And these?
+                  </Typography>
+                  {leftover.map(transaction => {
+                    const out = transaction.amountCents < 0;
+                    return (
+                      <TextField
+                        key={transaction.index}
+                        select
+                        size="small"
+                        label={`${transaction.description || 'No description'}: ${out ? '' : '+'}${formatCents(Math.abs(transaction.amountCents))} on ${formatDay(transaction.date)}`}
+                        value={left[transaction.index] ?? ''}
+                        onChange={event =>
+                          setLeft(current => ({ ...current, [transaction.index]: event.target.value }))
+                        }
+                      >
+                        <MenuItem value="">Not in BudgetMint: leave it</MenuItem>
+                        <MenuItem value={RECORD}>
+                          {out ? 'A one-off spend: record it' : 'A one-off: record it'}
+                        </MenuItem>
+                        {view.open
+                          .filter(open => open.kind === (out ? 'bill' : 'income'))
+                          .map(open => (
+                            <MenuItem key={keyOf(open)} value={keyOf(open)}>
+                              {`${open.name}, due ${formatDay(open.due)}`}
+                            </MenuItem>
+                          ))}
+                      </TextField>
+                    );
+                  })}
+                </Stack>
+              )}
               {view.balance && (
                 <FormControlLabel
                   control={<Checkbox checked={takeBalance} onChange={event => setTakeBalance(event.target.checked)} />}
@@ -240,7 +315,7 @@ export function StatementDialog({
         <Button onClick={onClose} color="secondary">
           Cancel
         </Button>
-        <Button variant="contained" onClick={save} disabled={chosen.length === 0 && balance === null}>
+        <Button variant="contained" onClick={save} disabled={nothing}>
           Save
         </Button>
       </DialogActions>

@@ -94,6 +94,9 @@ pub struct StatementView {
     pub matches: Vec<StatementMatch>,
     /// Transactions for ones marked paid already (that day or near it, for that amount).
     pub already: Vec<u32>,
+    /// The bills and income still open around the statement's days that
+    /// nothing matched: what a transaction left over can be matched to by hand.
+    pub open: Vec<OccurrenceView>,
 }
 
 /// `text` as a statement, its transactions matched to the budget.
@@ -116,7 +119,37 @@ pub fn read_statement(
         read_csv(text, columns)
     }?;
     (view.matches, view.already) = match_open(snapshot, &view.transactions, ctx);
+    view.open = unmatched_open(snapshot, &view.transactions, &view.matches, ctx);
     Ok(view)
+}
+
+/// The open bills and income around the statement's days that nothing
+/// matched, for a transaction left over to be matched to by hand.
+fn unmatched_open(
+    snapshot: &Snapshot,
+    transactions: &[BankTransaction],
+    matches: &[StatementMatch],
+    ctx: &Ctx,
+) -> Vec<OccurrenceView> {
+    let (Some(first), Some(last)) = (
+        transactions.iter().map(|t| t.date).min(),
+        transactions.iter().map(|t| t.date).max(),
+    ) else {
+        return Vec::new();
+    };
+    let window = Duration::days(MATCH_DAYS);
+    let today = ctx.today();
+    let settled = settled_through(&snapshot.settings(), today);
+    occurrences(snapshot, first - window, last + window, false)
+        .iter()
+        .filter(|o| o.status == OccStatus::Open)
+        .map(|o| occurrence_view(o, today, settled))
+        .filter(|view| {
+            !matches.iter().any(|m| {
+                m.occurrence.item_id == view.item_id && m.occurrence.scheduled == view.scheduled
+            })
+        })
+        .collect()
 }
 
 fn not_a_statement() -> CoreError {
@@ -361,6 +394,7 @@ fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, Core
         balance: None,
         matches: Vec::new(),
         already: Vec::new(),
+        open: Vec::new(),
     };
     let Some(columns) = columns else {
         return Ok(view);
@@ -442,6 +476,7 @@ fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
         balance: None,
         matches: Vec::new(),
         already: Vec::new(),
+        open: Vec::new(),
     };
     let mut from = 0;
     while let Some(start) = upper[from..].find("<STMTTRN>") {
@@ -585,8 +620,14 @@ fn match_open(
                     1..=3 => 1,
                     _ => 0,
                 };
+            // One whose amount varies (a power bill) can be well off its estimate: by name, half to double it
+            let roughly = o.item.varies && {
+                let (amount, expected) = (t.amount_cents.abs(), o.expected_cents);
+                amount * 2 >= expected && amount <= expected * 2
+            };
             // Exactly the amount, near it and close in time, or near it with the name
-            let likely = fit == 3 || (fit == 2 && days <= 3) || (fit >= 1 && named);
+            let likely =
+                fit == 3 || (fit == 2 && days <= 3) || (fit >= 1 && named) || (roughly && named);
             if likely {
                 pairs.push((score, days, t.index, at));
             }
@@ -666,6 +707,39 @@ mod tests {
             ),
         );
         s
+    }
+
+    #[test]
+    fn matches_a_varying_bill_far_off_its_estimate_by_name_and_lists_what_nothing_matched() {
+        let mut s = Snapshot::default();
+        let mut power = item("power", ItemKind::Bill, d(2026, 11, 3), Repeat::Once, 9_000);
+        power.name = "City Power".into();
+        power.varies = true;
+        put_item(&mut s, power.clone());
+        put_item(
+            &mut s,
+            item("water", ItemKind::Bill, d(2026, 11, 5), Repeat::Once, 3_000),
+        );
+        let csv = "Date,Description,Amount\n2026-11-03,CITY POWER,-160.00\n";
+        let view = read_statement(&s, csv, None, &ctx()).unwrap();
+        let matched: Vec<&str> = view
+            .matches
+            .iter()
+            .map(|m| m.occurrence.item_id.as_str())
+            .collect();
+        assert_eq!(matched, vec!["power"]);
+        let open: Vec<&str> = view.open.iter().map(|o| o.item_id.as_str()).collect();
+        assert_eq!(open, vec!["water"]);
+        // Not varying, it's too far off its amount to be it
+        power.varies = false;
+        put_item(&mut s, power);
+        assert!(read_statement(&s, csv, None, &ctx())
+            .unwrap()
+            .matches
+            .is_empty());
+        // Nothing in it: nothing open around it either
+        let empty = read_statement(&s, "Date,Description,Amount\n", None, &ctx()).unwrap();
+        assert!(empty.open.is_empty());
     }
 
     #[test]

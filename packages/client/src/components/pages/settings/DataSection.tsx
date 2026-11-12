@@ -12,8 +12,7 @@ import { SaveAlt as DataIcon } from '@mui/icons-material';
 import { useBudget, useBudgetChange } from '../../../data/BudgetContext';
 import { getShell } from '../../../shell';
 import { canSaveFiles, saveFile } from '../../../utils/saveFile';
-import type { StatementView } from '@budgetmint/contracts';
-import { StatementDialog } from '../../budget/StatementDialog';
+import { StatementImport } from '../../budget/StatementImport';
 import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { SettingsSection } from './SettingsSection';
 
@@ -22,9 +21,7 @@ export function DataSection() {
   const change = useBudgetChange();
   const shell = getShell();
   const picker = useRef<HTMLInputElement>(null);
-  const statementPicker = useRef<HTMLInputElement>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
-  const [statement, setStatement] = useState<{ text: string; first: StatementView } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
   const save = async (kind: 'backup' | 'csv') => {
@@ -45,19 +42,6 @@ export function DataSection() {
     if (!file) return;
     setProblem(null);
     setRestoring(await file.text());
-  };
-
-  const pickedStatement = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setProblem(null);
-    const text = await file.text();
-    try {
-      setStatement({ text, first: core.call('read_statement', { text }) });
-    } catch (error) {
-      setProblem((error as Error).message);
-    }
   };
 
   const restore = () => {
@@ -101,18 +85,19 @@ export function DataSection() {
         Your bank’s statement, exported as a CSV or OFX file, marks the bills and income it shows paid, and can set your
         balance. It stays on this device: only what you mark is saved.
       </Typography>
-      <Button variant="outlined" onClick={() => statementPicker.current?.click()}>
-        Import a bank statement…
-      </Button>
-      <input
-        ref={statementPicker}
-        type="file"
-        accept=".csv,.ofx,.qfx,.txt,text/csv,application/x-ofx"
-        hidden
-        aria-label="Bank statement file"
-        onChange={event => void pickedStatement(event)}
-      />
-      {statement && <StatementDialog {...statement} onClose={() => setStatement(null)} />}
+      <StatementImport onProblem={setProblem}>
+        {choose => (
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setProblem(null);
+              choose();
+            }}
+          >
+            Import a bank statement…
+          </Button>
+        )}
+      </StatementImport>
       <input
         ref={picker}
         type="file"
