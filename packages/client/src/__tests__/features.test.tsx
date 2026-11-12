@@ -11,6 +11,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from './setup/budget';
 import { tooltipMoney } from '../components/pages/forecast/ForecastPage';
 import { describeRepeat, describeWeekends, weekdayName } from '../utils/describe';
+import { notificationsNoticedKey } from '../hooks/useReminders';
+import { createFakeShell } from '../testing';
+import { readLocal } from '../utils/localStore';
 
 const DAY_MS = 86_400_000;
 
@@ -986,5 +989,74 @@ describe('without TaskMint', () => {
       await screen.findByText('A few things, and you’re set: what your bank account holds, your pay, and your bills.')
     ).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Count TaskMint’s withdrawals' })).not.toBeInTheDocument();
+  });
+});
+
+describe('a browser that hasn’t allowed notifications', () => {
+  const NOTICE = 'Reminders are on, but this browser hasn’t allowed BudgetMint’s notifications.';
+  const QUIET = 'This browser hasn’t allowed BudgetMint’s notifications.';
+  const reminded = monthly('rent', 'Rent', 12, 50_000, { reminder: { leadDays: [3] } });
+  /** A browser, asked: it says `answers` in turn, then the last again. */
+  function browser(...answers: boolean[]) {
+    const shell = createFakeShell({ runtime: 'web', without: ['tray', 'autostart'] });
+    const granted = vi.fn(async () => (answers.length > 1 ? answers.shift()! : answers[0]));
+    shell.platform.notifications.granted = granted;
+    return { shell, granted };
+  }
+
+  it('says so in a toast once per account on this device, and quietly in Settings from then on', async () => {
+    const { shell, granted } = browser(false);
+    const first = await startBudget({ shell, items: [reminded] });
+    expect(await screen.findByText(NOTICE)).toBeInTheDocument();
+    first.unmount();
+
+    // Opened again: no toast, but Settings still says, with the way to allow them
+    granted.mockClear();
+    const { user } = await startBudget({ shell, items: [reminded] });
+    await waitFor(() => expect(granted).toHaveBeenCalled());
+    expect(screen.queryByText(NOTICE)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const reminders = section('Reminders');
+    expect(await within(reminders).findByText(QUIET)).toBeInTheDocument();
+    // Refused: said, and the line stays
+    vi.mocked(shell.platform.notifications.request).mockResolvedValueOnce(false);
+    await user.click(within(reminders).getByRole('button', { name: 'Allow' }));
+    expect(await within(reminders).findByText(/Notifications are turned off for BudgetMint/)).toBeInTheDocument();
+    expect(within(reminders).getByText(QUIET)).toBeInTheDocument();
+    // Allowed: both gone
+    await user.click(within(reminders).getByRole('button', { name: 'Allow' }));
+    await waitFor(() => expect(within(reminders).queryByText(QUIET)).not.toBeInTheDocument());
+    expect(within(reminders).queryByText(/Notifications are turned off/)).not.toBeInTheDocument();
+    expect(shell.platform.notifications.request).toHaveBeenCalledTimes(2);
+    // Reminders off on this device: nothing to allow
+    await user.click(within(reminders).getByRole('switch', { name: 'Remind me on this device' }));
+    expect(within(reminders).queryByText(QUIET)).not.toBeInTheDocument();
+    // Kept for this account alone: another on this device is told once too
+    expect(readLocal(notificationsNoticedKey('cal'), false)).toBe(true);
+    expect(readLocal(notificationsNoticedKey('dee'), false)).toBe(false);
+  });
+
+  it('has no line in Settings where notifications are allowed, where the app can’t tell, or on the desktop', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const allowed = browser(true);
+    const first = await startBudget({ shell: allowed.shell });
+    await first.user.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(allowed.granted).toHaveBeenCalled());
+    expect(screen.queryByText(QUIET)).not.toBeInTheDocument();
+    first.unmount();
+
+    const silent = browser(false);
+    silent.granted.mockRejectedValue(new Error('no answer'));
+    const second = await startBudget({ shell: silent.shell });
+    await second.user.click(screen.getByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to ask about notifications:', expect.any(Error)));
+    expect(screen.queryByText(QUIET)).not.toBeInTheDocument();
+    second.unmount();
+
+    const { user } = await startBudget();
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.getByText('They come while BudgetMint is open (or in the tray).')).toBeInTheDocument();
+    expect(screen.queryByText(QUIET)).not.toBeInTheDocument();
+    warn.mockRestore();
   });
 });
