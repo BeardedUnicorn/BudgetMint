@@ -8,6 +8,18 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.1.0 – 2026-11-11
+
+### Added
+
+- BudgetMint for Android: each release has `BudgetMint-X.Y.Z-android-arm64.apk` for arm64 phones. Open it on the phone to install it (allowing the browser or Files to install apps), and sign in as on the desktop, with your email and password or Google's account sheet. Reminders come with the app closed. It doesn't update itself: install the next release's APK over it, which keeps you signed in.
+- On Android, Settings → Your data saves the backup and the spreadsheet: Download backup and Download spreadsheet open Android's file picker, to save the file where you choose (Downloads, for one).
+- The web app can be installed from the browser (Install in Chrome and Edge, Add to Home Screen on iOS and Android), with BudgetMint's icon, and once it has been opened online it opens without a connection too.
+- The web app shows BudgetMint's icon while it loads, instead of a blank page.
+- A privacy policy and terms of use, at budgetmint.web.app/privacy and budgetmint.web.app/terms: what BudgetMint keeps (your budget, in Firebase, and usage statistics you can turn off; no ads) and how to delete it.
+- Each release lists the SHA-256 checksum of every download in its SHA256SUMS file, to check a download against.
+- The web and Android apps share which pages you open (Firebase Analytics), so we can see what's used; your bills, amounts and balances never go with it, and nothing of it is used for ads. Settings → Privacy → Share usage statistics turns it off on that device, and the privacy page says what's sent. The desktop app sends nothing.
+
 ## 2.0.2 – 2026-11-11
 
 ### Fixed
