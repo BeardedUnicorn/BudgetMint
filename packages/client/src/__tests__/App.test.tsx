@@ -119,7 +119,8 @@ describe('the app', () => {
     await user.type(screen.getByLabelText('A week'), '150');
     await user.click(screen.getByRole('button', { name: 'Back' }));
     // Pay is saved already: there as it was saved, and not added twice
-    expect(screen.getByLabelText('Each pays')).toHaveValue('1820');
+    // (Left the field, the amount is written out in full)
+    expect(screen.getByLabelText('Each pays')).toHaveValue('1,820.00');
     await user.click(screen.getByRole('button', { name: 'Skip' }));
     // Shown again, it's written out in full
     expect(screen.getByLabelText('A week')).toHaveValue('150.00');
