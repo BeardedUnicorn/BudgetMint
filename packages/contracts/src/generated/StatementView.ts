@@ -2,6 +2,7 @@
 import type { Balance } from "./Balance";
 import type { BankTransaction } from "./BankTransaction";
 import type { CsvColumns } from "./CsvColumns";
+import type { OccurrenceView } from "./OccurrenceView";
 import type { StatementFormat } from "./StatementFormat";
 import type { StatementMatch } from "./StatementMatch";
 
@@ -26,4 +27,9 @@ balance: Balance | null, matches: Array<StatementMatch>,
 /**
  * Transactions for ones marked paid already (that day or near it, for that amount).
  */
-already: Array<number>, };
+already: Array<number>, 
+/**
+ * The bills and income still open around the statement's days that
+ * nothing matched: what a transaction left over can be matched to by hand.
+ */
+open: Array<OccurrenceView>, };

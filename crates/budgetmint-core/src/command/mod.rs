@@ -345,12 +345,20 @@ pub struct BalanceCheckArgs {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub still_open: Option<Vec<OccRef>>,
+    /// What the others came to, where the user said (else as expected).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub amounts: Option<Vec<PaidInput>>,
 }
 
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SettleArgs {
+    /// One-offs to record with it (a statement's transactions that are no bill or income here).
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub record: Option<Vec<RecordInput>>,
     /// Marked paid (or received), each on a day for an amount.
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -486,6 +494,7 @@ pub fn execute(
             forecast,
             args.balance,
             args.still_open.unwrap_or_default(),
+            &args.amounts.unwrap_or_default(),
             ctx,
         )),
         Command::GetSpendingEstimate(_) => to_value(balance::spending_estimate(
@@ -495,6 +504,7 @@ pub fn execute(
         Command::Settle(args) => to_value(balance::settle(
             snapshot,
             forecast,
+            args.record.unwrap_or_default(),
             args.paid.unwrap_or_default(),
             args.still_open.unwrap_or_default(),
             args.balance,

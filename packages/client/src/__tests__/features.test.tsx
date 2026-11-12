@@ -481,17 +481,31 @@ describe('checking the balance as it’s updated', () => {
     await user.click(screen.getByRole('button', { name: 'Update balance' }));
     const dialog = screen.getByRole('dialog', { name: 'Your balance' });
     const amount = within(dialog).getByLabelText('Balance');
-    await user.clear(amount);
+    // Empty, with the last one to go by
+    expect(amount).toHaveValue('');
+    expect(within(dialog).getByText('Last: $1,000.00, at the end of Nov 1')).toBeInTheDocument();
     await user.type(amount, '1100');
-    // $1,000 less the phone, plus pay
+    // Nothing ticked: both still to come
+    const pay = within(dialog).getByRole('checkbox', { name: 'Pay: +$200.00, due Nov 6' });
+    const phone = within(dialog).getByRole('checkbox', { name: 'Phone: $50.00, due Nov 5' });
+    expect(pay).not.toBeChecked();
+    expect(within(dialog).getByText(/BudgetMint expected \$1,000\.00 by the end of Nov 10\./)).toBeInTheDocument();
+    // Both came: $1,000 less the phone, plus pay
+    await user.click(within(dialog).getByRole('button', { name: 'Tick all' }));
+    expect(pay).toBeChecked();
     expect(within(dialog).getByText(/BudgetMint expected \$1,150\.00 by the end of Nov 10\./)).toBeInTheDocument();
     expect(within(dialog).getByText(/You have \$50\.00 less: spending besides your bills/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('checkbox', { name: 'Pay: +$200.00, due Nov 6' })).toBeChecked();
-    // The phone bill hasn't come out yet: more was expected now
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Phone: $50.00, due Nov 5' }));
+    // The phone came to $60: what was expected follows
+    const came = within(dialog).getByLabelText('What Phone came to');
+    expect(came).toHaveValue('50.00');
+    await user.clear(came);
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter what it came to')).toBeInTheDocument();
+    await user.type(came, '60');
+    expect(within(dialog).getByText(/BudgetMint expected \$1,140\.00/)).toBeInTheDocument();
+    // The phone bill hasn't come out yet after all: more was expected now
+    await user.click(phone);
     expect(within(dialog).getByText(/BudgetMint expected \$1,200\.00/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Phone: $50.00, due Nov 5' }));
-    await user.click(within(dialog).getByRole('checkbox', { name: 'Phone: $50.00, due Nov 5' }));
     await user.clear(amount);
     await user.type(amount, '1200');
     expect(within(dialog).getByText(/That’s just what you have\./)).toBeInTheDocument();
@@ -510,20 +524,27 @@ describe('checking the balance as it’s updated', () => {
   });
 
   it('says what to fix, and what it can’t set', async () => {
-    const { user } = await startBudget(seed());
+    const water = monthly('water', 'Water', 8, 3_000, { varies: true });
+    const { user } = await startBudget({ ...seed(), items: [...seed().items, water] });
     await user.click(screen.getByRole('button', { name: 'Update balance' }));
     const dialog = screen.getByRole('dialog', { name: 'Your balance' });
     // A day still to come: refused; and no check against a date half typed
-    fireEvent.change(within(dialog).getByLabelText('As of the end of'), { target: { value: '2026-11-12' } });
+    await user.type(within(dialog).getByLabelText('Balance'), '1000');
+    fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '2026-11-12' } });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(within(dialog).getByText('Set the balance as of today or a day before')).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText('As of the end of'), { target: { value: '' } });
+    fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '' } });
     expect(within(dialog).queryByText(/BudgetMint expected/)).not.toBeInTheDocument();
     await user.clear(within(dialog).getByLabelText('Balance'));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     expect(
       within(dialog).getByText('Enter what the account holds (a minus sign if it’s overdrawn)')
     ).toBeInTheDocument();
+    // An amount that varies starts empty when ticked
+    fireEvent.change(within(dialog).getByLabelText('As of'), { target: { value: '2026-11-10' } });
+    await user.type(within(dialog).getByLabelText('Balance'), '900');
+    await user.click(within(dialog).getByRole('checkbox', { name: /^Water/ }));
+    expect(within(dialog).getByLabelText('What Water came to')).toHaveValue('');
   });
 });
 
@@ -698,6 +719,62 @@ describe('a bank statement', () => {
     expect(docOf(store, 'settings~account').balance).toEqual({ cents: 100_000, asOf: '2026-11-09' });
     await user.click(await screen.findByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(store.docs.has('occ~2026-11-01~rent')).toBe(false));
+  });
+
+  it('is imported from Bills too, and records or matches by hand what nothing matched', async () => {
+    const water = item({
+      id: 'water',
+      kind: 'bill',
+      name: 'Water',
+      schedule: [{ from: '2026-11-06', until: null, repeat: { every: 'once' }, amountCents: 2_500, weekends: 'keep' }],
+    });
+    const { user, store } = await startBudget({ items: [...rentAndPay(), water] });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    await user.click(screen.getByRole('button', { name: 'Import a statement' }));
+    expect(choose).toHaveBeenCalled();
+    choose.mockRestore();
+    // A file that isn't a statement: said in a toast
+    await user.upload(screen.getByLabelText('Bank statement file'), new File(['\n \n'], 'empty.csv'));
+    expect(await screen.findByText(/That file isn.t a bank statement BudgetMint can read/)).toBeInTheDocument();
+    const text = [
+      ...statement.split('\n').slice(0, 5),
+      '11/06/2026,AQUA CO,-27.00,647.10',
+      '11/08/2026,,25.00,672.10',
+    ].join('\n');
+    await user.upload(screen.getByLabelText('Bank statement file'), new File([text], 'statement.csv'));
+    const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
+    const others = within(dialog).getByRole('group', { name: 'What else it shows' });
+    // Coffee's no bill: recorded as a one-off; the water bill went out as AQUA CO
+    await user.click(within(others).getByLabelText('COFFEE: $4.50 on Nov 7'));
+    await user.click(screen.getByRole('option', { name: 'A one-off spend: record it' }));
+    await user.click(within(others).getByLabelText('AQUA CO: $27.00 on Nov 6'));
+    expect(screen.getByRole('option', { name: 'Not in BudgetMint: leave it' })).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'Water, due Nov 6' }));
+    // Money in, without a description: recorded as income, named for where it's from
+    await user.click(within(others).getByLabelText('No description: +$25.00 on Nov 8'));
+    await user.click(screen.getByRole('option', { name: 'A one-off: record it' }));
+    await user.click(within(dialog).getByRole('checkbox', { name: /Set your balance/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(docOf(store, 'occ~2026-11-06~water').status).toEqual({
+      state: 'done',
+      on: '2026-11-06',
+      amountCents: 2_700,
+    });
+    expect(itemNamed(store, 'COFFEE')).toMatchObject({ kind: 'bill', schedule: [{ from: '2026-11-07' }] });
+    expect(itemNamed(store, 'From the bank')).toMatchObject({ kind: 'income', schedule: [{ amountCents: 2_500 }] });
+  });
+
+  it('is offered from the Overview’s Add too', async () => {
+    const { user } = await startBudget({ items: rentAndPay() });
+    const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'What a bank statement shows…' }));
+    expect(choose).toHaveBeenCalled();
+    choose.mockRestore();
+    await user.upload(screen.getByLabelText('Bank statement file'), new File([statement], 'statement.csv'));
+    expect(await screen.findByRole('dialog', { name: 'Bank statement' })).toBeInTheDocument();
   });
 
   it('asks which columns are which when it can’t tell', async () => {

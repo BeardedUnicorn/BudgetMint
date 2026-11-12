@@ -47,6 +47,7 @@ import { formatRelativeDay } from '../../../utils/dates';
 import { describeEnd, describeRepeat, describeWeekends, occurrenceLabel } from '../../../utils/describe';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
+import { StatementImport } from '../../budget/StatementImport';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { EmptyState } from '../../ui/display/EmptyState';
@@ -330,9 +331,18 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
         title={words.title}
         subtitle={unarchived.length > 0 ? `${subtitle} About ${formatCents(monthly)} a month.` : subtitle}
         actions={
-          <Button variant="contained" startIcon={<AddIcon />} onClick={add}>
-            Add {words.one}
-          </Button>
+          <>
+            <StatementImport>
+              {choose => (
+                <Button variant="outlined" onClick={choose}>
+                  Import a statement
+                </Button>
+              )}
+            </StatementImport>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={add}>
+              Add {words.one}
+            </Button>
+          </>
         }
       />
       {views.length === 0 ? (

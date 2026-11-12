@@ -1,16 +1,17 @@
 /**
- * Setting the balance the forecast starts from: what the account holds,
- * as of the end of a day (today, or one before, if today's spending isn't
- * in it yet). It's checked against what BudgetMint expected by then (core's
- * get_balance_check): the open bills and income due since the last balance
- * are taken as in it, unless the user says one hasn't come out (or in) yet,
- * which leaves it to come the day after. Saving settles them and keeps the
- * check (core's settle), with one Undo.
+ * Setting the balance the forecast starts from: what the bank account
+ * holds, as of a day (today, or the last day the bank shows). It's checked
+ * against what BudgetMint expected by then (core's get_balance_check): the
+ * bills and income due since the last balance are listed, none ticked; the
+ * ones ticked came out (or in), at what each really came to, and the rest
+ * are still to come, the day after. Saving settles them and keeps the check
+ * (core's settle), with one Undo.
  */
 
 import { useRef, useState } from 'react';
 import {
   Alert,
+  Button,
   Checkbox,
   FormControlLabel,
   FormGroup,
@@ -19,16 +20,21 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { Balance, OccRef, OccurrenceView } from '@budgetmint/contracts';
+import type { Balance, OccRef, OccurrenceView, PaidInput } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { formatDay } from '../../utils/dates';
 import { centsToInput, currencySymbol, formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
+import { CurrencyInput } from '../ui/forms/CurrencyInput';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-const same = (open: OccRef, view: OccurrenceView) => open.itemId === view.itemId && open.date === view.scheduled;
+/** What each ticked one came to, as typed, by `keyOf`: ticked is being in it. */
+type Ticked = Record<string, string>;
+
+const keyOf = (view: OccurrenceView) => `${view.itemId} ${view.scheduled}`;
+const refOf = (view: OccurrenceView): OccRef => ({ itemId: view.itemId, date: view.scheduled });
 
 /** What the new balance is against what was expected, in words. */
 function differenceLine(difference: number): string {
@@ -37,16 +43,34 @@ function differenceLine(difference: number): string {
   return `You have ${formatCents(-difference)} less: spending besides your bills, or something not in BudgetMint.`;
 }
 
+/** The ticked ones, paid on their day at what they came to (those whose amount reads). */
+function paidOf(open: OccurrenceView[], ticked: Ticked): PaidInput[] {
+  return open.flatMap(view => {
+    const cents = keyOf(view) in ticked ? parseDollars(ticked[keyOf(view)]) : null;
+    return cents === null ? [] : [{ itemId: view.itemId, date: view.scheduled, on: view.due, amountCents: cents }];
+  });
+}
+
 function BalanceCheck({
   balance,
-  stillOpen,
-  onToggle,
+  ticked,
+  missing,
+  onTicked,
 }: {
   balance: Balance;
-  stillOpen: OccRef[];
-  onToggle: (view: OccurrenceView, cameOut: boolean) => void;
+  ticked: Ticked;
+  /** A ticked one without an amount, said under it. */
+  missing: string | null;
+  onTicked: (ticked: Ticked) => void;
 }) {
-  const check = useCoreQuery('get_balance_check', { balance, stillOpen });
+  const { open } = useCoreQuery('get_balance_check', { balance });
+  const check = useCoreQuery('get_balance_check', {
+    balance,
+    stillOpen: open.filter(view => !(keyOf(view) in ticked)).map(refOf),
+    amounts: paidOf(open, ticked),
+  });
+  // Ticked, it starts at what was expected; one whose amount varies, empty to say
+  const tick = (view: OccurrenceView) => [keyOf(view), view.varies ? '' : centsToInput(view.expectedCents)];
   return (
     <>
       {check.expectedCents !== null && check.differenceCents !== null && (
@@ -55,26 +79,48 @@ function BalanceCheck({
           {differenceLine(check.differenceCents)}
         </Alert>
       )}
-      {check.open.length > 0 && (
+      {open.length > 0 && (
         <FormGroup aria-label="Bills and income since your last balance">
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Did these come out (or in) by then?
-          </Typography>
+          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Which of these came out (or in) by then?
+            </Typography>
+            <Button size="small" onClick={() => onTicked({ ...Object.fromEntries(open.map(tick)), ...ticked })}>
+              Tick all
+            </Button>
+          </Stack>
           <Typography variant="caption" color="text.secondary">
-            Unticked ones are still to come: they move to the day after.
+            The ones left are still to come: they move to the day after.
           </Typography>
-          {check.open.map(view => (
-            <FormControlLabel
-              key={`${view.itemId} ${view.scheduled}`}
-              control={
-                <Checkbox
-                  checked={!stillOpen.some(open => same(open, view))}
-                  onChange={event => onToggle(view, event.target.checked)}
+          {open.map(view => {
+            const key = keyOf(view);
+            return (
+              <Stack key={key}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={key in ticked}
+                      onChange={event => {
+                        const { [key]: _, ...others } = ticked;
+                        onTicked(event.target.checked ? { ...ticked, ...Object.fromEntries([tick(view)]) } : others);
+                      }}
+                    />
+                  }
+                  label={`${view.name}: ${view.kind === 'income' ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
                 />
-              }
-              label={`${view.name}: ${view.kind === 'income' ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
-            />
-          ))}
+                {key in ticked && (
+                  <CurrencyInput
+                    label={`What ${view.name} came to`}
+                    value={ticked[key]}
+                    onChange={amount => onTicked({ ...ticked, [key]: amount })}
+                    error={missing === key}
+                    helperText={missing === key ? 'Enter what it came to' : undefined}
+                    sx={{ pl: 4, mb: 1 }}
+                  />
+                )}
+              </Stack>
+            );
+          })}
         </FormGroup>
       )}
     </>
@@ -92,21 +138,17 @@ export function BalanceDialog({
 }) {
   const { core } = useBudget();
   const change = useBudgetChange();
-  const [amount, setAmount] = useState(centsToInput(balance?.cents ?? null));
+  const [amount, setAmount] = useState('');
   const [asOf, setAsOf] = useState(today);
-  const [stillOpen, setStillOpen] = useState<OccRef[]>([]);
+  const [ticked, setTicked] = useState<Ticked>({});
+  const [missing, setMissing] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   /** The balance isn't an amount: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState(false);
   const balanceInput = useRef<HTMLInputElement>(null);
-  const dirty = useDirty([amount, asOf, stillOpen]);
+  const dirty = useDirty([amount, asOf, ticked]);
   const cents = parseDollars(amount);
   const typed = cents !== null && DAY.test(asOf) ? { cents, asOf } : null;
-
-  const toggle = (view: OccurrenceView, cameOut: boolean) =>
-    setStillOpen(current =>
-      cameOut ? current.filter(open => !same(open, view)) : [...current, { itemId: view.itemId, date: view.scheduled }]
-    );
 
   const submit = () => {
     setWrong(cents === null);
@@ -117,13 +159,13 @@ export function BalanceDialog({
     }
     const given = { cents, asOf };
     try {
-      // The ones not still to come are in the balance: paid on their day, at what was expected
-      const { open } = core.call('get_balance_check', { balance: given, stillOpen });
-      const paid = open
-        .filter(view => !stillOpen.some(at => same(at, view)))
-        .map(view => ({ itemId: view.itemId, date: view.scheduled, on: view.due, amountCents: view.expectedCents }));
-      const left = stillOpen.filter(at => open.some(view => same(at, view)));
-      change('settle', { paid, stillOpen: left, balance: given }, 'Balance updated');
+      const { open } = core.call('get_balance_check', { balance: given });
+      // Each ticked one needs what it came to
+      const unsaid = open.find(view => keyOf(view) in ticked && parseDollars(ticked[keyOf(view)]) === null);
+      setMissing(unsaid ? keyOf(unsaid) : null);
+      if (unsaid) return;
+      const stillOpen = open.filter(view => !(keyOf(view) in ticked)).map(refOf);
+      change('settle', { paid: paidOf(open, ticked), stillOpen, balance: given }, 'Balance updated');
     } catch (error) {
       setProblem((error as Error).message);
       return;
@@ -135,7 +177,8 @@ export function BalanceDialog({
     <FormDialog onClose={onClose} dirty={dirty} title="Your balance" onSubmit={submit}>
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
-          What your account holds now. Bills and income after that day move it from there.
+          What your bank account holds, as of a day: today, or the last day your bank shows. Bills and income after it
+          move it from there.
         </Typography>
         {problem && <Alert severity="error">{problem}</Alert>}
         <TextField
@@ -145,20 +188,24 @@ export function BalanceDialog({
           autoFocus
           inputRef={balanceInput}
           error={wrong}
-          helperText={wrong ? 'Enter what the account holds (a minus sign if it’s overdrawn)' : undefined}
+          helperText={
+            wrong
+              ? 'Enter what the account holds (a minus sign if it’s overdrawn)'
+              : balance && `Last: ${formatCents(balance.cents)}, at the end of ${formatDay(balance.asOf)}`
+          }
           slotProps={{
             input: { startAdornment: <InputAdornment position="start">{currencySymbol()}</InputAdornment> },
             htmlInput: { inputMode: 'decimal' },
           }}
         />
         <TextField
-          label="As of the end of"
+          label="As of"
           type="date"
           value={asOf}
           onChange={event => setAsOf(event.target.value)}
           slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: today } }}
         />
-        {typed && <BalanceCheck balance={typed} stillOpen={stillOpen} onToggle={toggle} />}
+        {typed && <BalanceCheck balance={typed} ticked={ticked} missing={missing} onTicked={setTicked} />}
       </Stack>
     </FormDialog>
   );
