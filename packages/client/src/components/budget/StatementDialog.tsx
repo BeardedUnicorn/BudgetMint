@@ -220,8 +220,9 @@ export function StatementDialog({
               <Typography variant="body2">
                 {view.transactions.length === 0
                   ? 'No transactions in it.'
-                  : `${view.transactions.length} transactions, ${formatDayInYear(dates[0])} to ${formatDayInYear(dates[dates.length - 1])}.`}
-                {view.skippedRows > 0 && ` ${view.skippedRows} lines didn’t read as one.`}
+                  : `${view.transactions.length} ${view.transactions.length === 1 ? 'transaction' : 'transactions'}, ${formatDayInYear(dates[0])} to ${formatDayInYear(dates[dates.length - 1])}.`}
+                {view.skippedRows > 0 &&
+                  ` ${view.skippedRows} ${view.skippedRows === 1 ? 'line' : 'lines'} didn’t read as one.`}
               </Typography>
               {view.matches.length > 0 ? (
                 <FormGroup aria-label="Bills and income it shows paid">
@@ -312,7 +313,7 @@ export function StatementDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} color="secondary">
+        <Button onClick={() => void leave()} color="secondary">
           Cancel
         </Button>
         <Button variant="contained" onClick={save} disabled={nothing}>

@@ -29,6 +29,7 @@ import {
 import {
   Add as AddIcon,
   Archive as ArchiveIcon,
+  CheckCircleOutlined as PaidIcon,
   DeleteOutlined as DeleteIcon,
   Edit as EditIcon,
   History as HistoryIcon,
@@ -54,6 +55,7 @@ import { EmptyState } from '../../ui/display/EmptyState';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
 import { VISUALLY_HIDDEN } from '../../ui/visuallyHidden';
 import { SECTION } from '../overview/OverviewPage';
+import { OccurrenceDialog } from '../../budget/OccurrenceDialog';
 import { HistoryDialog } from './HistoryDialog';
 import { ALL_ITEMS, CategoryTotals, categoriesOf, findItems, ItemFilters, type ItemQuery } from './ItemFilters';
 
@@ -77,7 +79,9 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
   },
 };
 
-type Dialog = { type: 'edit'; view: ItemView | null } | { type: 'history' | 'delete' | 'archive'; view: ItemView };
+type Dialog =
+  | { type: 'edit'; view: ItemView | null }
+  | { type: 'history' | 'delete' | 'archive' | 'pay'; view: ItemView };
 
 interface Action {
   /** Its tooltip (and, without `short`, its menu item). */
@@ -131,7 +135,11 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
   const compact = useCompactLayout();
   const archive = (view: ItemView, archived: boolean) => {
     try {
-      change('archive_item', { itemId: view.item.id, archived }, `${view.item.name} ${archived ? 'archived' : 'back'}`);
+      change(
+        'archive_item',
+        { itemId: view.item.id, archived },
+        `${view.item.name} ${archived ? 'archived' : 'brought back'}`
+      );
     } catch (error) {
       showError((error as Error).message);
     }
@@ -169,6 +177,18 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
           },
         ]
       : [
+          // The next one still open, marked here without a trip to the Overview (autopay goes by itself)
+          ...(view.next && !item.autopay
+            ? [
+                {
+                  title: item.kind === 'bill' ? 'Mark the next one paid' : 'Mark the next one received',
+                  short: item.kind === 'bill' ? 'Mark paid' : 'Mark received',
+                  name: `Mark ${item.name} ${item.kind === 'bill' ? 'paid' : 'received'}`,
+                  icon: <PaidIcon fontSize="small" />,
+                  run: () => onOpen({ type: 'pay', view }),
+                },
+              ]
+            : []),
           ...edit,
           {
             title: 'Archive (stop it, keep its history)',
@@ -411,6 +431,16 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
           view={dialog.view ?? undefined}
           today={today}
           defaultLeadDays={settings.reminders.leadDays}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.type === 'pay' && dialog.view.next && (
+        <OccurrenceDialog
+          occurrence={dialog.view.next}
+          today={today}
+          // What it came to is asked when its amount varies; else it's paid at its amount
+          askAmount={dialog.view.item.varies}
+          paying={!dialog.view.item.varies}
           onClose={() => setDialog(null)}
         />
       )}

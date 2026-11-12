@@ -54,6 +54,21 @@ describe('the forecast', () => {
     ).toBeInTheDocument();
   });
 
+  it('counts the everyday spending of the days between the ones listed, so the lines add up', async () => {
+    await forecast({
+      items: [monthly('rent', 'Rent', 12, 50_000), monthly('gym', 'Gym', 13, 3_000)],
+      // $10 a day
+      settings: { balance: { cents: 100_000, asOf: '2026-11-09' }, spendingWeeklyCents: 7_000, horizonDays: 14 },
+    });
+    const days = screen.getByRole('region', { name: 'Day by day' });
+    // The 10th, 11th and 12th's spending comes off by the 12th, with the rent
+    const spending = within(days).getByText('Everyday spending, 3 days').closest('tr')!;
+    expect(spending).toHaveTextContent('-$30.00');
+    expect(spending).toHaveTextContent('$470.00');
+    // The day after: its own only
+    expect(within(days).getByText('Everyday spending').closest('tr')).toHaveTextContent('-$10.00');
+  });
+
   it('lists TaskMint’s withdrawals ahead, with what’s estimated', async () => {
     await forecast({
       settings: { balance: { cents: 0, asOf: '2026-11-09' } },

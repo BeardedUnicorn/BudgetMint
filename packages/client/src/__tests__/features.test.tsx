@@ -211,6 +211,18 @@ describe('paydays and bills on schedules banks keep', () => {
 });
 
 describe('savings', () => {
+  it('lists an archived goal, and brings it back from there', async () => {
+    const { user, store } = await startBudget({
+      items: [monthly('car', 'Car insurance', 3, 60_000, { archived: true, saveUp: { since: '2026-01-01' } })],
+    });
+    await user.click(screen.getByRole('button', { name: 'Savings' }));
+    const archived = screen.getByRole('region', { name: 'Archived' });
+    await user.click(within(archived).getByRole('button', { name: 'Bring back Car insurance' }));
+    expect(await screen.findByText('Car insurance brought back')).toBeInTheDocument();
+    await waitFor(() => expect(itemNamed(store, 'Car insurance').archived).toBe(false));
+    expect(screen.queryByRole('region', { name: 'Archived' })).not.toBeInTheDocument();
+  });
+
   it('starts a goal from what’s set aside already, as a document older BudgetMints hold', async () => {
     const { user, store } = await startBudget();
     await user.click(screen.getByRole('button', { name: 'Savings' }));
@@ -271,6 +283,9 @@ describe('savings', () => {
     await user.click(screen.getByRole('switch', { name: /Set money aside for it each month/ }));
     expect(screen.getByText(/What's set aside for it so far is let go/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    // Something was changed: Cancel asks first
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     // Gone on another device meanwhile: said in a toast
     core.call('apply_docs', { docs: [{ docId: 'item~car', json: null, schema: 1 }] });
     await user.click(screen.getByRole('button', { name: 'Archive Car insurance' }));
@@ -388,7 +403,8 @@ describe('safe to spend, everyday spending and TaskMint’s cover', () => {
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getByText('Everyday spending: $70.00 a week, a day’s share each day.')).toBeInTheDocument();
     expect(screen.getByText('The dashed balance line leaves out the money set aside.')).toBeInTheDocument();
-    expect(screen.getAllByText('Everyday spending').length).toBeGreaterThan(0);
+    // (Each line stands for the days since the one listed before)
+    expect(screen.getAllByText(/^Everyday spending(, \d+ days)?$/).length).toBeGreaterThan(0);
     expect(tooltipMoney(10, 'free')).toEqual(['$10.00', 'Besides what’s set aside']);
 
     // And the calendar's day says what it took out (a tenth of $70, Wednesday's share)
@@ -785,7 +801,7 @@ describe('a bank statement', () => {
     });
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
     expect(
-      within(dialog).getByText('4 transactions, Nov 1, 2026 to Nov 7, 2026. 1 lines didn’t read as one.')
+      within(dialog).getByText('4 transactions, Nov 1, 2026 to Nov 7, 2026. 1 line didn’t read as one.')
     ).toBeInTheDocument();
     const rent = within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: $1,200.00 on Nov 1' });
     const power = within(dialog).getByRole('checkbox', {
@@ -938,6 +954,7 @@ describe('a bank statement', () => {
       '<OFX><STMTTRN><DTPOSTED>20261101<TRNAMT>-1200.00<NAME>RENT</STMTTRN><LEDGERBAL><BALAMT>800.00<DTASOF>20261107</LEDGERBAL></OFX>'
     );
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(within(dialog).getByText('1 transaction, Nov 1, 2026 to Nov 1, 2026.')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(docOf(store, 'settings~account').balance).toEqual({ cents: 80_000, asOf: '2026-11-07' })

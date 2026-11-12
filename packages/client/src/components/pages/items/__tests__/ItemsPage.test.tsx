@@ -365,6 +365,9 @@ describe('bills and income', () => {
     await user.click(await screen.findByRole('option', { name: 'Home' }));
     expect(within(dialog).getByLabelText('Category (optional)')).toHaveValue('Home');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    // Something was changed: Cancel asks first
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     await user.click(screen.getByLabelText('Category'));
@@ -555,7 +558,7 @@ describe('bills and income', () => {
     expect(screen.getByText('All archived.')).toBeInTheDocument();
     const archived = screen.getByRole('region', { name: 'Archived' });
     await user.click(within(archived).getByRole('button', { name: 'Bring back Rent' }));
-    expect(await screen.findByText('Rent back')).toBeInTheDocument();
+    expect(await screen.findByText('Rent brought back')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Archive Rent' }));
     await user.click(await screen.findByRole('button', { name: 'Delete Rent' }));
     const confirm = screen.getByRole('dialog', { name: 'Delete Rent?' });
@@ -563,6 +566,39 @@ describe('bills and income', () => {
     await waitFor(() => expect(store.docs.has('item~rent')).toBe(false));
     expect(store.docs.has('occ~2026-11-01~rent')).toBe(false);
     expect(await screen.findByText('No bills yet')).toBeInTheDocument();
+  });
+
+  it('marks the next one paid from its row, asking what a varying one came to, and not on autopay', async () => {
+    const { user, store } = await startBudget({
+      items: [
+        monthly('rent', 'Rent', 12, 120_000),
+        monthly('power', 'Power', 20, 9_000, { varies: true }),
+        monthly('gym', 'Gym', 15, 3_000, { autopay: true }),
+      ],
+    });
+    await open(user, 'Bills');
+    expect(screen.queryByRole('button', { name: 'Mark Gym paid' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mark Rent paid' }));
+    let dialog = screen.getByRole('dialog', { name: 'Rent, Nov 12' });
+    expect(within(dialog).getByLabelText('Paid')).toBeChecked();
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('1,200.00');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(store.docs.has('occ~2026-11-12~rent')).toBe(true));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    // What a varying one came to is typed, not assumed
+    await user.click(screen.getByRole('button', { name: 'Mark Power paid' }));
+    dialog = screen.getByRole('dialog', { name: 'Power, Nov 20' });
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('marks income received from its row', async () => {
+    const { user } = await startBudget({
+      items: [monthly('pay', 'Pay', 13, 80_000, { kind: 'income' })],
+    });
+    await open(user, 'Income');
+    await user.click(screen.getByRole('button', { name: 'Mark Pay received' }));
+    expect(screen.getByRole('dialog', { name: 'Pay, Nov 13' })).toBeInTheDocument();
   });
 
   it('asks before archiving a bill that’s still overdue', async () => {

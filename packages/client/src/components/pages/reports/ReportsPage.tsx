@@ -41,6 +41,7 @@ import { formatCents } from '../../../utils/money';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { StatsCard } from '../../ui/display/StatsCard';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
+import { axisMoney } from '../forecast/ForecastPage';
 import { SECTION, STATS_GRID } from '../overview/OverviewPage';
 
 const MONO = '"Roboto Mono", monospace';
@@ -62,7 +63,7 @@ function MonthsChart({ months, taskmint }: { months: MonthTotals[]; taskmint: bo
         <BarChart data={data}>
           <CartesianGrid stroke={theme.palette.divider} strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="month" stroke={theme.palette.text.secondary} fontSize={12} />
-          <YAxis stroke={theme.palette.text.secondary} fontSize={12} width={56} />
+          <YAxis stroke={theme.palette.text.secondary} fontSize={12} width={56} tickFormatter={axisMoney} />
           <Legend />
           <Bar dataKey="income" name="Money in" fill={theme.palette.success.main} />
           <Bar dataKey="bills" name="Bills paid" fill={theme.palette.error.main} />
