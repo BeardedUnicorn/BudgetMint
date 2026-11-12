@@ -3,6 +3,10 @@ import type { CsvColumns } from "./CsvColumns";
 
 export type ReadStatementArgs = { 
 /**
+ * The bank account the statement is of; none: the main one.
+ */
+accountId?: string, 
+/**
  * The statement file's text.
  */
 text: string, 

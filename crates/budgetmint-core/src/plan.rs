@@ -821,14 +821,33 @@ pub fn set_occurrence(
     Ok(planned)
 }
 
-/// Whether `balance` is one the forecast can start from (and the settings
-/// this version's to change).
+/// The account `id` names, when it's in use: the main one, or another
+/// that's there and not archived.
+pub(crate) fn live_account(snapshot: &Snapshot, id: &str) -> Result<Account, CoreError> {
+    if id == MAIN_ACCOUNT {
+        return Ok(snapshot.main_account());
+    }
+    let found = account(snapshot, id)?;
+    if found.archived {
+        return Err(invalid("That account is archived: bring it back first"));
+    }
+    Ok(found.clone())
+}
+
+/// Whether `balance` is one `account_id`'s forecast can start from (and
+/// the account's document this version's to change: the settings, for the
+/// main one).
 pub(crate) fn check_balance(
     snapshot: &Snapshot,
+    account_id: &str,
     balance: Balance,
     ctx: &Ctx,
 ) -> Result<(), CoreError> {
-    ours(snapshot, &DocKey::Settings)?;
+    if account_id == MAIN_ACCOUNT {
+        ours(snapshot, &DocKey::Settings)?;
+    } else {
+        live_account(snapshot, account_id)?;
+    }
     let today = ctx.today();
     if balance.as_of > today {
         return Err(invalid("Set the balance as of today or a day before"));
@@ -844,94 +863,148 @@ pub(crate) fn check_balance(
     Ok(())
 }
 
-/// Sets the balance the forecast starts from.
+/// Sets the balance the main account's forecast starts from.
 pub fn set_balance(
     snapshot: &mut Snapshot,
     balance: Balance,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    check_balance(snapshot, balance, ctx)?;
-    Ok(write_balance(snapshot, balance))
+    set_account_balance(snapshot, MAIN_ACCOUNT, balance, ctx)
 }
 
-fn write_balance(snapshot: &mut Snapshot, balance: Balance) -> Planned {
-    let settings = Settings {
-        balance: Some(balance),
-        ..snapshot.settings()
-    };
+/// Sets the balance `account_id`'s forecast starts from.
+pub fn set_account_balance(
+    snapshot: &mut Snapshot,
+    account_id: &str,
+    balance: Balance,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    check_balance(snapshot, account_id, balance, ctx)?;
+    Ok(write_balance(snapshot, account_id, balance, None))
+}
+
+/// Writes `account_id`'s balance (checked already) and, with them, its
+/// checks: in the settings for the main account, in its own document for
+/// another.
+pub(crate) fn write_balance(
+    snapshot: &mut Snapshot,
+    account_id: &str,
+    balance: Balance,
+    checks: Option<Vec<crate::model::BalanceCheck>>,
+) -> Planned {
     let mut planned = Planned::default();
-    planned.add(snapshot.write(DocKey::Settings, Some(&settings)));
+    match snapshot.accounts.get(account_id) {
+        Some(kept) if account_id != MAIN_ACCOUNT => {
+            let updated = Account {
+                balance: Some(balance),
+                checks: checks.unwrap_or_else(|| kept.checks.clone()),
+                ..kept.clone()
+            };
+            planned.add(snapshot.write(DocKey::Account(account_id.to_string()), Some(&updated)));
+        }
+        _ => {
+            let settings = snapshot.settings();
+            let updated = Settings {
+                balance: Some(balance),
+                checks: checks.unwrap_or_else(|| settings.checks.clone()),
+                ..settings
+            };
+            planned.add(snapshot.write(DocKey::Settings, Some(&updated)));
+        }
+    }
     planned
 }
 
-/// The balance once money paid (or received) on or before its day is
-/// taken off it (or added): the user says it went after the balance was
-/// set. Left as it is, the balance is taken to count it already, and the
-/// forecast leaves it out. Checked before anything is written.
-fn moved_balance(
+/// Each account an item of `kind` moves money in, and which way: its own
+/// for a bill or income, and where it goes too for a transfer.
+fn legs(kind: ItemKind, account: &str, to: &str) -> Vec<(String, Leg)> {
+    match kind {
+        ItemKind::Bill => vec![(account.to_string(), Leg::Out)],
+        ItemKind::Income => vec![(account.to_string(), Leg::In)],
+        ItemKind::Transfer => vec![(account.to_string(), Leg::Out), (to.to_string(), Leg::In)],
+    }
+}
+
+fn item_legs(item: &Item) -> Vec<(String, Leg)> {
+    legs(
+        item.kind,
+        item.account(),
+        item.to_account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
+    )
+}
+
+/// The balances once money paid (or received, or moved) on or before
+/// their day is taken off them (or added): the user says it went after the
+/// balance was set. Left as it is, a balance is taken to count it already,
+/// and the forecast leaves it out. A transfer moves each of its two
+/// accounts' balances that's dated on or after its day; a bill or income,
+/// its own account's. Refused when it would move none. Checked before
+/// anything is written.
+fn moved_balances(
     snapshot: &Snapshot,
-    leg: Option<Leg>,
+    legs: Vec<(String, Leg)>,
     amount_cents: Cents,
     on: NaiveDate,
     ctx: &Ctx,
-) -> Result<Balance, CoreError> {
-    // The main account's balance: what's all in another account doesn't move it
-    let Some(leg) = leg else {
-        return Err(invalid(
-            "It isn't in your main account: its balance stays as it is",
-        ));
-    };
-    let Some(balance) = snapshot.settings().balance else {
-        return Err(invalid("Set your balance first"));
-    };
-    if on > balance.as_of {
-        return Err(invalid(
-            "It's after your balance's day: the forecast counts it already",
-        ));
+) -> Result<Vec<(String, Balance)>, CoreError> {
+    let mut moved = Vec::new();
+    let mut why = "Set your balance first";
+    for (account_id, leg) in legs {
+        match snapshot.balance_of(&account_id) {
+            None => {}
+            Some(balance) if on > balance.as_of => {
+                why = "It's after your balance's day: the forecast counts it already";
+            }
+            Some(balance) => {
+                let now = Balance {
+                    cents: balance.cents + leg.sign() * amount_cents,
+                    as_of: balance.as_of,
+                };
+                check_balance(snapshot, &account_id, now, ctx)?;
+                moved.push((account_id, now));
+            }
+        }
     }
-    let moved = Balance {
-        cents: balance.cents + leg.sign() * amount_cents,
-        as_of: balance.as_of,
-    };
-    check_balance(snapshot, moved, ctx)?;
+    if moved.is_empty() {
+        return Err(invalid(why));
+    }
     Ok(moved)
 }
 
-/// Which way what `input` records moves money in `account` (as Item::leg,
-/// before there's an item).
-fn record_leg(input: &RecordInput, account: &str) -> Option<Leg> {
-    let named = |id: &Option<String>| id.as_deref().unwrap_or(MAIN_ACCOUNT) == account;
-    match input.kind {
-        ItemKind::Bill => named(&input.account_id).then_some(Leg::Out),
-        ItemKind::Income => named(&input.account_id).then_some(Leg::In),
-        ItemKind::Transfer if named(&input.account_id) => Some(Leg::Out),
-        ItemKind::Transfer => named(&input.to_account_id).then_some(Leg::In),
+fn write_moved(snapshot: &mut Snapshot, moved: Vec<(String, Balance)>) -> Planned {
+    let mut planned = Planned::default();
+    for (account_id, balance) in moved {
+        planned.then(write_balance(snapshot, &account_id, balance, None));
     }
+    planned
 }
 
 /// `record`, and with `from_balance`, what it records moves the balance
-/// too (moved_balance): one change, with one undo.
+/// too (moved_balances): one change, with one undo.
 pub fn record_with_balance(
     snapshot: &mut Snapshot,
     input: RecordInput,
     from_balance: bool,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    let moved = from_balance
-        .then(|| {
-            let leg = record_leg(&input, MAIN_ACCOUNT);
-            moved_balance(snapshot, leg, input.amount_cents, input.on, ctx)
-        })
-        .transpose()?;
+    let moved = if from_balance {
+        let named = |id: &Option<String>| id.as_deref().unwrap_or(MAIN_ACCOUNT).to_string();
+        let legs = legs(
+            input.kind,
+            &named(&input.account_id),
+            &named(&input.to_account_id),
+        );
+        moved_balances(snapshot, legs, input.amount_cents, input.on, ctx)?
+    } else {
+        Vec::new()
+    };
     let mut planned = record(snapshot, input, ctx)?;
-    if let Some(moved) = moved {
-        planned.then(write_balance(snapshot, moved));
-    }
+    planned.then(write_moved(snapshot, moved));
     Ok(planned)
 }
 
 /// `set_occurrence`, and with `from_balance`, what was paid moves the
-/// balance too (moved_balance): one change, with one undo.
+/// balance too (moved_balances): one change, with one undo.
 pub fn set_occurrence_with_balance(
     snapshot: &mut Snapshot,
     input: OccurrenceInput,
@@ -942,7 +1015,7 @@ pub fn set_occurrence_with_balance(
         let OccStatus::Done { on, amount_cents } = input.status else {
             return Err(invalid("Only what's paid moves the balance"));
         };
-        let leg = item(snapshot, &input.item_id)?.leg(MAIN_ACCOUNT);
+        let legs = item_legs(item(snapshot, &input.item_id)?);
         // Marked paid before, it moved the balance then (or the balance had it)
         if snapshot
             .overrides
@@ -953,14 +1026,12 @@ pub fn set_occurrence_with_balance(
                 "It's marked paid already: the balance stays as it is",
             ));
         }
-        Some(moved_balance(snapshot, leg, amount_cents, on, ctx)?)
+        moved_balances(snapshot, legs, amount_cents, on, ctx)?
     } else {
-        None
+        Vec::new()
     };
     let mut planned = set_occurrence(snapshot, input, ctx)?;
-    if let Some(moved) = moved {
-        planned.then(write_balance(snapshot, moved));
-    }
+    planned.then(write_moved(snapshot, moved));
     Ok(planned)
 }
 
@@ -2605,70 +2676,148 @@ mod tests {
     }
 
     #[test]
-    fn only_what_is_the_main_accounts_moves_its_balance() {
+    fn moves_the_balance_of_each_account_the_money_is_in() {
         let mut s = Snapshot::default();
-        save_account(&mut s, account_input("savings", "Savings", 0)).unwrap();
-        save_account(&mut s, account_input("card", "Card", 0)).unwrap();
-        let balance = Balance {
-            cents: 10_000,
-            as_of: d(2026, 11, 10),
-        };
-        set_balance(&mut s, balance, &ctx()).unwrap();
-        let one = |id: &str, kind: ItemKind, from: Option<&str>, to: Option<&str>| RecordInput {
-            id: id.into(),
-            kind,
-            name: id.into(),
-            amount_cents: 1_000,
-            on: d(2026, 11, 10),
-            category: None,
-            note: None,
-            account_id: from.map(str::to_string),
-            to_account_id: to.map(str::to_string),
-        };
-        let cents = |s: &Snapshot| s.settings().balance.unwrap().cents;
-        // Out of the main account to savings, and back into it
-        let put = one("put", ItemKind::Transfer, None, Some("savings"));
-        record_with_balance(&mut s, put, true, &ctx()).unwrap();
-        assert_eq!(cents(&s), 9_000);
-        let take = one("take", ItemKind::Transfer, Some("savings"), None);
-        record_with_balance(&mut s, take, true, &ctx()).unwrap();
-        assert_eq!(cents(&s), 10_000);
-        // All in other accounts: the main one's balance isn't theirs to move
-        let not_main = "It isn't in your main account: its balance stays as it is";
-        for other in [
-            one("fee", ItemKind::Bill, Some("savings"), None),
-            one("interest", ItemKind::Income, Some("savings"), None),
-            one(
-                "pay-card",
-                ItemKind::Transfer,
-                Some("savings"),
-                Some("card"),
-            ),
-        ] {
-            assert_eq!(
-                message(record_with_balance(&mut s, other, true, &ctx())),
-                not_main
-            );
+        for (id, name) in [("savings", "Savings"), ("card", "Card"), ("old", "Old")] {
+            save_account(&mut s, account_input(id, name, 0)).unwrap();
         }
-        // Marked paid, likewise
-        let fee = ItemInput {
-            account_id: Some("savings".into()),
-            ..input("fee")
+        // The main account named: its balance is the settings' all the same
+        save_account(&mut s, account_input(MAIN_ACCOUNT, "Checking", 0)).unwrap();
+        archive_account(&mut s, "old", true).unwrap();
+        let on = |day| d(2026, 11, day);
+        let balance = |cents, day| Balance {
+            cents,
+            as_of: on(day),
         };
-        save_item(&mut s, fee, &ctx()).unwrap();
+        let set = set_balance(&mut s, balance(10_000, 10), &ctx()).unwrap();
+        assert_eq!(set.writes[0].doc_id, "settings~account");
+        let set = set_account_balance(&mut s, "savings", balance(5_000, 10), &ctx()).unwrap();
+        assert_eq!(set.writes[0].doc_id, "account~savings");
+        assert_eq!(
+            message(set_account_balance(&mut s, "gone", balance(1, 10), &ctx())),
+            "That account isn't there any more (deleted on another device?)"
+        );
+        assert_eq!(
+            message(set_account_balance(&mut s, "old", balance(1, 10), &ctx())),
+            "That account is archived: bring it back first"
+        );
+        assert_eq!(
+            message(set_account_balance(
+                &mut s,
+                "savings",
+                balance(1, 11),
+                &ctx()
+            )),
+            "Set the balance as of today or a day before"
+        );
+        let cents = |s: &Snapshot| {
+            (
+                s.settings().balance.unwrap().cents,
+                s.accounts["savings"].balance.unwrap().cents,
+            )
+        };
+        let one = |id: &str, kind: ItemKind, day: u32, from: Option<&str>, to: Option<&str>| {
+            RecordInput {
+                id: id.into(),
+                kind,
+                name: id.into(),
+                amount_cents: 1_000,
+                on: on(day),
+                category: None,
+                note: None,
+                account_id: from.map(str::to_string),
+                to_account_id: to.map(str::to_string),
+            }
+        };
+        // Moved from the main account to savings today: out of the one, into the other
+        let put = one("put", ItemKind::Transfer, 10, None, Some("savings"));
+        let planned = record_with_balance(&mut s, put, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 6_000));
+        let written: Vec<&str> = planned.writes.iter().map(|w| w.doc_id.as_str()).collect();
+        assert_eq!(
+            written,
+            [
+                "item~put",
+                "occ~2026-11-10~put",
+                "settings~account",
+                "account~savings"
+            ]
+        );
+        // A bill and income in savings: its balance alone
+        let fee = one("fee", ItemKind::Bill, 10, Some("savings"), None);
+        record_with_balance(&mut s, fee, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 5_000));
+        let interest = one("interest", ItemKind::Income, 10, Some("savings"), None);
+        record_with_balance(&mut s, interest, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 6_000));
+        // To an account with no balance yet: only where it leaves
+        let pay_card = one(
+            "pay-card",
+            ItemKind::Transfer,
+            10,
+            Some("savings"),
+            Some("card"),
+        );
+        record_with_balance(&mut s, pay_card, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 5_000));
+        assert_eq!(s.accounts["card"].balance, None);
+        // All in an account with none: nothing to move, and nothing recorded
+        let due = one("due", ItemKind::Bill, 10, Some("card"), None);
+        assert_eq!(
+            message(record_with_balance(&mut s, due, true, &ctx())),
+            "Set your balance first"
+        );
+        assert!(!s.items.contains_key("due"));
+
+        // Savings' balance as of the 8th: a transfer on the 9th is after it (its forecast counts
+        // it), and on or before the main account's, which moves
+        set_account_balance(&mut s, "savings", balance(5_000, 8), &ctx()).unwrap();
+        let later = one("later", ItemKind::Transfer, 9, None, Some("savings"));
+        record_with_balance(&mut s, later, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (8_000, 5_000));
+        let after = "It's after your balance's day: the forecast counts it already";
+        let late_fee = one("late-fee", ItemKind::Bill, 9, Some("savings"), None);
+        assert_eq!(
+            message(record_with_balance(&mut s, late_fee, true, &ctx())),
+            after
+        );
+        // With no balance on the other side either, that's still why
+        let nowhere = one(
+            "nowhere",
+            ItemKind::Transfer,
+            9,
+            Some("savings"),
+            Some("card"),
+        );
+        assert_eq!(
+            message(record_with_balance(&mut s, nowhere, true, &ctx())),
+            after
+        );
+
+        // Marked paid on its balance's day: the account it's in
+        let rent = ItemInput {
+            account_id: Some("savings".into()),
+            ..input("rent")
+        };
+        save_item(&mut s, rent, &ctx()).unwrap();
         let paid = occurrence(
-            "fee",
+            "rent",
             d(2026, 11, 1),
             OccStatus::Done {
-                on: d(2026, 11, 10),
+                on: on(8),
                 amount_cents: 100,
             },
         );
+        let planned = set_occurrence_with_balance(&mut s, paid, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (8_000, 4_900));
+        assert_eq!(planned.writes[1].doc_id, "account~savings");
+
+        // A newer BudgetMint's account isn't this one's to set a balance in
+        s.apply(vec![newer("account~card")]);
         assert_eq!(
-            message(set_occurrence_with_balance(&mut s, paid, true, &ctx())),
-            not_main
+            message(set_account_balance(&mut s, "card", balance(1, 10), &ctx())),
+            NEWER
         );
-        assert_eq!(cents(&s), 10_000);
     }
 
     #[test]

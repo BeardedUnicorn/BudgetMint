@@ -5,14 +5,18 @@
 //! the day after. What the cash flow then expected by the new balance's day,
 //! against what it is, is kept (`Settings::checks`): over a few updates,
 //! what goes out besides the bills, a week ([`spending_estimate`]).
+//!
+//! Each bank account is settled by itself, against its own balance and
+//! cash flow: its own bills and income, and its side of each transfer. The
+//! other accounts' balances stay as they are.
 
-use crate::docs::{DocKey, Snapshot};
+use crate::docs::Snapshot;
 use crate::error::{invalid, CoreError};
 use crate::forecast::contract::PayoutForecast;
-use crate::model::{Balance, BalanceCheck, Cents, OccStatus, Settings};
+use crate::model::{Account, Balance, BalanceCheck, Cents, OccStatus, Settings, MAIN_ACCOUNT};
 use crate::occur::{occurrences, MOVE_DAYS};
 use crate::plan::{self, check_balance, OccurrenceInput, Planned, RecordInput};
-use crate::project::{open_settled_through, project, spending_between};
+use crate::project::{open_settled_through, project_account, spending_between};
 use crate::time::Ctx;
 use crate::views::{occurrence_view, OccurrenceView};
 use chrono::{Duration, NaiveDate};
@@ -65,18 +69,24 @@ pub struct BalanceCheckView {
     pub open: Vec<OccurrenceView>,
 }
 
-/// The open ones the new balance settles, as `balance_check` lists them.
+/// The open ones `account_id`'s new balance settles, as `balance_check`
+/// lists them: its own, and its side of each transfer.
 fn open_since<'a>(
     snapshot: &'a Snapshot,
+    account_id: &str,
     balance: Balance,
     ctx: &Ctx,
 ) -> Vec<crate::occur::Occurrence<'a>> {
-    let after = open_settled_through(snapshot.settings().balance, ctx.today());
+    let after = open_settled_through(snapshot.balance_of(account_id), ctx.today());
     // A day or two short of how far one can be moved, to the day after
     let from = (after + Duration::days(1)).max(balance.as_of - Duration::days(MOVE_DAYS - 1));
     occurrences(snapshot, from, balance.as_of, false)
         .into_iter()
-        .filter(|occurrence| occurrence.status == OccStatus::Open && !occurrence.item.autopay)
+        .filter(|occurrence| {
+            occurrence.status == OccStatus::Open
+                && !occurrence.item.autopay
+                && occurrence.item.touches(account_id)
+        })
         .collect()
 }
 
@@ -151,27 +161,23 @@ fn settle_occurrences(
     Ok(planned)
 }
 
-/// What the cash flow, from the balance there is now, has by the end of
-/// `as_of`: None when there's no balance before it.
+/// What `account`'s cash flow, from the balance it has now, has by the end
+/// of `as_of`: None when it has no balance before it.
 fn expected_by(
     snapshot: &Snapshot,
     taskmint: Option<&PayoutForecast>,
+    account: &Account,
     as_of: NaiveDate,
     ctx: &Ctx,
 ) -> Option<(Balance, Cents)> {
-    let previous = snapshot
-        .settings()
-        .balance
-        .filter(|previous| previous.as_of < as_of)?;
-    let projection = project(snapshot, taskmint, ctx, ctx.today());
+    let previous = account.balance.filter(|previous| previous.as_of < as_of)?;
+    let projection = project_account(snapshot, account, taskmint, ctx, ctx.today());
     // The projection starts the day after the previous balance's: it has `as_of`
     let row = projection.day(as_of)?;
     Some((previous, row.closing_cents))
 }
 
-/// What `balance` compares with, the open ones in `still_open` left to come
-/// after it, and every other one listed taken as in it: at its amount in
-/// `amounts` when given there (what was really paid), else as expected.
+/// What a new balance for the main account compares with (balance_check_of).
 pub fn balance_check(
     snapshot: &Snapshot,
     taskmint: Option<&PayoutForecast>,
@@ -180,9 +186,35 @@ pub fn balance_check(
     amounts: &[PaidInput],
     ctx: &Ctx,
 ) -> BalanceCheckView {
+    balance_check_of(
+        snapshot,
+        taskmint,
+        MAIN_ACCOUNT,
+        balance,
+        still_open,
+        amounts,
+        ctx,
+    )
+    .expect("the main account is always in use")
+}
+
+/// What `balance` compares with in `account_id`, the open ones in
+/// `still_open` left to come after it, and every other one listed taken as
+/// in it: at its amount in `amounts` when given there (what was really
+/// paid), else as expected. Refused when the account isn't in use.
+pub fn balance_check_of(
+    snapshot: &Snapshot,
+    taskmint: Option<&PayoutForecast>,
+    account_id: &str,
+    balance: Balance,
+    still_open: Vec<OccRef>,
+    amounts: &[PaidInput],
+    ctx: &Ctx,
+) -> Result<BalanceCheckView, CoreError> {
+    let account = plan::live_account(snapshot, account_id)?;
     let today = ctx.today();
-    let settleds = crate::views::Settleds::new(snapshot, today, None);
-    let open = open_since(snapshot, balance, ctx);
+    let settleds = crate::views::Settleds::new(snapshot, today, Some(account_id));
+    let open = open_since(snapshot, account_id, balance, ctx);
     let views = open
         .iter()
         .map(|occurrence| occurrence_view(occurrence, today, &settleds))
@@ -202,13 +234,13 @@ pub fn balance_check(
     let settled_draft = settle_occurrences(&mut draft, paid, still_open, Some(balance.as_of), ctx);
     let expected = settled_draft
         .ok()
-        .and_then(|_| expected_by(&draft, taskmint, balance.as_of, ctx));
-    BalanceCheckView {
-        previous: snapshot.settings().balance,
+        .and_then(|_| expected_by(&draft, taskmint, &account, balance.as_of, ctx));
+    Ok(BalanceCheckView {
+        previous: account.balance,
         expected_cents: expected.map(|(_, cents)| cents),
         difference_cents: expected.map(|(_, cents)| balance.cents - cents),
         open: views,
-    }
+    })
 }
 
 /// Each of `open` not in `still_open`, as paid on its due day at what was expected.
@@ -228,11 +260,7 @@ pub fn paid_on_due(open: &[OccurrenceView], still_open: &[OccRef]) -> Vec<PaidIn
         .collect()
 }
 
-/// Records each one-off in `record` (a bank statement's transaction that's
-/// no bill or income here), marks `paid` paid and leaves `still_open` to
-/// come after the balance's day, then (with one) sets the balance, keeping
-/// what was expected by then against it. All of it, with one undo, or none
-/// of it.
+/// Settles the main account (settle_account).
 pub fn settle(
     snapshot: &mut Snapshot,
     taskmint: Option<&PayoutForecast>,
@@ -242,11 +270,45 @@ pub fn settle(
     balance: Option<Balance>,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
+    settle_account(
+        snapshot,
+        taskmint,
+        MAIN_ACCOUNT,
+        record,
+        paid,
+        still_open,
+        balance,
+        ctx,
+    )
+}
+
+/// Records each one-off in `record` (a bank statement's transaction that's
+/// no bill or income here; in `account_id`, unless it names an account),
+/// marks `paid` paid and leaves `still_open` to come after the balance's
+/// day, then (with one) sets `account_id`'s balance, keeping what was
+/// expected by then against it. The other accounts' balances stay as they
+/// are. All of it, with one undo, or none of it.
+#[allow(clippy::too_many_arguments)]
+pub fn settle_account(
+    snapshot: &mut Snapshot,
+    taskmint: Option<&PayoutForecast>,
+    account_id: &str,
+    record: Vec<RecordInput>,
+    paid: Vec<PaidInput>,
+    still_open: Vec<OccRef>,
+    balance: Option<Balance>,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    plan::live_account(snapshot, account_id)?;
     if let Some(balance) = balance {
-        check_balance(snapshot, balance, ctx)?;
+        check_balance(snapshot, account_id, balance, ctx)?;
     }
     let mut planned = Planned::default();
     for one in record {
+        let one = RecordInput {
+            account_id: one.account_id.or(Some(account_id.to_string())),
+            ..one
+        };
         planned.then(plan::record(snapshot, one, ctx)?);
     }
     planned.then(settle_occurrences(
@@ -259,29 +321,36 @@ pub fn settle(
     let Some(balance) = balance else {
         return Ok(planned);
     };
-    let settings = snapshot.settings();
-    let mut checks = settings.checks.clone();
-    if let Some((previous, expected_cents)) = expected_by(snapshot, taskmint, balance.as_of, ctx) {
+    // The account as it is now (checked above: it's there)
+    let account = snapshot
+        .account(account_id)
+        .expect("an account in use was just checked");
+    let mut checks = account.checks.clone();
+    if let Some((previous, expected_cents)) =
+        expected_by(snapshot, taskmint, &account, balance.as_of, ctx)
+    {
         checks.push(BalanceCheck {
             from: previous.as_of,
             to: balance.as_of,
             expected_cents,
             actual_cents: balance.cents,
-            assumed_spending_cents: spending_between(
-                settings.spending_weekly_cents,
-                previous.as_of,
-                balance.as_of,
-            ),
+            // The everyday spending comes out of the main account only
+            assumed_spending_cents: Cents::from(account.is_main())
+                * spending_between(
+                    snapshot.settings().spending_weekly_cents,
+                    previous.as_of,
+                    balance.as_of,
+                ),
         });
         let extra = checks.len().saturating_sub(MAX_CHECKS);
         checks.drain(..extra);
     }
-    let updated = Settings {
-        balance: Some(balance),
-        checks,
-        ..settings
-    };
-    planned.add(snapshot.write(DocKey::Settings, Some(&updated)));
+    planned.then(plan::write_balance(
+        snapshot,
+        account_id,
+        balance,
+        Some(checks),
+    ));
     Ok(planned)
 }
 
@@ -320,6 +389,7 @@ pub fn spending_estimate(settings: &Settings, today: NaiveDate) -> Option<Spendi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::docs::DocKey;
     use crate::model::{ItemKind, Repeat};
     use crate::occur::tests::{d, item, over, put_item, put_over};
 
@@ -729,5 +799,165 @@ mod tests {
         let checks = s.settings().checks;
         assert_eq!(checks.len(), MAX_CHECKS);
         assert_eq!(checks.last().unwrap().to, d(2026, 11, 10));
+    }
+
+    fn two_accounts() -> Snapshot {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 100_000,
+                as_of: d(2026, 11, 5),
+            }),
+            spending_weekly_cents: 7_000,
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        put_account(
+            &mut s,
+            "savings",
+            Some(Balance {
+                cents: 50_000,
+                as_of: d(2026, 11, 5),
+            }),
+        );
+        let once = Repeat::Once;
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 7), once, 5_000),
+        );
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 7), once, 700),
+                "savings",
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer("put", (None, Some("savings")), d(2026, 11, 8), once, 10_000),
+        );
+        s
+    }
+
+    #[test]
+    fn settles_one_account_and_leaves_the_others() {
+        let mut s = two_accounts();
+        let now = Balance {
+            cents: 59_400,
+            as_of: d(2026, 11, 9),
+        };
+        // Savings' new balance asks about what's in savings: its fee, and the transfer into it
+        let check = balance_check_of(&s, None, "savings", now, vec![], &[], &ctx()).unwrap();
+        let open: Vec<&str> = check.open.iter().map(|o| o.item_id.as_str()).collect();
+        assert_eq!(open, ["fee", "put"]);
+        assert_eq!(check.previous.unwrap().cents, 50_000);
+        // $500 less the fee, with the $100 moved in; no everyday spending is taken from savings
+        assert_eq!(
+            (check.expected_cents, check.difference_cents),
+            (Some(59_300), Some(100))
+        );
+        // The main account's asks about its own, and its side of the transfer
+        let main = balance_check(&s, None, now, vec![], &[], &ctx());
+        let open: Vec<&str> = main.open.iter().map(|o| o.item_id.as_str()).collect();
+        assert_eq!(open, ["rent", "put"]);
+        let gone = "That account isn't there any more (deleted on another device?)";
+        assert_eq!(
+            balance_check_of(&s, None, "gone", now, vec![], &[], &ctx())
+                .unwrap_err()
+                .to_string(),
+            gone
+        );
+        let mut untouched = s.clone();
+        assert_eq!(
+            settle_account(
+                &mut untouched,
+                None,
+                "gone",
+                vec![],
+                vec![],
+                vec![],
+                Some(now),
+                &ctx()
+            )
+            .unwrap_err()
+            .to_string(),
+            gone
+        );
+
+        // Settled: the fee and the transfer in, some interest on the statement, and the balance
+        let one = |id: &str, account_id: Option<&str>| RecordInput {
+            id: id.into(),
+            kind: ItemKind::Income,
+            name: "Interest".into(),
+            amount_cents: 200,
+            on: d(2026, 11, 9),
+            category: None,
+            note: None,
+            account_id: account_id.map(str::to_string),
+            to_account_id: None,
+        };
+        let paid = |item_id: &str, day: u32, amount_cents: Cents| PaidInput {
+            item_id: item_id.into(),
+            date: d(2026, 11, day),
+            on: d(2026, 11, day),
+            amount_cents,
+        };
+        let planned = settle_account(
+            &mut s,
+            None,
+            "savings",
+            vec![one("interest", None), one("elsewhere", Some("main"))],
+            vec![paid("fee", 7, 700), paid("put", 8, 10_000)],
+            vec![],
+            Some(now),
+            &ctx(),
+        )
+        .unwrap();
+        let savings = &s.accounts["savings"];
+        assert_eq!(savings.balance, Some(now));
+        assert_eq!(
+            savings.checks,
+            [BalanceCheck {
+                from: d(2026, 11, 5),
+                to: d(2026, 11, 9),
+                expected_cents: 59_500,
+                actual_cents: 59_400,
+                assumed_spending_cents: 0,
+            }]
+        );
+        // What the statement had that's no bill here is savings', unless it says another account
+        assert_eq!(s.items["interest"].account_id.as_deref(), Some("savings"));
+        assert_eq!(s.items["elsewhere"].account_id, None);
+        // The main account's balance and checks are as they were
+        let settings = s.settings();
+        assert_eq!(settings.balance.unwrap().as_of, d(2026, 11, 5));
+        assert!(settings.checks.is_empty());
+        assert_eq!(planned.writes.last().unwrap().doc_id, "account~savings");
+        assert!(planned
+            .writes
+            .iter()
+            .all(|w| w.doc_id != "settings~account"));
+        // And its cash flow has the transfer leaving it on the 8th, as it was marked
+        let projection = crate::project::project(&s, None, &ctx(), ctx().today());
+        assert!(projection.day(d(2026, 11, 8)).unwrap().out_cents >= 10_000);
+
+        // Settled again a day on: its second check, kept in its own document
+        let next = Balance {
+            cents: 59_400,
+            as_of: d(2026, 11, 10),
+        };
+        settle_account(
+            &mut s,
+            None,
+            "savings",
+            vec![],
+            vec![],
+            vec![],
+            Some(next),
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(s.accounts["savings"].checks.len(), 2);
     }
 }

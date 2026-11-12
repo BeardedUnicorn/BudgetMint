@@ -10,7 +10,7 @@ use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::goals::{self, GoalsView};
-use crate::model::{Balance, Cents, Repeat, Settings, Weekends};
+use crate::model::{Balance, Cents, Repeat, Settings, Weekends, MAIN_ACCOUNT};
 use crate::plan::{
     self, AccountInput, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange,
 };
@@ -358,6 +358,10 @@ pub struct RecordArgs {
 #[serde(rename_all = "camelCase")]
 pub struct SetBalanceArgs {
     pub balance: Balance,
+    /// The bank account it's of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -389,6 +393,10 @@ pub struct RestoreBudgetArgs {
 pub struct BalanceCheckArgs {
     /// The balance the user's giving (not set yet).
     pub balance: Balance,
+    /// The bank account it's of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// The open ones they say haven't come out (or in) yet.
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -403,6 +411,10 @@ pub struct BalanceCheckArgs {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SettleArgs {
+    /// The bank account being settled; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// One-offs to record with it (a statement's transactions that are no bill or income here).
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -425,6 +437,10 @@ pub struct SettleArgs {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReadStatementArgs {
+    /// The bank account the statement is of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// The statement file's text.
     pub text: String,
     /// A CSV's columns, when they weren't found.
@@ -534,7 +550,12 @@ pub fn execute(
             args.from_balance.unwrap_or(false),
             ctx,
         )?),
-        Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
+        Command::SetBalance(args) => to_value(plan::set_account_balance(
+            snapshot,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
+            args.balance,
+            ctx,
+        )?),
         Command::Record(args) => to_value(plan::record_with_balance(
             snapshot,
             args.record,
@@ -582,29 +603,32 @@ pub fn execute(
             report::report(snapshot, forecast, &args.month, ctx)
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
         ),
-        Command::GetBalanceCheck(args) => to_value(balance::balance_check(
+        Command::GetBalanceCheck(args) => to_value(balance::balance_check_of(
             snapshot,
             forecast,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             args.balance,
             args.still_open.unwrap_or_default(),
             &args.amounts.unwrap_or_default(),
             ctx,
-        )),
+        )?),
         Command::GetSpendingEstimate(_) => to_value(balance::spending_estimate(
             &snapshot.settings(),
             ctx.today(),
         )),
-        Command::Settle(args) => to_value(balance::settle(
+        Command::Settle(args) => to_value(balance::settle_account(
             snapshot,
             forecast,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             args.record.unwrap_or_default(),
             args.paid.unwrap_or_default(),
             args.still_open.unwrap_or_default(),
             args.balance,
             ctx,
         )?),
-        Command::ReadStatement(args) => to_value(bank::read_statement(
+        Command::ReadStatement(args) => to_value(bank::read_statement_of(
             snapshot,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             &args.text,
             args.columns,
             ctx,
