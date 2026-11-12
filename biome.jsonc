@@ -64,6 +64,27 @@
         // Constructor mocks (vi.fn(function () { … })) must be functions so
         // `new` works; the arrow-function fix breaks them
         "useArrowFunction": "off"
+      },
+      // Nursery rules that catch real bugs: comparisons and arithmetic that
+      // can't mean what they say, out-of-range toFixed/toString arguments,
+      // errors made but not thrown, Map lookups on the wrong key, and promise
+      // misuse. Nursery rules can change between Biome releases; Biome's
+      // version is pinned, so a bump that changes them shows up in its own PR.
+      // (Not noReturnArrayPush: it flags `x => list.push(x)` callbacks, whose
+      // return value nothing reads.)
+      "nursery": {
+        "noArrayMethodsOnArguments": "error",
+        "noAwaitInPromiseMethods": "error",
+        "noChainedComparison": "error",
+        "noConstantComparisons": "error",
+        "noErasingOperation": "error",
+        "noMismatchedMapKey": "error",
+        "noMissingThrow": "error",
+        "noNumberArgumentOutOfRange": "error",
+        "noObjectLiteralComparison": "error",
+        "noSinglePromiseInPromiseMethods": "error",
+        "noUninvokedArrayCallback": "error",
+        "noUselessAwait": "error"
       }
     }
   },

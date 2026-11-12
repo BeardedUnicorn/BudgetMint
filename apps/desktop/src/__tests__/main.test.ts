@@ -1,4 +1,4 @@
-// Adapted from TaskMint apps/desktop/src/__tests__/main.test.ts @ 1623bee.
+// Adapted from TaskMint apps/desktop/src/__tests__/main.test.ts @ ded0475.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { startClient } from '@budgetmint/client/start';
 import type { Capabilities } from '@budgetmint/client/shell';
@@ -26,7 +26,6 @@ describe('the desktop entry', () => {
   let root: HTMLElement;
 
   beforeEach(() => {
-    vi.clearAllMocks();
     root = document.createElement('div');
     root.id = 'root';
     document.body.appendChild(root);

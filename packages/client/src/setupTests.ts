@@ -109,9 +109,8 @@ Object.defineProperty(navigator, 'clipboard', {
   configurable: true,
 });
 
-// Clear all mocks before each test
+// Fresh storage for each test (vitest's clearMocks clears the mocks' calls)
 beforeEach(() => {
-  vi.clearAllMocks();
   localStorageMock.clear();
   sessionStorageMock.clear();
 });

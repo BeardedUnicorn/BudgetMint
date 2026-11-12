@@ -1,5 +1,5 @@
 // Adapted from TaskMint packages/client/src/cloud/__tests__/firebaseStore.test.ts @ 1623bee.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { CloudConfig } from '../types';
 
 // The SDK, as far as the store uses it: each call recorded, and each app's
@@ -98,10 +98,6 @@ const CONFIG: CloudConfig = {
 /** BudgetMint's own Auth, and TaskMint's. */
 const budgetmint = () => sdk.auths['[DEFAULT]'];
 const taskmint = () => sdk.auths.taskmint;
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 const metadata = (fromCache = false, hasPendingWrites = false) => ({ fromCache, hasPendingWrites });
 

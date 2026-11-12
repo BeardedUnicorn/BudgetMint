@@ -1,11 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { TroubleshootingSection } from '../settings/TroubleshootingSection';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-
-beforeEach(() => vi.clearAllMocks());
 
 describe('Settings → Troubleshooting', () => {
   it('opens the logs folder', async () => {
