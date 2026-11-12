@@ -80,14 +80,23 @@ Note anything that fails with the build, the OS version and what you saw.
       nothing appeared, allow BudgetMint's notifications…", and nothing
       appears. Allowing them again in System Settings brings the next test
       through.
-- [ ] **Google sign-in.** Continue with Google opens the system browser on
-      Google's page. After choosing an account the browser says "Google's
-      part is done. Close this tab and go back to BudgetMint.", the
-      BudgetMint window comes forward over the browser, and the app is
-      signed in. Cancelling on Google's page leaves the browser saying
-      "Signing in didn't finish" and the window where it was. Closing the
-      browser tab instead leaves the app on the sign-in page after five
-      minutes, with an error.
+- [ ] **Google sign-in.** On macOS this needs a built app, since only a
+      `.app` gets `budgetmint://` links: `pnpm tauri build --debug --bundles
+      app`, then open `target/debug/bundle/macos/BudgetMint.app`. Continue
+      with Google opens the system browser on Google's page. After choosing
+      an account the browser shows BudgetMint's page: the wordmark over a
+      card with a green check and "Google's part is done", in the system's
+      light or dark colors. The browser asks to open BudgetMint; allowing it
+      brings the window forward over the browser, signed in. Turning that
+      down leaves the page, and its Open BudgetMint button asks again.
+      Cancelling on Google's page shows "Signing in didn't finish" with a
+      red mark, doesn't ask to open BudgetMint, and leaves the window where
+      it was; Back to BudgetMint brings it forward. Closing the browser tab
+      instead leaves the app on the sign-in page after five minutes, with an
+      error. Settings → TaskMint's Google sign-in does the same.
+- [ ] **BudgetMint links.** With the window hidden in the tray, `open
+      budgetmint://` (on Windows, `start budgetmint://`) brings it forward.
+      With BudgetMint quit, the same starts it.
 - [ ] **Window focus.** Open BudgetMint from the tray while another app is in
       front: the window comes forward and has the focus. Again with the
       window minimized: it comes back unminimized.

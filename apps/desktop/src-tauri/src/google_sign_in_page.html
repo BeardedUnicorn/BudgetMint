@@ -1,0 +1,130 @@
+<!doctype html>
+<!-- What the browser shows once Google sends it back (google_sign_in.rs fills
+     in the blanks in double braces). It looks like the app's sign-in page (AuthLayout: a card
+     under the wordmark), in the theme's colors (packages/client/src/theme),
+     light or dark as the system is: the browser can't see the app's own
+     Theme setting. Everything is in the page, so nothing is fetched with
+     the sign-in's code in the address. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{title}} · BudgetMint</title>
+<link rel="icon" href="data:image/png;base64,{{favicon}}">
+<style>
+  :root {
+    --background: #FAFAFA;
+    --paper: #ffffff;
+    --text: #3F4E4F;
+    --text-secondary: #616161;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    --button-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --button-shadow-hover: 0 4px 8px rgba(0, 0, 0, 0.15);
+    /* The brand green is too light for marks and rings on white */
+    --ring: #1F6F4A;
+    --done: #1F6F4A;
+    --done-tint: rgba(101, 214, 161, 0.2);
+    --failed: #D32F2F;
+    --failed-tint: rgba(211, 47, 47, 0.1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #121212;
+      --paper: #1e1e1e;
+      --text: #FAFAFA;
+      --text-secondary: #b0b0b0;
+      --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.4);
+      --button-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      --button-shadow-hover: 0 4px 8px rgba(0, 0, 0, 0.3);
+      --ring: #65D6A1;
+      --done: #65D6A1;
+      --done-tint: rgba(101, 214, 161, 0.14);
+      --failed: #FF5C5C;
+      --failed-tint: rgba(255, 92, 92, 0.14);
+    }
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--background);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  main {
+    box-sizing: border-box;
+    min-height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+  }
+  .card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    border-radius: 12px;
+    background: var(--paper);
+    box-shadow: var(--card-shadow);
+    text-align: center;
+  }
+  @media (max-width: 599.95px) {
+    .card { padding: 24px; }
+  }
+  .wordmark { display: block; height: 44px; width: auto; margin: 0 auto 24px; }
+  .mark {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    color: var(--done);
+    background: var(--done-tint);
+  }
+  .failed .mark { color: var(--failed); background: var(--failed-tint); }
+  .mark svg { width: 28px; height: 28px; }
+  h1 { margin: 0 0 8px; font-size: 1.25rem; font-weight: 600; line-height: 1.4; }
+  p { margin: 0; color: var(--text-secondary); }
+  .button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    margin-top: 24px;
+    padding: 8px 16px;
+    border-radius: 12px;
+    background: #65D6A1;
+    color: rgba(0, 0, 0, 0.87);
+    box-shadow: var(--button-shadow);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.75;
+    text-decoration: none;
+    transition: background-color 150ms, box-shadow 150ms;
+  }
+  .button:hover { background: #4CAF50; box-shadow: var(--button-shadow-hover); }
+  .button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    .button { transition: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="card {{outcome}}">
+    <picture>
+      <source srcset="data:image/png;base64,{{logo_dark}}" media="(prefers-color-scheme: dark)">
+      <img class="wordmark" src="data:image/png;base64,{{logo}}" alt="BudgetMint" width="229" height="44">
+    </picture>
+    <div class="mark" aria-hidden="true">{{mark}}</div>
+    <h1>{{title}}</h1>
+    <p>{{message}}</p>
+    <a class="button" href="{{link}}">{{button}}</a>
+  </div>
+</main>
+{{script}}
+</body>
+</html>

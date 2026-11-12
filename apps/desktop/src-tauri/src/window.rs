@@ -18,6 +18,20 @@ pub fn at_launch(platform: &dyn Platform, started_at_login: bool) {
     }
 }
 
+/// The app's link scheme (tauri.conf.json's plugins.deep-link): opening a
+/// `budgetmint://` link brings the app forward.
+pub const SCHEME: &str = "budgetmint";
+
+/// The system opened `urls` with the app: a `budgetmint://` link shows the
+/// window. Google sign-in's page opens one, so the app comes back in front
+/// of the browser: the browser is the app in front, so the system lets it
+/// hand the focus over, which BudgetMint can't take for itself (macOS).
+pub fn link_opened(platform: &dyn Platform, urls: &[url::Url]) {
+    if urls.iter().any(|url| url.scheme() == SCHEME) {
+        platform.show_main_window();
+    }
+}
+
 /// Whether the window `label` closes when asked to (its close button,
 /// Close Window). The main window hides to the tray instead while there's
 /// one; quit from the tray or the app menu.
@@ -69,6 +83,25 @@ mod tests {
         // Another window closes as usual
         assert!(closes(&platform, "other"));
         assert_eq!(platform.recorded().windows_hidden, 1);
+    }
+
+    #[test]
+    fn a_budgetmint_link_brings_the_window_forward() {
+        let urls = |list: &[&str]| -> Vec<url::Url> {
+            list.iter()
+                .map(|url| url::Url::parse(url).unwrap())
+                .collect()
+        };
+        let platform = with_tray();
+        link_opened(&platform, &urls(&["budgetmint://signed-in"]));
+        assert_eq!(platform.recorded().windows_shown, 1);
+        // Once, however many links came
+        link_opened(&platform, &urls(&["budgetmint://a", "budgetmint://b"]));
+        assert_eq!(platform.recorded().windows_shown, 2);
+        // Another scheme's links, or none, leave the window as it is
+        link_opened(&platform, &urls(&["https://example.com", "taskmint://x"]));
+        link_opened(&platform, &[]);
+        assert_eq!(platform.recorded().windows_shown, 2);
     }
 
     #[test]
