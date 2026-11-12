@@ -27,6 +27,7 @@ import type { CsvColumns, StatementView } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay, formatDayInYear } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
+import { useBackDismiss } from '../../contexts/NavigationContext';
 import { ConfirmDialog } from '../ui/dialogs/ConfirmDialog';
 
 type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit';
@@ -151,15 +152,19 @@ export function StatementDialog({
     onClose();
   };
 
+  /** Escape or Back: asks first while there's something to save. */
+  const leave = () => {
+    if (chosen.length === 0 && balance === null) return onClose();
+    setAsking(true);
+    return false;
+  };
+  useBackDismiss(true, leave);
+
   return (
     <Dialog
       open
-      // A click outside doesn't close it; Escape asks first while there's something to save
-      onClose={(_event, reason) => {
-        if (reason === 'backdropClick') return;
-        if (chosen.length > 0 || balance !== null) setAsking(true);
-        else onClose();
-      }}
+      // A click outside doesn't close it
+      onClose={(_event, reason) => reason !== 'backdropClick' && leave()}
       maxWidth="sm"
       fullWidth
     >

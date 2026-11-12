@@ -288,10 +288,7 @@ describe('bills and income', () => {
     await user.type(within(dialog).getByLabelText('Category (optional)'), 'Ho');
     await user.click(await screen.findByRole('option', { name: 'Home' }));
     expect(within(dialog).getByLabelText('Category (optional)')).toHaveValue('Home');
-    await user.keyboard('{Escape}');
-    // Something's typed: Escape asks before throwing it away
-    await user.keyboard('{Escape}');
-    await user.click(await screen.findByRole('button', { name: 'Discard' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     await user.click(screen.getByLabelText('Category'));
@@ -308,8 +305,7 @@ describe('bills and income', () => {
     const { user, store } = await startBudget({
       items: [monthly('rent', 'Rent', 1, 120_000), monthly('old', 'Old', 3, 1_000, { archived: true })],
     });
-    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-    await user.click(await screen.findByRole('button', { name: 'Bills' }));
+    await user.click(within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('button', { name: 'Bills' }));
     expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit Rent' })).not.toBeInTheDocument();
     // Opened, and closed again without a choice

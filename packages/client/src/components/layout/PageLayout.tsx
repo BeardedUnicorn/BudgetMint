@@ -39,8 +39,9 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, actions, children }: PageHeaderProps) {
   // On a phone the top bar names the page: the title is for screen readers
-  // there, and a header with nothing else to show takes no room
-  const phoneShowsRow = Boolean(actions);
+  // there (its subtitle shows, smaller), and a header with nothing else to
+  // show takes no room
+  const phoneShowsRow = Boolean(actions || subtitle);
   return (
     <Box component="header" sx={{ mb: 3, flexShrink: 0, [PHONE]: { mb: phoneShowsRow || children ? 2 : 0 } }}>
       <Box
@@ -60,7 +61,11 @@ export function PageHeader({ title, subtitle, actions, children }: PageHeaderPro
             </Typography>
           </Box>
           {subtitle && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, [PHONE]: { display: 'none' } }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 0.5, [PHONE]: { mt: 0, typography: 'caption' } }}
+            >
               {subtitle}
             </Typography>
           )}

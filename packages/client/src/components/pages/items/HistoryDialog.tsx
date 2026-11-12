@@ -5,6 +5,7 @@
 
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import type { ItemView } from '@budgetmint/contracts';
+import { useBackDismiss } from '../../../contexts/NavigationContext';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { addDays } from '../../../utils/dates';
 import { OccurrenceList } from '../../budget/OccurrenceList';
@@ -15,6 +16,7 @@ export function HistoryDialog({ view, today, onClose }: { view: ItemView; today:
     from: addDays(today, -365),
     to: addDays(today, 92),
   });
+  useBackDismiss(true, onClose);
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{view.item.name}</DialogTitle>

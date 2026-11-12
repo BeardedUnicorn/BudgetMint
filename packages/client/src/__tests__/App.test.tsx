@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App, StartupError } from '../App';
 import type { AppExtensions } from '../shell/types';
@@ -250,14 +250,38 @@ describe('the app', () => {
     expect(desk.platform.notifications.request).not.toHaveBeenCalled();
   });
 
-  it('opens the sidebar from the top bar on a phone', async () => {
+  it('moves between pages from the bottom bar on a phone, with More for the rest, and goes back', async () => {
     setPhoneViewport();
-    const { user } = await startBudget();
-    const topBar = () => screen.getByRole('button', { name: 'Open navigation' }).closest('header')!;
+    const { user, store, session } = await startBudget();
+    const topBar = () => document.querySelector('header.MuiAppBar-root')!;
+    const bar = screen.getByRole('navigation', { name: 'Pages' });
     expect(topBar()).toHaveTextContent('Overview');
-    await user.click(screen.getByRole('button', { name: 'Open navigation' }));
-    await user.click(await screen.findByRole('button', { name: 'Bills' }));
+    await user.click(within(bar).getByRole('button', { name: 'Bills' }));
+    expect(topBar()).toHaveTextContent('Bills');
+    // The rest are in the sidebar, slid in
+    await user.click(within(bar).getByRole('button', { name: 'More' }));
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+    await waitFor(() => expect(topBar()).toHaveTextContent('Settings'));
+    // (once the sidebar has gone: until then the page is hidden from screen readers)
+    await waitFor(() => expect(within(bar).getByRole('button', { name: 'More' })).toHaveClass('Mui-selected'));
+    // Back (the browser's, or Android's gesture) returns to the page before, and the one before that
+    act(() => window.history.back());
     await waitFor(() => expect(topBar()).toHaveTextContent('Bills'));
+    act(() => window.history.back());
+    await waitFor(() => expect(topBar()).toHaveTextContent('Overview'));
+    // With the sidebar open, Back closes it and stays on the page
+    await user.click(within(bar).getByRole('button', { name: 'More' }));
+    expect(await screen.findByRole('button', { name: 'Reports' })).toBeVisible();
+    act(() => window.history.back());
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Reports' })).toBeNull());
+    expect(topBar()).toHaveTextContent('Overview');
+    // Whether changes are still on their way (or it's offline) shows in the top bar
+    expect(topBar()).not.toHaveTextContent(/Saving|Offline/);
+    await act(() => session.write([{ docId: 'item~x', kind: 'item', json: null, schema: 1 }]));
+    expect(topBar()).toHaveTextContent('Saving…');
+    store.offline = true;
+    act(() => store.putDoc('item~y', null));
+    expect(topBar()).toHaveTextContent('Offline');
   });
 
   it('says when it can’t start, and offers to try again', async () => {

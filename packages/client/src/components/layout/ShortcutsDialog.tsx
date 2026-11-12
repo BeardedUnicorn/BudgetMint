@@ -14,6 +14,7 @@ import {
   TableCell,
   TableRow,
 } from '@mui/material';
+import { useBackDismiss } from '../../contexts/NavigationContext';
 import { modifierLabel } from '../../hooks/useKeyboardShortcuts';
 import { VIEW_LABELS, VIEWS } from '../../navigation/views';
 
@@ -25,6 +26,7 @@ export function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () 
     [`${key}N`, 'Add a bill (income, on the Income page)'],
     [`${key}/`, 'These shortcuts'],
   ];
+  useBackDismiss(open, onClose);
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>Keyboard shortcuts</DialogTitle>

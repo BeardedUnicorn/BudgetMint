@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
+import { useBackDismiss } from '../../../contexts/NavigationContext';
 import { formatLongDay } from '../../../utils/dates';
 import { formatCents, formatMaybeCents } from '../../../utils/money';
 import { OccurrenceList } from '../../budget/OccurrenceList';
@@ -36,6 +37,7 @@ export function DayDialog({
   onStep: (days: number) => void;
   onClose: () => void;
 }) {
+  useBackDismiss(true, onClose);
   return (
     <Dialog
       open

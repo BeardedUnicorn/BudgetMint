@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/components/ui/dialogs/ConfirmDialog.tsx @ 1623bee: keep the two in step.
+// Adapted from TaskMint packages/client/src/components/ui/dialogs/ConfirmDialog.tsx @ 1623bee: Back closes it.
 import { useState } from 'react';
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { useBackDismiss } from '../../../contexts/NavigationContext';
 import { ConfirmDialogProps } from '../../../types/ui';
 
 /**
@@ -30,6 +31,8 @@ export function ConfirmDialog({
   severity = 'warning',
 }: ConfirmDialogProps) {
   const [isConfirming, setIsConfirming] = useState(false);
+  // Back cancels, as Cancel does (not while it's confirming)
+  useBackDismiss(open && !isConfirming, onClose);
 
   const handleConfirm = async () => {
     const result = onConfirm();
