@@ -10,6 +10,8 @@
  * - assets/brand/mark.png, logo.png, logo-dark.png: the leaf and the wordmark.
  * - apps/desktop/src-tauri/icons/tray-template.png: the menu-bar icon.
  * - packages/client/public: the favicon, the icon and the wordmarks the app shows.
+ * - apps/web/public: the web app's install icons (its manifest's, and the
+ *   home screen's on iOS) and its link-preview card.
  *
  * The wordmark is set in Avenir Next Heavy, which macOS has; the PNGs are
  * committed, so only a change to a master needs this again. Then make the
@@ -58,6 +60,27 @@ const macos = icon => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024
   <g filter="url(#shadow)"><svg x="100" y="100" width="824" height="824" viewBox="0 0 1024 1024">${inner(icon)}</svg></g>
 </svg>`;
 
+/** `text` with its one `from` replaced; stops if a master changed and `from` isn't there once. */
+function only(text, from, to) {
+  if (text.split(from).length !== 2) throw new Error(`Expected one ${from} in the master`);
+  return text.replace(from, to);
+}
+
+/** The link-preview card (Open Graph's 1200×630): the wordmark on the icon's tile. */
+function card(wordmark) {
+  const box = new Resvg(wordmark, { font: FONTS }).getBBox();
+  const height = 150;
+  const width = (box.width / box.height) * height;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs><linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#104B4F"/><stop offset="1" stop-color="#05292E"/>
+  </linearGradient></defs>
+  <rect width="1200" height="630" fill="url(#card)"/>
+  <svg x="${(1200 - width) / 2}" y="200" width="${width}" height="${height}" viewBox="${box.x} ${box.y} ${box.width} ${box.height}">${inner(wordmark)}</svg>
+  <text x="600" y="440" text-anchor="middle" font-family="Avenir Next" font-weight="500" font-size="40" fill="#DFF5E9">Your bills, your TaskMint payouts, and what’s left</text>
+</svg>`;
+}
+
 if (!existsSync(FONT)) {
   console.error(`The wordmark needs ${FONT} (macOS).`);
   process.exit(1);
@@ -79,3 +102,13 @@ write('packages/client/public/budgetmint-icon.png', render(icon, 256));
 // The wordmark the app shows, 128 px high (as TaskMint's)
 write('packages/client/public/budgetmint-logo.png', fitted(logo, 128));
 write('packages/client/public/budgetmint-logo-dark.png', fitted(logoDark, 128));
+// The web app's: the tile as the app's, and full-bleed where the system
+// draws its own shape (iOS's home screen; Android's masks, with the drawing
+// inside their safe zone, the middle 80%)
+const square = only(icon, 'rx="230"', 'rx="0"');
+const maskable = only(square, 'scale(1.1)', 'scale(0.88)');
+write('apps/web/public/icons/icon-192.png', render(icon, 192));
+write('apps/web/public/icons/icon-512.png', render(icon, 512));
+write('apps/web/public/icons/maskable-512.png', render(maskable, 512));
+write('apps/web/public/apple-touch-icon.png', render(square, 180));
+write('apps/web/public/social.png', render(card(logoDark), 1200));

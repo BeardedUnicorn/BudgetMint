@@ -4,7 +4,8 @@
  *
  * - rust-toolchain.toml names an exact X.Y.Z channel, with the wasm target
  *   the core builds for;
- * - .node-version is a major version (CI's setup-node reads it);
+ * - .node-version is a major version (CI's setup-node reads it), and
+ *   package.json's engines.node asks for at least that one;
  * - every workflow installs the wasm-bindgen CLI at the wasm-bindgen crate's
  *   version in Cargo.lock (scripts/build-wasm.mjs refuses any other).
  */
@@ -35,6 +36,12 @@ for (const file of existsSync(join(root, '.github/workflows')) ? readdirSync(joi
 
 const node = read('.node-version').trim();
 if (!/^\d+$/.test(node)) problems.push(`.node-version should be a major version, not "${node}"`);
+const engines = JSON.parse(read('package.json')).engines?.node;
+if (engines !== `>=${node}`) {
+  problems.push(
+    `package.json's engines.node should be ">=${node}", as .node-version says, not ${JSON.stringify(engines)}`
+  );
+}
 
 if (problems.length > 0) {
   for (const problem of problems) console.error(problem);
