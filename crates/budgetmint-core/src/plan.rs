@@ -90,6 +90,11 @@ pub struct ItemInput {
     /// Set money aside for it ahead of each time (bills that come monthly or less often).
     #[serde(default)]
     pub save_up: bool,
+    /// What's set aside for it already, as of today: given, setting aside
+    /// starts over from today with it; none keeps what there is.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub saved_cents: Option<Cents>,
 }
 
 /// `text` trimmed, None when empty; refused when longer than `max`.
@@ -341,12 +346,21 @@ pub fn save_item_from(
     let save_up = if input.save_up {
         // How often it comes is what refuses it
         check_save_up(input.kind, &input.schedule).map_err(at(FormField::Repeat))?;
-        // Set aside from when it was turned on
-        Some(
-            existing
+        Some(match input.saved_cents {
+            // Set aside from when it was turned on, as it was
+            None => existing
                 .and_then(|existing| existing.save_up)
-                .unwrap_or(SaveUp { since: ctx.today() }),
-        )
+                .unwrap_or(SaveUp {
+                    since: ctx.today(),
+                    saved_cents: None,
+                }),
+            // So much already: from today, with it
+            Some(saved) => SaveUp {
+                since: ctx.today(),
+                saved_cents: (cents(saved, "amount set aside").map_err(at(FormField::Saved))? > 0)
+                    .then_some(saved),
+            },
+        })
     } else {
         None
     };
@@ -431,6 +445,7 @@ pub fn record(
             note: input.note,
             varies: false,
             save_up: false,
+            saved_cents: None,
         },
         ctx,
     )?;
@@ -781,6 +796,7 @@ mod tests {
             note: None,
             varies: false,
             save_up: false,
+            saved_cents: None,
         }
     }
 
@@ -831,6 +847,37 @@ mod tests {
         assert_eq!(
             record(&mut s, nothing, &ctx()).unwrap_err().field(),
             Some(FormField::Amount)
+        );
+    }
+
+    #[test]
+    fn starts_setting_aside_over_from_what_is_set_aside_already() {
+        let mut s = Snapshot::default();
+        let mut goal = input("trip");
+        goal.save_up = true;
+        goal.saved_cents = Some(30_000);
+        save_item(&mut s, goal.clone(), &ctx()).unwrap();
+        let today = ctx().today();
+        assert_eq!(
+            s.items["trip"].save_up,
+            Some(SaveUp {
+                since: today,
+                saved_cents: Some(30_000)
+            })
+        );
+        // Saved again without one: as it was
+        goal.saved_cents = None;
+        goal.name = "Trip!".into();
+        save_item(&mut s, goal.clone(), &ctx()).unwrap();
+        assert_eq!(s.items["trip"].save_up.unwrap().saved_cents, Some(30_000));
+        // None at all: nothing kept to say so
+        goal.saved_cents = Some(0);
+        save_item(&mut s, goal.clone(), &ctx()).unwrap();
+        assert_eq!(s.items["trip"].save_up.unwrap().saved_cents, None);
+        goal.saved_cents = Some(-1);
+        assert_eq!(
+            save_item(&mut s, goal, &ctx()).unwrap_err().field(),
+            Some(FormField::Saved)
         );
     }
 

@@ -20,6 +20,8 @@ pub enum FormField {
     Category,
     Note,
     Reminder,
+    /// What's set aside for it already.
+    Saved,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -5,7 +5,7 @@
 export const COMMAND_NAMES = ["apply_docs","reset_docs","apply_forecast","get_overview","get_month","get_forecast","get_items","get_item_history","get_reminders","get_settings","save_item","change_schedule","archive_item","delete_item","set_occurrence","set_balance","save_settings","undo","export_budget","restore_budget","get_goals","get_report","get_balance_check","get_spending_estimate","settle","read_statement","get_schedule_dates","record","export_month"] as const;
 
 /** The documents' schema: written into each, and one from a newer BudgetMint is held. */
-export const BUDGET_SCHEMA = 2 as const;
+export const BUDGET_SCHEMA = 3 as const;
 
 /** The payout forecast's contract this BudgetMint reads (TaskMint's). */
 export const FORECAST_SCHEMA = 1 as const;

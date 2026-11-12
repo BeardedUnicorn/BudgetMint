@@ -7,7 +7,7 @@
 //! reads only when it's BudgetMint's, from this version or an older one,
 //! with every document as the cloud would take it (crate::docs).
 
-use crate::docs::{valid_id, Snapshot};
+use crate::docs::{valid_id, Snapshot, Versioned, BASE_SCHEMA};
 use crate::error::{invalid, CoreError};
 use crate::model::{Item, ItemKind, OccStatus, Override, Settings};
 use crate::occur::occurrences;
@@ -18,8 +18,10 @@ use std::collections::BTreeMap;
 
 /// What a backup says it is.
 pub const BACKUP_FORMAT: &str = "budgetmint-backup";
-/// The backup's version this BudgetMint writes (and the newest it reads).
-pub const BACKUP_VERSION: u32 = 2;
+/// The newest backup version this BudgetMint reads. It writes the newest
+/// schema any of the backup's documents needs (crate::docs::Versioned), so
+/// a backup with nothing newer still restores in an older BudgetMint.
+pub const BACKUP_VERSION: u32 = 3;
 /// How far back the spreadsheet starts: a year.
 pub const CSV_DAYS_BACK: i64 = 366;
 
@@ -54,7 +56,11 @@ pub struct BudgetExport {
 pub fn export(snapshot: &Snapshot, ctx: &Ctx) -> BudgetExport {
     let backup = Backup {
         format: BACKUP_FORMAT.into(),
-        version: BACKUP_VERSION,
+        version: snapshot
+            .items
+            .values()
+            .map(Versioned::schema)
+            .fold(BASE_SCHEMA, u32::max),
         exported_at: ctx.now,
         settings: snapshot.settings.clone(),
         items: snapshot.items.values().cloned().collect(),
@@ -279,6 +285,30 @@ mod tests {
             },
         ]);
         s
+    }
+
+    #[test]
+    fn writes_a_newer_backup_only_when_it_holds_a_newer_document() {
+        let mut s = Snapshot::default();
+        let mut goal = item("trip", ItemKind::Bill, d(2027, 5, 1), Repeat::Once, 100_000);
+        put_item(&mut s, goal.clone());
+        let version = |s: &Snapshot| {
+            serde_json::from_str::<serde_json::Value>(&export(s, &ctx()).backup).unwrap()["version"]
+                .clone()
+        };
+        assert_eq!(version(&s), 2);
+        goal.save_up = Some(crate::model::SaveUp {
+            since: d(2026, 11, 10),
+            saved_cents: Some(30_000),
+        });
+        put_item(&mut s, goal);
+        assert_eq!(version(&s), 3);
+        // And this BudgetMint restores it
+        let restored = read_backup(&export(&s, &ctx()).backup).unwrap();
+        assert_eq!(
+            restored.items["trip"].save_up.unwrap().saved_cents,
+            Some(30_000)
+        );
     }
 
     #[test]

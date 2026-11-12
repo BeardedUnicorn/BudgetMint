@@ -208,6 +208,37 @@ describe('paydays and bills on schedules banks keep', () => {
 });
 
 describe('savings', () => {
+  it('starts a goal from what’s set aside already, as a document older BudgetMints hold', async () => {
+    const { user, store } = await startBudget();
+    await user.click(screen.getByRole('button', { name: 'Savings' }));
+    await user.click(screen.getAllByRole('button', { name: 'Add a goal' })[0]);
+    let dialog = screen.getByRole('dialog', { name: 'Add a savings goal' });
+    await user.type(within(dialog).getByLabelText('Name'), 'Trip');
+    await user.type(within(dialog).getByLabelText('Amount'), '1000');
+    fireEvent.change(within(dialog).getByLabelText('On'), { target: { value: '2027-03-15' } });
+    expect(within(dialog).getByText(/What you’ve put by for it already/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Already set aside (optional)'), '300');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const trip = itemNamed(store, 'Trip');
+    expect(trip.saveUp).toEqual({ since: '2026-11-10', savedCents: 30_000 });
+    // Written as schema 3: a BudgetMint before it holds it rather than drop what's set aside
+    expect(store.writes.at(-1)!.writes[0]).toMatchObject({ docId: `item~${trip.id}`, schema: 3 });
+    const card = screen.getByRole('region', { name: 'Trip' });
+    // $300 now; the $700 left over the four months to March 15
+    expect(within(card).getByText('$300.00 of $1,000.00')).toBeInTheDocument();
+    expect(within(card).getByText('Next $175.00 on Dec 10, 2026, then 3 more.')).toBeInTheDocument();
+
+    // Edited: said what's set aside so far; left empty, it stays
+    await user.click(within(card).getByRole('button', { name: 'Edit Trip' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Trip' });
+    expect(within(dialog).getByText(/\$300\.00 set aside so far/)).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Name'), '!');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(itemNamed(store, 'Trip!')).toBeDefined());
+    expect(itemNamed(store, 'Trip!').saveUp).toEqual({ since: '2026-11-10', savedCents: 30_000 });
+  });
+
   it('archives a goal, deletes one, and warns before what’s set aside is let go', async () => {
     const saved = (id: string, name: string) =>
       item({
