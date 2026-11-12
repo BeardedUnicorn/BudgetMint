@@ -1374,6 +1374,13 @@ mod tests {
             )),
             "Only what's paid moves the balance"
         );
+        assert!(set_occurrence_with_balance(
+            &mut s,
+            occurrence("gone", d(2026, 11, 1), paid(d(2026, 11, 10))),
+            true,
+            &ctx()
+        )
+        .is_err());
         let planned = set_occurrence_with_balance(
             &mut s,
             occurrence("rent", d(2026, 11, 1), paid(d(2026, 11, 10))),
