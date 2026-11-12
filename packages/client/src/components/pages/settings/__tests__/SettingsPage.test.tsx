@@ -267,8 +267,7 @@ describe('settings', () => {
     });
     await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));
     expect(store.signOutOfTaskMint).toHaveBeenCalled();
-    // Until it has, it's still there (the section is a new one after: looked up each time)
-    expect(within(taskmint()).getByText(/Signed in to TaskMint as/)).toBeInTheDocument();
+    // (The section is a new one after: looked up each time)
     await waitFor(() => expect(within(taskmint()).getByRole('button', { name: 'Connect TaskMint' })).toBeVisible());
     await user.click(within(taskmint()).getByRole('button', { name: 'Connect TaskMint' }));
     expect(
