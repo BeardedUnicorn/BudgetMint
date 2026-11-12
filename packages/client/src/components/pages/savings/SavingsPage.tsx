@@ -113,7 +113,7 @@ export function SavingsPage() {
         subtitle={
           view.goals.length > 0
             ? `${formatCents(view.setAsideCents)} set aside today, not counted as safe to spend.`
-            : 'Put money by a month at a time for yearly bills and things to come.'
+            : 'Set money aside a month at a time for yearly bills and things to come.'
         }
         actions={add}
       />

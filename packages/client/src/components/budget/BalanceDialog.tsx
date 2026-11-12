@@ -190,7 +190,7 @@ export function BalanceDialog({
           error={wrong}
           helperText={
             wrong
-              ? 'Enter what the account holds (a minus sign if it’s overdrawn)'
+              ? 'Enter what the bank account holds (a minus sign if it’s overdrawn)'
               : balance && `Last: ${formatCents(balance.cents)}, at the end of ${formatDay(balance.asOf)}`
           }
           slotProps={{

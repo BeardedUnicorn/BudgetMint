@@ -43,7 +43,7 @@ describe('currency and weeks', () => {
     await user.click(screen.getByLabelText('Currency'));
     await user.click(screen.getByRole('option', { name: 'Euro (EUR)' }));
     await waitFor(() => expect(settingsOf(store).currency).toBe('EUR'));
-    expect(screen.getByText(/flagged \(and below €0, short\)/)).toBeInTheDocument();
+    expect(screen.getByText(/marked Low \(and below €0, Below zero\)/)).toBeInTheDocument();
     await user.click(screen.getByLabelText('Weeks start on'));
     await user.click(screen.getByRole('option', { name: 'Monday' }));
     await waitFor(() => expect(settingsOf(store).weekStartsMonday).toBe(true));
@@ -349,7 +349,7 @@ describe('settings', () => {
     await user.click(within(reminders()).getByLabelText('New bills remind'));
     await user.click(screen.getByRole('option', { name: 'On the day' }));
     await waitFor(() => expect(settingsOf(store).reminders.leadDays).toBe(0));
-    await user.click(within(reminders()).getByRole('switch', { name: 'Warn me before the balance goes low' }));
+    await user.click(within(reminders()).getByRole('switch', { name: 'Warn me before the balance gets low' }));
     await waitFor(() => expect(settingsOf(store).reminders.lowBalance).toBe(false));
   });
 

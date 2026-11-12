@@ -72,7 +72,7 @@ describe('the overview', () => {
       items: [monthly('water', 'Water', 9, 3_000)],
       settings: { balance: { cents: 100_000, asOf: '2026-11-08' } },
     });
-    const section = screen.getByRole('region', { name: 'Past due' });
+    const section = screen.getByRole('region', { name: 'Overdue and late' });
     expect(within(section).getByText('Overdue')).toBeInTheDocument();
     await user.click(within(section).getByRole('button', { name: 'Mark Water paid' }));
     expect(await screen.findByText('Water marked paid')).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe('the overview', () => {
     await user.click(screen.getByRole('button', { name: 'Set balance' }));
     const dialog = screen.getByRole('dialog', { name: 'Your balance' });
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(within(dialog).getByText(/Enter what the account holds/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Enter what the bank account holds/)).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Balance')).toBeInvalid();
     expect(within(dialog).getByLabelText('Balance')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('Balance'), '-25.50');
@@ -174,7 +174,7 @@ describe('the overview', () => {
         }),
       ],
     });
-    const section = screen.getByRole('region', { name: 'Past due' });
+    const section = screen.getByRole('region', { name: 'Overdue and late' });
     expect(within(section).getByText('Late')).toBeInTheDocument();
     expect(screen.getByText('Moved from Dec 1 · Early this time')).toBeInTheDocument();
   });

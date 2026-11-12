@@ -155,7 +155,7 @@ export function RemindersSection() {
               onChange={event => setReminders({ lowBalance: event.target.checked })}
             />
           }
-          label="Warn me before the balance goes low"
+          label="Warn me before the balance gets low"
         />
       </Stack>
     </SettingsSection>
