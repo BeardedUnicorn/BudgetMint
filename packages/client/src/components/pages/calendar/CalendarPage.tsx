@@ -87,8 +87,13 @@ export function CalendarPage() {
   const [picked, setPicked] = useState(today);
   const pickedDay = view.days.find(day => day.date === picked);
 
-  const goToMonth = (next: string) => {
+  // The day shown under the month goes with it: another month's first day, or today in this one
+  const showMonth = (next: string) => {
     setMonth(next);
+    setPicked(next === thisMonth ? today : `${next}-01`);
+  };
+  const goToMonth = (next: string) => {
+    showMonth(next);
     setFocusedDate(next === thisMonth ? today : `${next}-01`);
   };
   const step = (days: number) => {
@@ -160,7 +165,7 @@ export function CalendarPage() {
           view={view}
           focusedDate={focusedDate}
           onFocusDate={setFocusedDate}
-          onMonthChange={setMonth}
+          onMonthChange={showMonth}
           onOpenDay={compact ? setPicked : setOpenDay}
           selectedDate={compact ? picked : undefined}
           labelledBy={titleId}

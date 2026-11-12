@@ -131,7 +131,7 @@ export function OccurrenceDialog({
           <FormControlLabel value="skipped" control={<Radio />} label="Not this time (skip it)" />
         </RadioGroup>
         {state === 'done' && (
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               label={bill ? 'Paid on' : 'Received on'}
               type="date"
@@ -154,7 +154,7 @@ export function OccurrenceDialog({
         )}
         <FromBalanceField kind={occurrence.kind} amountCents={parseDollars(paid)} on={paidOn} state={fromBalance} />
         {state === 'open' && (
-          <Stack direction="row" spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               label="Due"
               type="date"

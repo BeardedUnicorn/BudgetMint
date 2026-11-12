@@ -12,4 +12,8 @@ withdrawalCents: number,
 /**
  * Of it, estimated or assumed.
  */
-withdrawalUncertainCents: number, closingCents: number, };
+withdrawalUncertainCents: number, closingCents: number, 
+/**
+ * It closes below zero, or below the low mark (project::DayRow's).
+ */
+short: boolean, low: boolean, };
