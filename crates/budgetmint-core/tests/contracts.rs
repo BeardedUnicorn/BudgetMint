@@ -22,8 +22,8 @@ use budgetmint_core::goals::{GoalPart, GoalView, GoalsView};
 use budgetmint_core::model::*;
 use budgetmint_core::occur::{Estimate, ESTIMATE_FROM};
 use budgetmint_core::plan::{
-    ItemInput, OccurrenceInput, Planned, RecordInput, MAX_CATEGORY, MAX_LEADS, MAX_LEAD_DAYS,
-    MAX_NAME, MAX_NOTE,
+    AccountInput, ItemInput, OccurrenceInput, Planned, RecordInput, MAX_ACCOUNTS, MAX_CATEGORY,
+    MAX_LEADS, MAX_LEAD_DAYS, MAX_NAME, MAX_NOTE,
 };
 use budgetmint_core::reminders::{Reminder, ReminderKind, MAX_REMINDERS, MAX_WINDOW_DAYS};
 use budgetmint_core::report::{
@@ -73,6 +73,10 @@ fn export_types(cfg: &Config) {
         ReadStatementArgs,
         ScheduleDatesArgs,
         RecordArgs,
+        SaveAccountArgs,
+        ArchiveAccountArgs,
+        AccountIdArgs,
+        AccountInput,
         RecordInput,
         OccRef,
         PaidInput,
@@ -116,6 +120,7 @@ fn export_types(cfg: &Config) {
         EarnToCover,
         Estimate,
         ScheduleDate,
+        AccountView,
         // What a refused command throws
         Refusal,
         FormField,
@@ -131,6 +136,7 @@ fn export_types(cfg: &Config) {
         Override,
         OccStatus,
         Settings,
+        Account,
         Balance,
         TaskMintPlan,
         WithdrawPolicy,
@@ -159,6 +165,11 @@ fn constants() -> String {
         json!(BUDGET_SCHEMA),
     );
     value(
+        "The account every budget has: an item without an account is in it.",
+        "MAIN_ACCOUNT",
+        json!(MAIN_ACCOUNT),
+    );
+    value(
         "The payout forecast's contract this BudgetMint reads (TaskMint's).",
         "FORECAST_SCHEMA",
         json!(FORECAST_SCHEMA),
@@ -171,6 +182,7 @@ fn constants() -> String {
             "MAX_NAME": MAX_NAME,
             "MAX_CATEGORY": MAX_CATEGORY,
             "MAX_NOTE": MAX_NOTE,
+            "MAX_ACCOUNTS": MAX_ACCOUNTS,
             "MAX_LEADS": MAX_LEADS,
             "MAX_LEAD_DAYS": MAX_LEAD_DAYS,
             "MAX_CENTS": MAX_CENTS,

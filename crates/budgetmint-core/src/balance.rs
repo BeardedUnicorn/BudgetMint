@@ -407,6 +407,8 @@ mod tests {
             on: d(2026, 11, 7),
             category: None,
             note: None,
+            account_id: None,
+            to_account_id: None,
         };
         let planned = settle(
             &mut s,

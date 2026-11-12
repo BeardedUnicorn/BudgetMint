@@ -83,7 +83,7 @@ const firstSnapshots = (uid: string, epoch: number) =>
       '2026-10-01',
       snapshot => {
         snapshots.push(snapshot);
-        if (new Set(snapshots.map(s => s.source)).size === 3) {
+        if (new Set(snapshots.map(s => s.source)).size === 4) {
           stop();
           resolve(snapshots);
         }
@@ -164,13 +164,42 @@ describe("BudgetMint's store, in its own project and TaskMint's", () => {
       },
     }).writes;
     await store.write(uid, paid, { deviceId: 'emulator', epoch: 1 });
-    expect(new Set([...writes, ...paid].map(w => w.kind))).toEqual(new Set(['settings', 'item', 'occ']));
+    // A bank account, and money moved to it: the newest documents
+    const savings = core.call('save_account', { account: { id: 'savings', name: 'Savings' } }).writes;
+    const transfer = core.call('save_item', {
+      item: {
+        id: 'to-savings',
+        kind: 'transfer',
+        name: 'To savings',
+        schedule: [{ from: '2026-11-15', repeat: { every: 'once' }, amountCents: 5_000 }],
+        toAccountId: 'savings',
+      },
+    }).writes;
+    await store.write(uid, [...savings, ...transfer], { deviceId: 'emulator', epoch: 1 });
+    expect(new Set([...writes, ...paid, ...savings].map(w => w.kind))).toEqual(
+      new Set(['settings', 'item', 'occ', 'account'])
+    );
+    expect([...savings, ...transfer].map(w => w.schema)).toEqual([4, 4]);
 
     // They read back
     const seen = await firstSnapshots(uid, 1);
     expect(seen.flatMap(s => s.docs).map(d => d.docId)).toEqual(
-      expect.arrayContaining(['settings~account', 'item~rent', 'occ~2026-11-01~rent'])
+      expect.arrayContaining([
+        'settings~account',
+        'item~rent',
+        'occ~2026-11-01~rent',
+        'account~savings',
+        'item~to-savings',
+      ])
     );
+
+    // A BudgetMint from before bank accounts writes schema 2: refused on the transfer (it holds
+    // it unread, and would write it back as a bill), while its own documents still save
+    const older = (write: DocWrite): DocWrite => ({ ...write, schema: 2 });
+    await expect(store.write(uid, transfer.map(older), { deviceId: 'older', epoch: 1 })).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
+    await store.write(uid, writes.map(older), { deviceId: 'older', epoch: 1 });
 
     // TaskMint's forecast, as TaskMint publishes it, reads under TaskMint's rules
     const published = await taskmintOwner(`/users/${taskmint.uid}/published/payoutForecast`, {

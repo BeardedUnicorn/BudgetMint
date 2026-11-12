@@ -19,4 +19,12 @@ saveUp: boolean,
  * What's set aside for it already, as of today: given, setting aside
  * starts over from today with it; none keeps what there is.
  */
-savedCents?: number, };
+savedCents?: number, 
+/**
+ * The bank account it's in (a transfer's source); none: the main one.
+ */
+accountId?: string, 
+/**
+ * Where a transfer goes; none: the main account.
+ */
+toAccountId?: string, };

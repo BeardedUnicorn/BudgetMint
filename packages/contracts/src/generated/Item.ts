@@ -33,4 +33,14 @@ varies: boolean,
 /**
  * Money is set aside for it ahead of each time it's due (crate::goals).
  */
-saveUp: SaveUp | null, createdAt: string, updatedAt: string, };
+saveUp: SaveUp | null, 
+/**
+ * The bank account it's paid from (or into; a transfer's source).
+ * None: the main one. Written only when it's another: an item with
+ * one is a newer document (crate::docs::Versioned).
+ */
+accountId?: string, 
+/**
+ * A transfer's destination, when it isn't the main account.
+ */
+toAccountId?: string, createdAt: string, updatedAt: string, };

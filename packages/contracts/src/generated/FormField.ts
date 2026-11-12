@@ -3,4 +3,4 @@
 /**
  * Which of a form's fields a refusal is about, so the form says it there.
  */
-export type FormField = "name" | "amount" | "repeat" | "dates" | "ends" | "category" | "note" | "reminder" | "saved";
+export type FormField = "name" | "amount" | "repeat" | "dates" | "ends" | "category" | "note" | "reminder" | "saved" | "account";

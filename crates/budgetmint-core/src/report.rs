@@ -3,7 +3,8 @@
 //! balance has taken in, as paid at what was expected, as the cash flow has
 //! it); what TaskMint paid in; the bills paid late;
 //! what went out besides the bills, by the balance's updates; and the six
-//! months up to it, side by side.
+//! months up to it, side by side. Every account's bills and income count,
+//! together; money moved between two accounts is neither, and is left out.
 
 use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
@@ -190,6 +191,7 @@ fn totals(
         let totals = match occurrence.item.kind {
             ItemKind::Bill => &mut bills,
             ItemKind::Income => &mut income,
+            ItemKind::Transfer => continue,
         };
         add(totals, occurrence, today, settled);
     }
@@ -210,6 +212,7 @@ pub fn report(
     let counted: Vec<_> = all
         .iter()
         .filter(|o| !o.item.archived || o.status != OccStatus::Open)
+        .filter(|o| o.item.kind != ItemKind::Transfer)
         .collect();
 
     // A category is one whatever its letters' case ("Utilities", "utilities"), named as first spelled
@@ -573,5 +576,38 @@ mod tests {
         assert_eq!(report(&s, None, "1900-03", &ctx()).unwrap().months.len(), 3);
         assert_eq!(report(&s, None, "1899-12", &ctx()), None);
         assert_eq!(report(&s, None, "nope", &ctx()), None);
+    }
+
+    #[test]
+    fn leaves_money_moved_between_accounts_out_of_the_totals() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 3),
+                Repeat::Once,
+                40_000,
+            ),
+        );
+        // A bill of another account counts: the report is of every account together
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 4), Repeat::Once, 700),
+                "savings",
+            ),
+        );
+        let november = report(&s, None, "2026-11", &ctx()).unwrap();
+        assert_eq!(
+            (november.bills.count, november.bills.expected_cents),
+            (1, 700)
+        );
+        assert_eq!(november.income.count, 0);
+        assert_eq!(november.categories.len(), 1);
+        assert_eq!(november.categories[0].kind, ItemKind::Bill);
     }
 }

@@ -53,7 +53,7 @@ export const leadChoices = (...current: number[]) => [...new Set([...LEAD_CHOICE
 export const leadLabel = (days: number) =>
   days === 0 ? 'On the day' : days === 1 ? '1 day before' : `${days} days before`;
 
-const NOUNS: Record<ItemKind, string> = { bill: 'bill', income: 'income' };
+const NOUNS: Record<ItemKind, string> = { bill: 'bill', income: 'income', transfer: 'transfer' };
 
 /** The days, weeks and weekday a repeat may use besides how often. */
 interface RepeatParts {
@@ -263,7 +263,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const due = kind === 'bill' ? 'due' : 'comes';
 
   /** The form's field for core's (a start date, once started, is the change's). */
-  const fieldOf = (field: FormField): Field => (field === 'dates' && started ? 'changeFrom' : field);
+  const fieldOf = (field: FormField): Field =>
+    // (The form names no account yet, so core refuses none: 'account' never comes)
+    field === 'dates' && started ? 'changeFrom' : (field as Field);
 
   const submit = () => {
     if (cents === null) {

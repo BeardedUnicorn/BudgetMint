@@ -15,6 +15,10 @@
 //!   bank (after the arrival delay), and the projected ones too (forecast).
 //! - Everyday spending (the settings' weekly amount): a day's share of it
 //!   each day after the balance's.
+//! - A transfer between two of the user's accounts: out of the one, into
+//!   the other, on the days a bill and income would be. One still open and
+//!   past due is owed today where it leaves, and not counted on where it
+//!   arrives.
 //!
 //! Without a balance set, the cash flow starts at zero from yesterday's end,
 //! and bills open in the last month count as overdue.
@@ -24,7 +28,7 @@ use crate::forecast::contract::PayoutForecast;
 use crate::forecast::curve::live_curve;
 use crate::forecast::earned::{unwithdrawn, Unwithdrawn};
 use crate::forecast::series::{project_withdrawals, ProjectedWithdrawal};
-use crate::model::{Cents, ItemKind, OccStatus, Settings, TaskMintPlan};
+use crate::model::{Cents, ItemKind, Leg, OccStatus, Settings, TaskMintPlan, MAIN_ACCOUNT};
 use crate::occur::{occurrences, paid_outside, MOVE_DAYS};
 use crate::time::{Ctx, HOUR_MS};
 use chrono::{Datelike, Duration, NaiveDate, NaiveTime};
@@ -43,6 +47,8 @@ pub enum FlowKind {
     Withdrawal,
     /// A day's share of the everyday spending.
     Spending,
+    /// Money moved between two of the user's accounts: out of this one below zero, into it above.
+    Transfer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,16 +233,20 @@ pub fn project(
         if item.archived && !matches!(occurrence.status, OccStatus::Done { .. }) {
             continue;
         }
-        let sign = if item.kind == ItemKind::Bill { -1 } else { 1 };
+        // The main account's: what's in another account isn't its money
+        let Some(leg) = item.leg(MAIN_ACCOUNT) else {
+            continue;
+        };
+        let kind = match item.kind {
+            ItemKind::Bill => FlowKind::Bill,
+            ItemKind::Income => FlowKind::Income,
+            ItemKind::Transfer => FlowKind::Transfer,
+        };
         let flow = |date, status, cents: Cents| Flow {
             date,
-            kind: if item.kind == ItemKind::Bill {
-                FlowKind::Bill
-            } else {
-                FlowKind::Income
-            },
+            kind,
             status,
-            amount_cents: sign * cents,
+            amount_cents: leg.sign() * cents,
             item_id: Some(item.id.clone()),
             name: item.name.clone(),
             scheduled: Some(occurrence.scheduled),
@@ -263,11 +273,14 @@ pub fn project(
                     item_id: item.id.clone(),
                     scheduled: occurrence.scheduled,
                 };
-                if item.kind == ItemKind::Bill {
-                    flows.push(flow(today, FlowStatus::Overdue, occurrence.expected_cents));
-                    overdue.push(late);
-                } else {
-                    late_income.push(late);
+                match leg {
+                    // Still owed (a bill, or a transfer out not made yet)
+                    Leg::Out => {
+                        flows.push(flow(today, FlowStatus::Overdue, occurrence.expected_cents));
+                        overdue.push(late);
+                    }
+                    // Not in yet: it can't be counted on
+                    Leg::In => late_income.push(late),
                 }
             }
             OccStatus::Open => {}
@@ -787,5 +800,93 @@ mod tests {
         let next_day = through(d(2027, 3, 15));
         assert_eq!(next_day.withdrawals[0].arrives_on, d(2027, 3, 15));
         assert_eq!(row(&next_day, d(2027, 3, 15)), (0, 500, false, false));
+    }
+
+    #[test]
+    fn a_transfer_leaves_the_main_account_or_reaches_it_and_another_accounts_money_isnt_its() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let ctx = ctx();
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 100_000, d(2026, 11, 5), 0);
+        put_account(&mut s, "savings", None);
+        put_account(&mut s, "card", None);
+        let once = Repeat::Once;
+        // To savings on the 12th, back from it on the 14th
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 12),
+                once,
+                30_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "take",
+                (Some("savings"), None),
+                d(2026, 11, 14),
+                once,
+                5_000,
+            ),
+        );
+        // Paid from savings, and moved between two other accounts: none of the main one's money
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 13), once, 700),
+                "savings",
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "pay-card",
+                (Some("savings"), Some("card")),
+                d(2026, 11, 13),
+                once,
+                900,
+            ),
+        );
+        // Still open and past due: the one out is owed today, the one in isn't counted on
+        put_item(
+            &mut s,
+            transfer(
+                "late-out",
+                (None, Some("savings")),
+                d(2026, 11, 7),
+                once,
+                2_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "late-in",
+                (Some("savings"), None),
+                d(2026, 11, 8),
+                once,
+                4_000,
+            ),
+        );
+        let p = project(&s, None, &ctx, d(2026, 11, 20));
+        assert_eq!(row(&p, d(2026, 11, 10)), (100_000, 98_000, false, false));
+        let owed = &p.today_row().flows[0];
+        assert_eq!(
+            (owed.kind, owed.status, owed.amount_cents),
+            (FlowKind::Transfer, FlowStatus::Overdue, -2_000)
+        );
+        let ids = |late: &[Late]| -> Vec<String> {
+            late.iter().map(|late| late.item_id.clone()).collect()
+        };
+        assert_eq!(ids(&p.overdue), ["late-out"]);
+        assert_eq!(ids(&p.late_income), ["late-in"]);
+        assert_eq!(row(&p, d(2026, 11, 12)), (98_000, 68_000, false, false));
+        assert_eq!(row(&p, d(2026, 11, 13)), (68_000, 68_000, false, false));
+        assert_eq!(row(&p, d(2026, 11, 14)), (68_000, 73_000, false, false));
+        let back = &p.day(d(2026, 11, 14)).unwrap().flows[0];
+        assert_eq!((back.kind, back.amount_cents), (FlowKind::Transfer, 5_000));
     }
 }

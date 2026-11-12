@@ -89,6 +89,8 @@ describe('the data documents', () => {
       ['budgetmint/bea/data/settings~account', budget({ kind: 'settings', json: 'x'.repeat(20000) })],
       [ITEM, budget({ json: 'x'.repeat(50000) })],
       ['budgetmint/bea/data/occ~2026-11-30~rent-1', budget({ kind: 'occ', json: 'x'.repeat(4000) })],
+      ['budgetmint/bea/data/account~savings-1', budget({ kind: 'account', json: 'x'.repeat(20000), schema: 4 })],
+      ['budgetmint/bea/data/account~main', budget({ kind: 'account', schema: 4 })],
     ];
     for (const [path, data] of allowed) {
       await assertSucceeds(setDoc(doc(bea(), path), data));
@@ -103,6 +105,10 @@ describe('the data documents', () => {
       ['budgetmint/bea/data/occ~2026-11-30~rent-1', budget({ kind: 'occ', json: 'x'.repeat(4001) })],
       ['budgetmint/bea/data/occ~2026-11~rent-1', budget({ kind: 'occ' })],
       ['budgetmint/bea/data/occ~2026-11-30', budget({ kind: 'occ' })],
+      ['budgetmint/bea/data/account~savings-1', budget({ kind: 'account', json: 'x'.repeat(20001) })],
+      ['budgetmint/bea/data/account~', budget({ kind: 'account' })],
+      ['budgetmint/bea/data/account~a b', budget({ kind: 'account' })],
+      ['budgetmint/bea/data/account~savings', budget({ kind: 'item' })],
       // A kind under another kind's id
       ['budgetmint/bea/data/item~rent', budget({ kind: 'occ' })],
       ['budgetmint/bea/data/secret~x', budget({ kind: 'secret' })],
@@ -136,6 +142,26 @@ describe('the data documents', () => {
     await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 3 })));
     await assertFails(setDoc(doc(bea(), ITEM), budget({ schema: 2 })));
     await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 3 })));
+  });
+
+  it('keep a BudgetMint from before bank accounts off what it would misread, and nothing else', async () => {
+    // A newer BudgetMint: a transfer (schema 4) and an account, beside a plain bill and the settings
+    const TRANSFER = 'budgetmint/bea/data/item~to-savings';
+    const SETTINGS = 'budgetmint/bea/data/settings~account';
+    const ACCOUNT = 'budgetmint/bea/data/account~savings';
+    await assertSucceeds(setDoc(doc(bea(), TRANSFER), budget({ schema: 4 })));
+    await assertSucceeds(setDoc(doc(bea(), ACCOUNT), budget({ kind: 'account', schema: 4 })));
+    await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 2 })));
+    await assertSucceeds(setDoc(doc(bea(), SETTINGS), budget({ kind: 'settings', schema: 2 })));
+    // The older one writes schema 2 (or 3): refused on the transfer, which it holds unread
+    await assertFails(setDoc(doc(bea(), TRANSFER), budget({ schema: 2 })));
+    await assertFails(setDoc(doc(bea(), TRANSFER), budget({ schema: 3 })));
+    // It still sets the main account's balance (the settings) and changes its own bills
+    await assertSucceeds(setDoc(doc(bea(), SETTINGS), budget({ kind: 'settings', schema: 2, json: '{"balance":1}' })));
+    await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 2, json: '{"id":"rent","name":"Rent"}' })));
+    await assertSucceeds(setDoc(doc(bea(), 'budgetmint/bea/data/item~new-bill'), budget({ schema: 2 })));
+    // An account never goes back below the schema it came with
+    await assertFails(setDoc(doc(bea(), ACCOUNT), budget({ kind: 'account', schema: 3 })));
   });
 });
 

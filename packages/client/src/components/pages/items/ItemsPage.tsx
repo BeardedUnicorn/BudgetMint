@@ -77,6 +77,12 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
     subtitle: 'Paychecks and other money coming in.',
     empty: 'A paycheck, a side job, a refund on its way.',
   },
+  transfer: {
+    title: 'Transfers',
+    one: 'transfer',
+    subtitle: 'Money moved between your bank accounts.',
+    empty: 'Money you move between your accounts: to savings each month, to pay off a card.',
+  },
 };
 
 type Dialog =

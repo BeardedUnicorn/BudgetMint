@@ -11,11 +11,15 @@ use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::goals::{self, GoalsView};
 use crate::model::{Balance, Cents, Repeat, Settings, Weekends};
-use crate::plan::{self, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange};
+use crate::plan::{
+    self, AccountInput, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange,
+};
 use crate::reminders::{self, Reminder};
 use crate::report::{self, ReportView};
 use crate::time::Ctx;
-use crate::views::{self, ForecastView, ItemView, MonthView, OccurrenceView, Overview};
+use crate::views::{
+    self, AccountView, ForecastView, ItemView, MonthView, OccurrenceView, Overview,
+};
 use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -59,6 +63,10 @@ pub enum Command {
     GetScheduleDates(ScheduleDatesArgs),
     Record(RecordArgs),
     ExportMonth(MonthArgs),
+    GetAccounts(NoArgs),
+    SaveAccount(SaveAccountArgs),
+    ArchiveAccount(ArchiveAccountArgs),
+    DeleteAccount(AccountIdArgs),
 }
 
 macro_rules! command_types {
@@ -123,6 +131,10 @@ command_types! {
     "get_schedule_dates": ScheduleDatesArgs => Vec<ScheduleDate>,
     "record": RecordArgs => Planned,
     "export_month": MonthArgs => MonthExport,
+    "get_accounts": NoArgs => Vec<AccountView>,
+    "save_account": SaveAccountArgs => Planned,
+    "archive_account": ArchiveAccountArgs => Planned,
+    "delete_account": AccountIdArgs => Planned,
 }
 
 /// `reply` read as a `T` and written back.
@@ -291,6 +303,28 @@ pub struct ScheduleDate {
 #[serde(rename_all = "camelCase")]
 pub struct ItemIdArgs {
     pub item_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAccountArgs {
+    pub account: AccountInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveAccountArgs {
+    pub account_id: String,
+    pub archived: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountIdArgs {
+    pub account_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -503,6 +537,14 @@ pub fn execute(
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
         ),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
+        Command::GetAccounts(_) => to_value(views::accounts(snapshot)),
+        Command::SaveAccount(args) => to_value(plan::save_account(snapshot, args.account)?),
+        Command::ArchiveAccount(args) => to_value(plan::archive_account(
+            snapshot,
+            &args.account_id,
+            args.archived,
+        )?),
+        Command::DeleteAccount(args) => to_value(plan::delete_account(snapshot, &args.account_id)?),
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),
         Command::RestoreBudget(args) => to_value(plan::restore_budget(snapshot, &args.backup)?),

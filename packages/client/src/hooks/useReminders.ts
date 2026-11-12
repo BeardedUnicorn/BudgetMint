@@ -61,6 +61,14 @@ export function reminderText(reminder: Reminder): { title: string; body: string 
             : `${reminder.name} comes in ${when(reminder.daysLeft)}`,
         body: `${amount}, ${day}.`,
       };
+    case 'transfer':
+      return {
+        title:
+          reminder.daysLeft < 0
+            ? `${reminder.name}: to move since ${since(reminder.daysLeft)}`
+            : `${reminder.name}: move it ${when(reminder.daysLeft)}`,
+        body: reminder.autopay ? `${amount} moves by itself, ${day}.` : `${amount}, ${day}.`,
+      };
     case 'lowBalance':
       return reminder.short
         ? { title: 'Your balance goes below zero', body: `It’s ${amount} on ${day}.` }

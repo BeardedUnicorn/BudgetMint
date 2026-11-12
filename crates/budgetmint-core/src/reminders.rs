@@ -30,6 +30,8 @@ pub const MISSED_MAX_MS: i64 = crate::time::DAY_MS;
 pub enum ReminderKind {
     Bill,
     Income,
+    /// Money to move between two accounts.
+    Transfer,
     /// The balance goes below the low mark (or zero) on `due`.
     LowBalance,
 }
@@ -115,10 +117,10 @@ pub fn upcoming(
                 id: reminder_id(&key),
                 key,
                 at_ms,
-                kind: if item.kind == ItemKind::Bill {
-                    ReminderKind::Bill
-                } else {
-                    ReminderKind::Income
+                kind: match item.kind {
+                    ItemKind::Bill => ReminderKind::Bill,
+                    ItemKind::Income => ReminderKind::Income,
+                    ItemKind::Transfer => ReminderKind::Transfer,
                 },
                 item_id: Some(item.id.clone()),
                 name: item.name.clone(),
@@ -394,5 +396,31 @@ mod tests {
     fn ids_are_stable_31_bit_hashes() {
         assert_eq!(reminder_id(""), 0x811c_9dc5 & 0x7fff_ffff);
         assert_eq!(reminder_id("a"), 0xe40c_292c & 0x7fff_ffff);
+    }
+
+    #[test]
+    fn reminds_of_a_transfer_as_one() {
+        use crate::occur::tests::{put_account, transfer};
+        let mut s = Snapshot::default();
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            reminded(
+                vec![1],
+                transfer(
+                    "put",
+                    (None, Some("savings")),
+                    d(2026, 11, 14),
+                    Repeat::Once,
+                    5_000,
+                ),
+            ),
+        );
+        let found = upcoming(&s, None, &ctx(), 10, 10, None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].kind, found[0].amount_cents, found[0].due),
+            (ReminderKind::Transfer, 5_000, d(2026, 11, 14))
+        );
     }
 }

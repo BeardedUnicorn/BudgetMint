@@ -286,16 +286,21 @@ pub fn overview(
     let mut upcoming = Vec::new();
     let all = occurrences(snapshot, today, upcoming_end, false);
     for day in ahead.iter().take_while(|day| day.date <= upcoming_end) {
-        for flow in &day.flows {
-            if flow.kind == FlowKind::Bill
-                && flow.status != FlowStatus::Done
-                && day.date <= week_end
-            {
-                due_this_week.count += 1;
-                due_this_week.cents -= flow.amount_cents;
-            }
-            if flow.amount_cents > 0 && flow.status != FlowStatus::Done {
-                income_ahead_cents += flow.amount_cents;
+        for flow in day
+            .flows
+            .iter()
+            .filter(|flow| flow.status != FlowStatus::Done)
+        {
+            match flow.kind {
+                FlowKind::Bill if day.date <= week_end => {
+                    due_this_week.count += 1;
+                    due_this_week.cents -= flow.amount_cents;
+                }
+                FlowKind::Income | FlowKind::Withdrawal => {
+                    income_ahead_cents += flow.amount_cents;
+                }
+                // A later bill; spending, which is no bill; a transfer, neither owed nor earned
+                FlowKind::Bill | FlowKind::Spending | FlowKind::Transfer => {}
             }
         }
         let occurrences: Vec<OccurrenceView> = all
@@ -477,6 +482,8 @@ pub fn month(
             match occurrence.kind {
                 ItemKind::Bill => bills_cents += cents,
                 ItemKind::Income => income_cents += cents,
+                // Moved, not spent or earned
+                ItemKind::Transfer => {}
             }
         }
         view.bills_cents += bills_cents;
@@ -721,6 +728,49 @@ pub fn history(
         .collect();
     found.reverse();
     Some(found)
+}
+
+/// A bank account, as Settings lists them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountView {
+    pub id: String,
+    pub name: String,
+    /// The one every budget has (its balance is the settings').
+    pub main: bool,
+    pub balance: Option<Balance>,
+    pub low_balance_cents: Cents,
+    pub archived: bool,
+    /// The bills, income and transfers in it (a transfer is in both its
+    /// accounts), archived ones too: with any, it can't be deleted.
+    pub items: u32,
+    /// Those not archived: with any, it can't be archived.
+    pub live_items: u32,
+}
+
+/// Every account, the main one among them, in their order.
+pub fn accounts(snapshot: &Snapshot) -> Vec<AccountView> {
+    snapshot
+        .all_accounts()
+        .into_iter()
+        .map(|account| {
+            let its = snapshot
+                .items
+                .values()
+                .filter(|item| item.touches(&account.id));
+            AccountView {
+                main: account.is_main(),
+                items: its.clone().count() as u32,
+                live_items: its.filter(|item| !item.archived).count() as u32,
+                id: account.id,
+                name: account.name,
+                balance: account.balance,
+                low_balance_cents: account.low_balance_cents,
+                archived: account.archived,
+            }
+        })
+        .collect()
 }
 
 /// The days of the week, Monday first, as the calendar heads its columns.
@@ -1460,5 +1510,124 @@ mod tests {
         let status = TaskMint::default().status;
         let overview = overview(&s, None, &status, &ctx());
         assert_eq!(overview.next_bill.unwrap().item_id, "gym");
+    }
+
+    #[test]
+    fn a_transfer_is_neither_a_bill_due_nor_income_ahead() {
+        use crate::occur::tests::{put_account, transfer};
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 50_000,
+                as_of: d(2026, 11, 9),
+            }),
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        put_account(&mut s, "savings", None);
+        let once = Repeat::Once;
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 12),
+                once,
+                10_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "take",
+                (Some("savings"), None),
+                d(2026, 11, 13),
+                once,
+                4_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 12), once, 20_000),
+        );
+        // A bill after the week, within the two the overview lists
+        put_item(
+            &mut s,
+            item("later", ItemKind::Bill, d(2026, 11, 20), once, 1_000),
+        );
+        put_item(
+            &mut s,
+            item("pay", ItemKind::Income, d(2026, 11, 13), once, 30_000),
+        );
+        let status = TaskMint::default().status;
+        let view = overview(&s, None, &status, &ctx());
+        assert_eq!(
+            view.due_this_week,
+            Totals {
+                count: 1,
+                cents: 20_000
+            }
+        );
+        assert_eq!(view.income_ahead_cents, 30_000);
+        // The transfers still move the balance, and are listed on their days
+        let day = |date| view.upcoming.iter().find(|day| day.date == date).unwrap();
+        assert_eq!(day(d(2026, 11, 12)).closing_cents, 20_000);
+        assert_eq!(day(d(2026, 11, 13)).closing_cents, 54_000);
+        assert_eq!(day(d(2026, 11, 12)).occurrences.len(), 2);
+        assert_eq!(view.next_bill.unwrap().item_id, "rent");
+
+        // The calendar's day and month count neither as bills nor income
+        let november = month(&s, None, "2026-11", &ctx()).unwrap();
+        let twelfth = &november.days[11];
+        assert_eq!(twelfth.occurrences.len(), 2);
+        assert_eq!((twelfth.bills_cents, twelfth.income_cents), (20_000, 0));
+        assert_eq!(
+            (november.bills_cents, november.income_cents),
+            (21_000, 30_000)
+        );
+    }
+
+    #[test]
+    fn lists_the_accounts_with_what_is_in_each() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        let only = accounts(&s);
+        assert_eq!(only.len(), 1);
+        assert!(only[0].main && only[0].name == "Main account" && only[0].items == 0);
+        put_account(
+            &mut s,
+            "savings",
+            Some(Balance {
+                cents: 900,
+                as_of: d(2026, 11, 9),
+            }),
+        );
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 12), Repeat::Once, 1),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 12),
+                Repeat::Once,
+                1,
+            ),
+        );
+        let mut old = in_account(
+            item("old", ItemKind::Bill, d(2026, 11, 12), Repeat::Once, 1),
+            "savings",
+        );
+        old.archived = true;
+        put_item(&mut s, old);
+        let all = accounts(&s);
+        let summary: Vec<_> = all
+            .iter()
+            .map(|a| (a.id.as_str(), a.main, a.items, a.live_items))
+            .collect();
+        assert_eq!(summary, [("main", true, 2, 2), ("savings", false, 2, 1)]);
+        assert_eq!(all[1].balance.unwrap().cents, 900);
     }
 }

@@ -6,7 +6,7 @@
 
 use crate::docs::Snapshot;
 use crate::error::{invalid, CoreError};
-use crate::model::{Balance, Cents, ItemKind, OccStatus, MAX_CENTS};
+use crate::model::{Balance, Cents, Item, Leg, OccStatus, MAIN_ACCOUNT, MAX_CENTS};
 use crate::occur::occurrences;
 use crate::time::{in_calendar, Ctx};
 use crate::views::{occurrence_view, OccurrenceView};
@@ -569,12 +569,15 @@ fn match_open(
     let all = occurrences(snapshot, first - window, last + window, false);
     let today = ctx.today();
     let settled = crate::views::Settled::of(&snapshot.settings(), today);
-    let kind_of = |t: &BankTransaction| {
-        if t.amount_cents < 0 {
-            ItemKind::Bill
+    // The statement is the main account's: a line out of it is a bill's (or
+    // a transfer's out of it), one into it income's (or a transfer's into it)
+    let same_way = |item: &Item, t: &BankTransaction| {
+        let way = if t.amount_cents < 0 {
+            Leg::Out
         } else {
-            ItemKind::Income
-        }
+            Leg::In
+        };
+        item.leg(MAIN_ACCOUNT) == Some(way)
     };
     let near = |a: NaiveDate, b: NaiveDate, days: i64| (a - b).num_days().abs() <= days;
 
@@ -584,7 +587,7 @@ fn match_open(
         .filter(|t| {
             all.iter().any(|o| match o.status {
                 OccStatus::Done { on, amount_cents } => {
-                    o.item.kind == kind_of(t)
+                    same_way(o.item, t)
                         && amount_cents == t.amount_cents.abs()
                         && near(on, t.date, 3)
                 }
@@ -602,7 +605,7 @@ fn match_open(
         let description = t.description.to_lowercase();
         for (at, o) in all.iter().enumerate() {
             if o.status != OccStatus::Open
-                || o.item.kind != kind_of(t)
+                || !same_way(o.item, t)
                 || !near(o.due, t.date, MATCH_DAYS)
             {
                 continue;
@@ -656,7 +659,7 @@ fn match_open(
 mod tests {
     use super::*;
     use crate::docs::DocKey;
-    use crate::model::{Repeat, Settings};
+    use crate::model::{ItemKind, Repeat, Settings};
     use crate::occur::tests::{d, item, over, put_item, put_over};
 
     fn ctx() -> Ctx {
@@ -1076,5 +1079,73 @@ mod tests {
         );
         assert_eq!(find_columns(&["Date".into(), "Description".into()]), None);
         assert_eq!(words("A to Zed's Co"), vec!["zed".to_string()]);
+    }
+
+    #[test]
+    fn matches_a_transfer_by_which_way_it_goes_in_the_main_account() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        s.write(DocKey::Settings, Some(&Settings::default()));
+        put_account(&mut s, "savings", None);
+        let once = Repeat::Once;
+        put_item(
+            &mut s,
+            transfer("put", (None, Some("savings")), d(2026, 11, 3), once, 40_000),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "take",
+                (Some("savings"), None),
+                d(2026, 11, 4),
+                once,
+                15_000,
+            ),
+        );
+        // A bill paid from savings isn't on the main account's statement
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 5), once, 700),
+                "savings",
+            ),
+        );
+        // One moved already
+        put_item(
+            &mut s,
+            transfer(
+                "moved",
+                (None, Some("savings")),
+                d(2026, 11, 6),
+                once,
+                2_500,
+            ),
+        );
+        put_over(
+            &mut s,
+            over(
+                "moved",
+                d(2026, 11, 6),
+                OccStatus::Done {
+                    on: d(2026, 11, 6),
+                    amount_cents: 2_500,
+                },
+            ),
+        );
+        let csv = "Date,Description,Amount\n\
+                   2026-11-03,TO SAVINGS,-400.00\n\
+                   2026-11-04,FROM SAVINGS,150.00\n\
+                   2026-11-05,FEE,-7.00\n\
+                   2026-11-06,TO SAVINGS,-25.00\n\
+                   2026-11-03,DEPOSIT,400.00\n";
+        let view = read_statement(&s, csv, None, &ctx()).unwrap();
+        let matched: Vec<_> = view
+            .matches
+            .iter()
+            .map(|m| (m.transaction, m.occurrence.item_id.as_str()))
+            .collect();
+        // Out of it to savings, into it from savings; the deposit of the same amount is neither
+        assert_eq!(matched, [(0, "put"), (1, "take")]);
+        assert_eq!(view.already, [3]);
     }
 }

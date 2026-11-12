@@ -1,0 +1,443 @@
+{
+  "name": "Several bank accounts, and money moved between them",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    {
+      "call": "set_balance",
+      "args": {
+        "balance": {
+          "cents": 100000,
+          "asOf": "2026-11-09"
+        }
+      }
+    },
+    {
+      "call": "get_accounts",
+      "expect": [
+        {
+          "id": "main",
+          "main": true,
+          "name": "Main account",
+          "balance": {
+            "cents": 100000,
+            "asOf": "2026-11-09"
+          },
+          "items": 0
+        }
+      ]
+    },
+    {
+      "call": "save_account",
+      "args": {
+        "account": {
+          "id": "savings",
+          "name": "Savings",
+          "lowBalanceCents": 5000
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "account~savings",
+            "kind": "account",
+            "schema": 4
+          }
+        ],
+        "undo": [
+          {
+            "json": null
+          }
+        ]
+      }
+    },
+    {
+      "call": "save_account",
+      "args": {
+        "account": {
+          "id": "main",
+          "name": "Checking"
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "account~main",
+            "kind": "account",
+            "schema": 4
+          }
+        ]
+      }
+    },
+    {
+      "call": "save_account",
+      "args": {
+        "account": {
+          "id": "other",
+          "name": "checking"
+        }
+      },
+      "error": "Another account has that name"
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "fee",
+          "kind": "bill",
+          "name": "Account fee",
+          "schedule": [
+            {
+              "from": "2026-11-13",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 700
+            }
+          ],
+          "accountId": "savings"
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "item~fee",
+            "schema": 4
+          }
+        ]
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "put",
+          "kind": "transfer",
+          "name": "To savings",
+          "schedule": [
+            {
+              "from": "2026-11-12",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 30000
+            }
+          ],
+          "toAccountId": "savings",
+          "reminder": {
+            "leadDays": [
+              1
+            ]
+          }
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "item~put",
+            "schema": 4
+          }
+        ]
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "rent",
+          "kind": "bill",
+          "name": "Rent",
+          "schedule": [
+            {
+              "from": "2026-11-12",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 50000
+            }
+          ]
+        }
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "item~rent",
+            "schema": 2
+          }
+        ]
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "same",
+          "kind": "transfer",
+          "name": "Nowhere",
+          "schedule": [
+            {
+              "from": "2026-11-12",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 1
+            }
+          ]
+        }
+      },
+      "error": "Choose two different accounts to move money between"
+    },
+    {
+      "call": "get_accounts",
+      "expect": [
+        {
+          "id": "main",
+          "name": "Checking",
+          "items": 2,
+          "liveItems": 2
+        },
+        {
+          "id": "savings",
+          "name": "Savings",
+          "main": false,
+          "lowBalanceCents": 5000,
+          "balance": null,
+          "archived": false,
+          "items": 2,
+          "liveItems": 2
+        }
+      ]
+    },
+    {
+      "call": "get_overview",
+      "expect": {
+        "todayCents": 100000,
+        "dueThisWeek": {
+          "count": 1,
+          "cents": 50000
+        },
+        "incomeAheadCents": 0,
+        "lowest": {
+          "cents": 20000,
+          "date": "2026-11-12"
+        }
+      }
+    },
+    {
+      "call": "get_forecast"
+    },
+    {
+      "call": "get_month",
+      "args": {
+        "month": "2026-11"
+      },
+      "expect": {
+        "billsCents": 50700,
+        "incomeCents": 0
+      }
+    },
+    {
+      "call": "get_reminders",
+      "args": {
+        "windowDays": 10,
+        "max": 10
+      },
+      "expect": [
+        {
+          "key": "put~2026-11-12~1",
+          "kind": "transfer",
+          "amountCents": 30000
+        }
+      ]
+    },
+    {
+      "call": "get_report",
+      "args": {
+        "month": "2026-11"
+      },
+      "expect": {
+        "bills": {
+          "count": 2,
+          "expectedCents": 50700
+        }
+      }
+    },
+    {
+      "call": "archive_account",
+      "args": {
+        "accountId": "savings",
+        "archived": true
+      },
+      "error": "It still has bills, income or transfers: archive them or move them to another account first"
+    },
+    {
+      "call": "delete_account",
+      "args": {
+        "accountId": "savings"
+      },
+      "error": "It has bills, income or transfers (archived ones too): archive the account instead"
+    },
+    {
+      "call": "record",
+      "args": {
+        "record": {
+          "id": "moved",
+          "kind": "transfer",
+          "name": "Moved",
+          "amountCents": 2500,
+          "on": "2026-11-09",
+          "toAccountId": "savings"
+        },
+        "fromBalance": true
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "item~moved",
+            "schema": 4
+          },
+          {
+            "docId": "occ~2026-11-09~moved"
+          },
+          {
+            "docId": "settings~account",
+            "schema": 2
+          }
+        ]
+      }
+    },
+    {
+      "call": "get_settings",
+      "expect": {
+        "settings": {
+          "balance": {
+            "cents": 97500,
+            "asOf": "2026-11-09"
+          }
+        }
+      }
+    },
+    {
+      "call": "save_account",
+      "args": {
+        "account": {
+          "id": "card",
+          "name": "Card"
+        }
+      }
+    },
+    {
+      "call": "archive_account",
+      "args": {
+        "accountId": "card",
+        "archived": true
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "account~card"
+          }
+        ]
+      }
+    },
+    {
+      "call": "get_accounts",
+      "expect": [
+        {
+          "id": "main"
+        },
+        {
+          "id": "savings"
+        },
+        {
+          "id": "card",
+          "archived": true
+        }
+      ]
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "x",
+          "kind": "bill",
+          "name": "X",
+          "schedule": [
+            {
+              "from": "2026-11-20",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 1
+            }
+          ],
+          "accountId": "card"
+        }
+      },
+      "error": "That account is archived: bring it back first, or choose another"
+    },
+    {
+      "call": "archive_account",
+      "args": {
+        "accountId": "card",
+        "archived": false
+      }
+    },
+    {
+      "call": "delete_account",
+      "args": {
+        "accountId": "card"
+      },
+      "expect": {
+        "writes": [
+          {
+            "docId": "account~card",
+            "json": null
+          }
+        ]
+      }
+    },
+    {
+      "call": "delete_account",
+      "args": {
+        "accountId": "main"
+      },
+      "error": "The main account stays: every budget has it"
+    },
+    {
+      "call": "export_budget",
+      "expect": {
+        "fileStem": "budgetmint-2026-11-10"
+      }
+    },
+    {
+      "call": "get_items"
+    },
+    {
+      "call": "apply_docs",
+      "args": {
+        "docs": [
+          {
+            "docId": "account~later",
+            "json": "{}",
+            "schema": 9
+          },
+          {
+            "docId": "account~bad",
+            "json": "nope",
+            "schema": 4
+          }
+        ]
+      },
+      "expect": {
+        "applied": 0,
+        "held": [
+          "account~later"
+        ],
+        "unreadable": [
+          "account~bad"
+        ]
+      }
+    }
+  ]
+}

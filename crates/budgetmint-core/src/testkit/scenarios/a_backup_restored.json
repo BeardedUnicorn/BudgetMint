@@ -68,7 +68,7 @@
     {
       "call": "restore_budget",
       "args": {
-        "backup": "{\"format\": \"budgetmint-backup\", \"version\": 4, \"exportedAt\": \"2026-11-10T18:00:00Z\", \"settings\": {\"balance\": {\"cents\": 50000, \"asOf\": \"2026-11-09\"}}, \"items\": [{\"id\": \"rent\", \"kind\": \"bill\", \"name\": \"Rent\", \"schedule\": [{\"from\": \"2026-12-01\", \"until\": null, \"repeat\": {\"every\": \"months\", \"n\": 1, \"day\": 1}, \"amountCents\": 150000}], \"createdAt\": \"2026-11-01T00:00:00Z\", \"updatedAt\": \"2026-11-01T00:00:00Z\"}], \"occurrences\": []}"
+        "backup": "{\"format\": \"budgetmint-backup\", \"version\": 99, \"exportedAt\": \"2026-11-10T18:00:00Z\", \"settings\": {\"balance\": {\"cents\": 50000, \"asOf\": \"2026-11-09\"}}, \"items\": [{\"id\": \"rent\", \"kind\": \"bill\", \"name\": \"Rent\", \"schedule\": [{\"from\": \"2026-12-01\", \"until\": null, \"repeat\": {\"every\": \"months\", \"n\": 1, \"day\": 1}, \"amountCents\": 150000}], \"createdAt\": \"2026-11-01T00:00:00Z\", \"updatedAt\": \"2026-11-01T00:00:00Z\"}], \"occurrences\": []}"
       },
       "error": "That backup is from a newer BudgetMint. Update BudgetMint to restore it."
     },

@@ -22,6 +22,8 @@ pub enum FormField {
     Reminder,
     /// What's set aside for it already.
     Saved,
+    /// Which bank account it's in (or a transfer's two).
+    Account,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
