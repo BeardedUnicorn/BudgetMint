@@ -31,8 +31,9 @@ Note anything that fails with the build, the OS version and what you saw.
 ## Startup and wiring (app.rs)
 
 - [ ] **Launch.** The window opens on the sign-in page, or on the Overview
-      when signed in, and the tray icon appears with Open BudgetMint,
-      Settings…, Check for Updates… and Quit BudgetMint.
+      when signed in, and the tray icon appears with Open BudgetMint, About
+      BudgetMint, Check for Updates… and Quit BudgetMint (and, once the
+      budget is open, Settings… and Sign Out…).
 - [ ] **Second launch.** Launching again while it runs brings the first
       window forward instead of opening another.
 - [ ] **Close to the tray.** Closing the window (its close button, or ⌘W)
@@ -119,18 +120,31 @@ Note anything that fails with the build, the OS version and what you saw.
       console run `console.error('QA check')` and
       `Promise.reject('QA rejection')`. `BudgetMint.log` gets both, under
       `[webview]`: `QA check`, and `Unhandled rejection: QA rejection`.
-- [ ] **Capabilities.** After a launch, a sign-in, an update check and a
+- [ ] **Capabilities.** After a launch, a sign-in, an update check, a
       click on Settings → About → Source and releases (which opens GitHub in
-      the browser), the log has no `not allowed` line: everything the
-      webview calls is in `capabilities/default.json`.
+      the browser), and on About BudgetMint's Privacy policy and Report a
+      problem, the log has no `not allowed` line: everything the webview
+      calls is in `capabilities/default.json`.
 
 ## The menus (app.rs, platform/os.rs)
 
 The macOS menu bar, and the tray's menu on both platforms. Windows has no
 menu bar.
 
-- [ ] **About BudgetMint** (macOS, the BudgetMint menu) shows the version
-      and "Copyright © 2026 Mike Herold".
+- [ ] **The menus.** The menu bar reads BudgetMint, File, Edit, View, Go,
+      Window and Help, with the items in menu.rs's `app_menu`.
+- [ ] **Greyed out until the budget opens.** On the sign-in screen and in
+      onboarding, Settings…, Sign Out…, the File and Go menus, Show or Hide
+      Sidebar and Keyboard Shortcuts are greyed out; About, Check for
+      Updates… and the Help menu's links aren't. Once the budget opens they
+      all work; after Sign Out… they're greyed out again. The tray's menu
+      has Settings… and Sign Out… only while the budget is open. The
+      BudgetMint menu says Hide BudgetMint and Quit BudgetMint, a dev build
+      too.
+- [ ] **About BudgetMint** (BudgetMint menu, and the tray's) brings the
+      window forward with About BudgetMint: the version, "Last checked…"
+      with Check for Updates, what's new in this version, and the links. It
+      opens on the sign-in screen too. Each link opens in the browser.
 - [ ] **Settings…** (BudgetMint menu, or ⌘,) opens Settings, from any page.
       With a dialog open (Add a bill) neither does anything, as the
       shortcut doesn't. With the window closed to the tray, the menu-bar
@@ -141,13 +155,28 @@ menu bar.
       "BudgetMint is up to date" with the version, OK to close. With the
       network off it says "Couldn't check for updates" and why. Against a
       newer feed it opens the update dialog (see [Updates](#updates-platformosrs)).
+- [ ] **Sign Out…** (BudgetMint menu, and the tray's while signed in) asks
+      first, then signs out: the app loads again on the sign-in screen. The
+      tray's menu has no Sign Out… until the next sign-in.
+- [ ] **File.** New Bill (⌘N) and New Income (⇧⌘N) open the form, Update
+      Balance… (⌘B) the balance on the Overview; Import Bank Statement…
+      opens Settings at Your data; Download Backup… and Download
+      Spreadsheet… open the save dialog. Pressing ⌘N opens one form, not
+      two.
 - [ ] **Edit.** In a text field (a bill's name), ⌘C, ⌘X, ⌘V, ⌘A, ⌘Z and
       ⇧⌘Z work, and so do the same items in the Edit menu. Copy a bill's
       name from BudgetMint and paste it into another app, and the other way.
-- [ ] **View and Window.** Toggle Full Screen fills the screen and back;
-      Minimize, Zoom and Close Window act on the window, Close Window hiding
-      it to the tray. Hide BudgetMint, Hide Others, Show All and Quit
-      BudgetMint do as they say.
+- [ ] **View, Go and Window.** Show or Hide Sidebar (⌃⌘S) collapses the
+      sidebar and back; Toggle Full Screen fills the screen and back. Go's
+      items (⌘1–⌘7) open each page, at its top. Minimize, Zoom and Bring All
+      to Front act on the window; File → Close Window (⌘W) hides it to the
+      tray. Hide BudgetMint, Hide Others, Show All and Quit BudgetMint do as
+      they say.
+- [ ] **Help.** The Help menu has macOS's search field. Keyboard Shortcuts
+      (⌘/) lists them; Release Notes, Privacy Policy, Terms of Use and
+      BudgetMint on GitHub open in the browser; Report a Problem… opens a
+      new GitHub issue with the version and system filled in; Open Logs
+      Folder opens the folder with `BudgetMint.log`.
 
 ## Updates (platform/os.rs)
 
@@ -294,6 +323,16 @@ signing") unless a step says otherwise:
       restores with Restore from a backup…), and backing out of the picker
       saves nothing and shows no error.
       Importing a bank statement opens the picker too. A debug APK works.
+- [ ] **The bar of pages** (Overview, Bills, Savings, Calendar) sits above
+      the gesture bar, or the three buttons, with nothing cut off; a toast
+      (mark a bill paid) shows above it. The top bar stays at the top while
+      a page scrolls, and its menu button opens every page.
+- [ ] **Back:** with a bill's form open, Back closes it; with the menu
+      open, Back closes it; on another page, Back goes to the Overview; on
+      the Overview, Back leaves the app.
+- [ ] **Signing out** (the menu's account, at its foot → Sign out…) asks
+      first, then the app loads again on the sign-in screen; signing in
+      again brings the budget back.
 
 ## Windows
 

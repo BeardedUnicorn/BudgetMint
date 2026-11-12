@@ -1,6 +1,7 @@
 /**
  * A shell for tests: every platform member a vi.fn, the ones a test asks
- * to do without left out.
+ * to do without left out. `clickMenu` is a click on a menu bar or tray
+ * item the app does.
  */
 
 import { vi } from 'vitest';
@@ -12,7 +13,8 @@ export type FakePlatform = {
 
 export function createFakeShell(
   options: { runtime?: Shell['capabilities']['runtime']; without?: (keyof Platform)[]; firesWhenClosed?: boolean } = {}
-): Shell & { platform: FakePlatform } {
+): Shell & { platform: FakePlatform; clickMenu: (id: string) => void } {
+  const menuListeners = new Set<(id: string) => void>();
   const platform: FakePlatform = {
     notifications: {
       request: vi.fn(async () => true),
@@ -27,7 +29,17 @@ export function createFakeShell(
     splashScreen: { hide: vi.fn() },
     saveFile: vi.fn(async () => true),
     analytics: { setEnabled: vi.fn(), screen: vi.fn() },
+    menu: {
+      subscribe: vi.fn((listener: (id: string) => void) => {
+        menuListeners.add(listener);
+        return () => menuListeners.delete(listener);
+      }),
+      setBudgetOpen: vi.fn(),
+    },
   };
   for (const member of options.without ?? []) delete (platform as Partial<FakePlatform>)[member];
-  return { capabilities: { runtime: options.runtime ?? 'desktop' }, platform };
+  const clickMenu = (id: string) => {
+    for (const listener of menuListeners) listener(id);
+  };
+  return { capabilities: { runtime: options.runtime ?? 'desktop' }, platform, clickMenu };
 }

@@ -163,8 +163,8 @@ mod desktop {
     use std::sync::{Arc, Mutex};
     use tauri::image::Image;
     use tauri::menu::{
-        AboutMetadata, IsMenuItem, Menu, MenuItem as Item, PredefinedMenuItem,
-        Submenu as TauriSubmenu, WINDOW_SUBMENU_ID,
+        IsMenuItem, Menu, MenuItem as Item, PredefinedMenuItem, Submenu as TauriSubmenu,
+        WINDOW_SUBMENU_ID,
     };
     use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
@@ -199,28 +199,13 @@ mod desktop {
         })
     }
 
-    /// About BudgetMint's panel: the version, and the copyright and
-    /// publisher in tauri.conf.json's bundle.
-    fn about(app: &AppHandle) -> AboutMetadata<'static> {
-        let bundle = &app.config().bundle;
-        let package = app.package_info();
-        AboutMetadata {
-            name: Some(package.name.clone()),
-            version: Some(package.version.to_string()),
-            copyright: bundle.copyright.clone(),
-            authors: bundle.publisher.clone().map(|publisher| vec![publisher]),
-            website: bundle.homepage.clone(),
-            ..Default::default()
-        }
-    }
-
-    /// The system's own item, in the system's words (macOS adds the app's
-    /// name: Hide BudgetMint).
+    /// The system's own item, in the system's words, except Hide and Quit:
+    /// macOS would add the process's name, which a dev build's binary has
+    /// in lower case (Hide budgetmint).
     fn system_item(app: &AppHandle, item: SystemItem) -> tauri::Result<PredefinedMenuItem<Wry>> {
         match item {
-            SystemItem::About => PredefinedMenuItem::about(app, None, Some(about(app))),
             SystemItem::Services => PredefinedMenuItem::services(app, None),
-            SystemItem::Hide => PredefinedMenuItem::hide(app, None),
+            SystemItem::Hide => PredefinedMenuItem::hide(app, Some("Hide BudgetMint")),
             SystemItem::HideOthers => PredefinedMenuItem::hide_others(app, None),
             SystemItem::ShowAll => PredefinedMenuItem::show_all(app, None),
             // Windows would say Exit
@@ -235,6 +220,7 @@ mod desktop {
             SystemItem::Maximize => PredefinedMenuItem::maximize(app, None),
             SystemItem::Fullscreen => PredefinedMenuItem::fullscreen(app, None),
             SystemItem::CloseWindow => PredefinedMenuItem::close_window(app, None),
+            SystemItem::BringAllToFront => PredefinedMenuItem::bring_all_to_front(app, None),
         }
     }
 
@@ -242,11 +228,13 @@ mod desktop {
         Ok(match item {
             MenuItem::Label(label) => Box::new(Item::new(app, label, false, None::<&str>)?),
             // with_id: Item::new's last argument is an accelerator, not an id
+            // The budget's own are greyed out until it's open (set_items_enabled)
             MenuItem::Action {
                 id,
                 label,
                 shortcut,
-            } => Box::new(Item::with_id(app, *id, *label, true, *shortcut)?),
+                needs_budget,
+            } => Box::new(Item::with_id(app, *id, *label, !needs_budget, *shortcut)?),
             MenuItem::Separator => Box::new(PredefinedMenuItem::separator(app)?),
             // GTK doesn't support the system's Quit item (it shows greyed out):
             // Linux gets an ordinary one, which menu.rs quits on
@@ -296,9 +284,34 @@ mod desktop {
             } else {
                 TauriSubmenu::with_items(app, submenu.title, true, &items)?
             };
+            // macOS adds its search field to the Help menu
+            #[cfg(target_os = "macos")]
+            if submenu.help {
+                built_submenu.set_as_help_menu_for_nsapp()?;
+            }
             built.append(&built_submenu)?;
         }
         Ok(built)
+    }
+
+    /// Greys out the menu bar's items with `ids`, or not. Only macOS has a
+    /// menu bar (app.rs); elsewhere there's nothing to change.
+    pub fn set_items_enabled(app: &AppHandle, ids: &[&str], enabled: bool) {
+        let Some(menu) = app.menu() else { return };
+        let submenus = match menu.items() {
+            Ok(items) => items,
+            Err(e) => return log::warn!("Failed to read the menu bar: {}", e),
+        };
+        for submenu in submenus.iter().filter_map(|item| item.as_submenu()) {
+            for id in ids {
+                let Some(found) = submenu.get(*id) else {
+                    continue;
+                };
+                if let Some(Err(e)) = found.as_menuitem().map(|item| item.set_enabled(enabled)) {
+                    log::warn!("Failed to change the menu's {}: {}", id, e);
+                }
+            }
+        }
     }
 
     /// macOS's one-color menu-bar icon; the app's icon elsewhere.
@@ -579,6 +592,14 @@ impl Platform for TauriPlatform {
 
     fn has_tray(&self) -> bool {
         self.desktop.has_tray()
+    }
+
+    fn set_menu_enabled(&self, ids: &[&str], enabled: bool) {
+        #[cfg(desktop)]
+        desktop::set_items_enabled(&self.app, ids, enabled);
+        // A phone has no menu bar
+        #[cfg(mobile)]
+        let _ = (ids, enabled);
     }
 
     fn quit(&self) {

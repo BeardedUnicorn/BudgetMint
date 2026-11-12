@@ -7,7 +7,8 @@
  * - Both save the files the client makes through the system's save dialog
  *   (on Android its document picker).
  * - A desktop has the tray, and shows reminders while the app runs (closing
- *   the window keeps it in the tray); it can open at login, in the tray.
+ *   the window keeps it in the tray); it can open at login, in the tray. Its
+ *   menus' items for the client (menu.rs) come as MENU_COMMAND events.
  * - A phone or tablet (runtime 'mobile') has no tray; the system keeps its
  *   reminders as alarms, which come with the app closed. On Android it also
  *   has the status bar, the launch screen, Google's account picker and
@@ -18,6 +19,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Capabilities, Platform, Shell } from '@budgetmint/client/shell';
+
+/** A click on one of the menus' items the client does: the item's id (src-tauri/src/events.rs). */
+export const MENU_COMMAND = 'menu-command';
 
 /** Runs a command in the app's Rust side (dispatch takes `{}` for no arguments). */
 export function command<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -144,6 +148,14 @@ export function createTauriShell(capabilities: Capabilities, google?: GoogleDesk
             autostart: {
               isEnabled: () => command<boolean>('get_autostart'),
               setEnabled: enabled => command<void>('set_autostart', { enabled }),
+            },
+            menu: {
+              subscribe: listener => subscribe<string>(MENU_COMMAND, listener),
+              setBudgetOpen: open => {
+                command<void>('set_menu_state', { budgetOpen: open }).catch(error =>
+                  console.warn('Failed to change the menus:', error)
+                );
+              },
             },
           }),
       ...googleSignIn(capabilities.runtime, google),

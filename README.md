@@ -26,6 +26,13 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 | **Reports** | A month looked back on: bills paid against what was expected, by category; income and TaskMint's withdrawals; bills paid late; spending besides the bills; and the six months up to it. |
 | **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop) updates. |
 
+**Getting around.** BudgetMint opens on the Overview. On the desktop the
+sidebar lists every page (⌘1–⌘8), and on macOS the menu bar adds File, Go
+and Help menus; on a phone a bar at the bottom has Overview, Bills, Savings
+and Calendar, the top bar's menu every page, and Back goes to the Overview.
+The account at the sidebar's foot opens About BudgetMint and signs out,
+which erases this device's copy of the budget (the account keeps it).
+
 **TaskMint's withdrawals.** TaskMint publishes a forecast of what each
 withdrawal would take, and when the next one opens (only numbers: no task
 names or notes). BudgetMint turns it into a series of withdrawals under your

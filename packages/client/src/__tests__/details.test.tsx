@@ -670,7 +670,11 @@ describe('the pieces', () => {
 
   it('deletes an account it isn’t reading, and drops a late error from an earlier user', async () => {
     const store = createFakeStore();
-    const session = new BudgetSession(store, testCore(), 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
+    const session = new BudgetSession(store, testCore(), 'desk', null, {
+      historyDays: 400,
+      clock: () => TEST_NOW,
+      restart: vi.fn(),
+    });
     session.stop();
     session.start();
     store.setUser(cal());

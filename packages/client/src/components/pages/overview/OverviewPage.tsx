@@ -6,7 +6,7 @@
  * the next two weeks day by day.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Link, Menu, MenuItem, Paper, Stack, Typography } from '@mui/material';
 import {
   Add as AddIcon,
@@ -110,7 +110,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
   const overview = useCoreQuery('get_overview');
   const { settings } = useCoreQuery('get_settings');
   const items = useCoreQuery('get_items');
-  const { navigate } = useNavigation();
+  const { navigate, params, clearParams } = useNavigation();
   const [dialog, setDialog] = useState<'balance' | 'bill' | 'income' | 'record' | null>(null);
   /** The Add button's menu, while it's open. */
   const [adding, setAdding] = useState<HTMLElement | null>(null);
@@ -118,6 +118,12 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
     setAdding(null);
     setDialog(what);
   };
+  // Opened to update the balance (⌘B, the menu bar's Update Balance…)
+  useEffect(() => {
+    if (params.open !== 'balance') return;
+    setDialog('balance');
+    clearParams();
+  }, [params.open, clearParams]);
   const { today, balance, lowest, firstShort, firstLow, nextWithdrawal } = overview;
 
   const withdrawalValue = nextWithdrawal

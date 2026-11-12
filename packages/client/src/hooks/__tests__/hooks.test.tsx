@@ -70,6 +70,28 @@ describe('keyboard shortcuts', () => {
     expect(shortcutAction(press('n', { metaKey: false, ctrlKey: true }), false, false)).toBe('add');
   });
 
+  it('add income with ⇧⌘N and update the balance with ⌘B, outside a browser only', () => {
+    expect(shortcutAction(press('N', { shiftKey: true }), true, false)).toBe('addIncome');
+    expect(shortcutAction(press('b'), true, false)).toBe('balance');
+    expect(shortcutAction(press('b'), true, true)).toBeNull();
+    // Only N takes Shift
+    expect(shortcutAction(press('B', { shiftKey: true }), true, false)).toBeNull();
+    expect(shortcutAction(press('?', { shiftKey: true }), true, false)).toBeNull();
+  });
+
+  it('add income from any page, and open the balance from any page', async () => {
+    const mac = isMacPlatform();
+    const { user } = await startBudget();
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    fireEvent.keyDown(window, { key: 'N', shiftKey: true, metaKey: mac, ctrlKey: !mac });
+    expect(await screen.findByRole('dialog', { name: 'Add income' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    fireEvent.keyDown(window, { key: 'b', metaKey: mac, ctrlKey: !mac });
+    expect(await screen.findByRole('dialog', { name: 'Your balance' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Overview', level: 1, hidden: true })).toBeInTheDocument();
+  });
+
   it('add a bill from any page, income from its own, and list them all', async () => {
     const mac = isMacPlatform();
     const { user } = await startBudget();

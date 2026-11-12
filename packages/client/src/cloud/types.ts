@@ -98,6 +98,12 @@ export interface BudgetStore {
   deleteUser(): Promise<void>;
   /** Whether they signed in recently enough for Firebase to delete the account. */
   signedInRecently(): Promise<boolean>;
+  /**
+   * Erases this device's copy of the data (both projects' caches), once
+   * signed out. The store can't be used after: the app starts over. Never
+   * fails: what can't be erased (another tab has it open) is logged.
+   */
+  clearDevice(): Promise<void>;
 
   /** Who's signed in to TaskMint (null: nobody), now and whenever it changes. */
   onTaskMint(listener: (user: CloudUser | null) => void): Unsubscribe;

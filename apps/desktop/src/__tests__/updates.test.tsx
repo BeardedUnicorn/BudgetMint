@@ -15,6 +15,7 @@ import {
 } from '../updates';
 import { DUE_CHECK_INTERVAL_MS, FIRST_CHECK_DELAY_MS, UpdatePrompt } from '../UpdatePrompt';
 import { checkedAt, UpdatesSection } from '../settings/UpdatesSection';
+import { AboutUpdates } from '../about/AboutUpdates';
 import { APP_VERSION } from '../appVersion';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -608,6 +609,30 @@ describe('Settings → Updates', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update…' }));
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Download and install' }));
     expect(await screen.findByText('Updating to BudgetMint 2.3.0…')).toBeInTheDocument();
+  });
+});
+
+describe('About BudgetMint’s word on updates', () => {
+  it('says when it last checked, and checks now', async () => {
+    let finish: (value: null) => void = () => undefined;
+    answer({ check_for_update: () => new Promise(resolve => (finish = resolve)) });
+    render(<AboutUpdates />);
+    expect(screen.getByText('Not checked for updates yet.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(await screen.findByText('Checking for updates…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Check for Updates' })).toBeDisabled();
+    await act(async () => finish(null));
+    expect(screen.getByText('BudgetMint is up to date.')).toBeInTheDocument();
+    expect(screen.getByText(`Last checked ${checkedAt(updates.get().lastCheckedAt as number)}.`)).toBeInTheDocument();
+  });
+
+  it('says a release is there, to update to', async () => {
+    answer({ check_for_update: release });
+    render(<AboutUpdates />);
+    fireEvent.click(screen.getByRole('button', { name: 'Check for Updates' }));
+    expect(await screen.findByText('BudgetMint 2.3.0 is available.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update…' })).toBeInTheDocument();
   });
 });
 

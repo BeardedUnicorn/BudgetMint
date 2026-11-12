@@ -102,8 +102,7 @@ pub fn run() {
                 }
             }
         });
-    // The menu bar: About, Settings…, Check for Updates…, Edit and Window
-    // (menu.rs), in place of Tauri's default
+    // The menu bar (menu.rs), in place of Tauri's default
     #[cfg(target_os = "macos")]
     let builder = builder.menu(|app| crate::platform::os::app_menu(app, &crate::menu::app_menu()));
 
@@ -113,6 +112,7 @@ pub fn run() {
             let state = Arc::new(AppState {
                 platform,
                 reminders: Arc::new(Scheduler::default()),
+                tray: Default::default(),
             });
             app.manage(state.clone());
 
@@ -167,7 +167,7 @@ fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
     app.on_menu_event(move |_app, event| {
         menu::clicked(menu_state.platform.as_ref(), event.id().as_ref())
     });
-    if let Err(e) = state.platform.render_tray(&tray::menu(&[])) {
+    if let Err(e) = state.platform.render_tray(&tray::menu(&Default::default())) {
         log::error!("Failed to create the tray icon: {}", e);
     }
     let started_at_login = std::env::args().any(|arg| arg == STARTED_AT_LOGIN);

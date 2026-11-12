@@ -6,9 +6,10 @@
  * statement, read to mark the bills it shows paid (StatementDialog).
  */
 
-import { type ChangeEvent, useRef, useState } from 'react';
+import { type ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Stack, Typography } from '@mui/material';
 import { SaveAlt as DataIcon } from '@mui/icons-material';
+import { useNavigation } from '../../../contexts/NavigationContext';
 import { useBudget, useBudgetChange } from '../../../data/BudgetContext';
 import { getShell } from '../../../shell';
 import { canSaveFiles, saveFile } from '../../../utils/saveFile';
@@ -34,6 +35,17 @@ export function DataSection() {
       setProblem(`It wasn’t saved: ${(error as Error).message}`);
     }
   };
+
+  // Opened to save one (the menu bar's Download Backup… and Download Spreadsheet…)
+  const { params, clearParams } = useNavigation();
+  const asked = params.open === 'backup' ? 'backup' : params.open === 'spreadsheet' ? 'csv' : null;
+  const latestSave = useRef(save);
+  latestSave.current = save;
+  useEffect(() => {
+    if (!asked) return;
+    clearParams();
+    void latestSave.current(asked);
+  }, [asked, clearParams]);
 
   const picked = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

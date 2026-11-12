@@ -87,6 +87,9 @@ pub trait Platform: Send + Sync {
     fn hide_main_window(&self);
     /// Shows `menu` in the tray, creating the tray icon the first time.
     fn render_tray(&self, menu: &TrayMenu) -> Result<(), String>;
+    /// Greys out the menu bar's items with `ids`, or not (macOS's: the other
+    /// systems have no menu bar). One that can't change is logged.
+    fn set_menu_enabled(&self, ids: &[&str], enabled: bool);
     /// Whether there's a tray icon to bring the window back from.
     fn has_tray(&self) -> bool;
     /// Quits the app.

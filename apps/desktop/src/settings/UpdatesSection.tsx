@@ -10,8 +10,8 @@ export function checkedAt(ms: number): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(ms);
 }
 
-/** What the last check found, under the button. */
-function Status({ update, skippedVersion }: { update: UpdateState; skippedVersion: string | null }) {
+/** What the last check found, under the button (here, and in About). */
+export function UpdateStatus({ update, skippedVersion }: { update: UpdateState; skippedVersion: string | null }) {
   switch (update.status) {
     case 'checking':
       return <Typography color="text.secondary">Checking for updates…</Typography>;
@@ -65,7 +65,7 @@ export function UpdatesSection() {
             Check for updates
           </Button>
         </Box>
-        <Status update={update} skippedVersion={skippedVersion} />
+        <UpdateStatus update={update} skippedVersion={skippedVersion} />
       </Stack>
     </SettingsSection>
   );

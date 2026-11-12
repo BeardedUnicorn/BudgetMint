@@ -15,7 +15,11 @@ function unstarted(store = createFakeStore(), extensions: AppExtensions = {}) {
   const shell = createFakeShell();
   setShell(shell);
   const core = testCore();
-  const session = new BudgetSession(store, core, 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
+  const session = new BudgetSession(store, core, 'desk', null, {
+    historyDays: 400,
+    clock: () => TEST_NOW,
+    restart: vi.fn(),
+  });
   render(<App session={session} core={core} extensions={extensions} />);
   return { store, session, shell };
 }

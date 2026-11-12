@@ -9,23 +9,14 @@ import {
   ListItemIcon,
   ListItemText,
   Box,
+  ButtonBase,
   Divider,
   IconButton,
   Tooltip,
 } from '@mui/material';
-import {
-  Dashboard as OverviewIcon,
-  ReceiptLong as BillsIcon,
-  Payments as IncomeIcon,
-  CalendarToday as CalendarIcon,
-  ShowChart as ForecastIcon,
-  Savings as SavingsIcon,
-  Assessment as ReportsIcon,
-  Settings as SettingsIcon,
-  Menu as MenuIcon,
-  ChevronLeft as ChevronLeftIcon,
-} from '@mui/icons-material';
+import { Menu as MenuIcon, ChevronLeft as ChevronLeftIcon } from '@mui/icons-material';
 
+import { VIEW_ICONS } from '../../navigation/icons';
 import { VIEWS, VIEW_LABELS, type SidebarView } from '../../navigation/views';
 import { getShell } from '../../shell';
 import { HOVER } from '../../theme/media';
@@ -48,19 +39,11 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+/** Whether the sidebar is collapsed: remembered across launches (the menu bar's View menu toggles it too). */
+export const SIDEBAR_COLLAPSED_KEY = 'sidebarCollapsed';
+
 const SIDEBAR_WIDTH = 240;
 const SIDEBAR_WIDTH_COLLAPSED = 72;
-
-export const VIEW_ICONS: Record<SidebarView, typeof OverviewIcon> = {
-  overview: OverviewIcon,
-  bills: BillsIcon,
-  income: IncomeIcon,
-  savings: SavingsIcon,
-  calendar: CalendarIcon,
-  forecast: ForecastIcon,
-  reports: ReportsIcon,
-  settings: SettingsIcon,
-};
 
 const navigationItems = VIEWS.map(id => ({ id, label: VIEW_LABELS[id], icon: VIEW_ICONS[id] }));
 
@@ -73,8 +56,7 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const inBrowser = getShell().capabilities.runtime === 'web';
-  // Remembered across launches
-  const [collapsedSetting, setIsCollapsed] = useLocalStorage('sidebarCollapsed', false);
+  const [collapsedSetting, setIsCollapsed] = useLocalStorage(SIDEBAR_COLLAPSED_KEY, false);
   const temporary = variant === 'temporary';
   const isCollapsed = !temporary && collapsedSetting;
 
@@ -129,7 +111,17 @@ export function Sidebar({
       >
         {!isCollapsed && (
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Wordmark height={28} />
+            {/* The name goes home, as on most sites */}
+            <ButtonBase
+              aria-label="BudgetMint home"
+              onClick={() => {
+                onViewChange('overview');
+                onClose?.();
+              }}
+              sx={{ borderRadius: 1 }}
+            >
+              <Wordmark height={28} />
+            </ButtonBase>
           </Box>
         )}
         {!temporary && (

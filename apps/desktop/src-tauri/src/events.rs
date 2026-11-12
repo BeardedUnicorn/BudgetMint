@@ -6,8 +6,9 @@ use serde::Serialize;
 /// An update's download, as it goes (updates.rs).
 pub const UPDATE_PROGRESS: &str = "update-progress";
 
-/// The menus' Settings… (menu.rs): the webview opens Settings, as ⌘, does.
-pub const OPEN_SETTINGS: &str = "open-settings";
+/// A click on one of the menus' items the webview does (menu.rs): the
+/// item's id, as the payload.
+pub const MENU_COMMAND: &str = "menu-command";
 
 /// The menus' Check for Updates… (menu.rs): the webview checks, and says
 /// what it found in a dialog.
