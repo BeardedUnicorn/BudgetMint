@@ -138,11 +138,11 @@ fn unmatched_open(
     };
     let window = Duration::days(MATCH_DAYS);
     let today = ctx.today();
-    let settled = crate::views::Settled::of(&snapshot.settings(), today);
+    let settleds = crate::views::Settleds::new(snapshot, today, None);
     occurrences(snapshot, first - window, last + window, false)
         .iter()
         .filter(|o| o.status == OccStatus::Open)
-        .map(|o| occurrence_view(o, today, settled))
+        .map(|o| occurrence_view(o, today, &settleds))
         .filter(|view| {
             !matches.iter().any(|m| {
                 m.occurrence.item_id == view.item_id && m.occurrence.scheduled == view.scheduled
@@ -568,7 +568,7 @@ fn match_open(
     let window = Duration::days(MATCH_DAYS);
     let all = occurrences(snapshot, first - window, last + window, false);
     let today = ctx.today();
-    let settled = crate::views::Settled::of(&snapshot.settings(), today);
+    let settleds = crate::views::Settleds::new(snapshot, today, None);
     // The statement is the main account's: a line out of it is a bill's (or
     // a transfer's out of it), one into it income's (or a transfer's into it)
     let same_way = |item: &Item, t: &BankTransaction| {
@@ -648,7 +648,7 @@ fn match_open(
         matches.push(StatementMatch {
             transaction: t,
             exact: transactions[t as usize].amount_cents.abs() == occurrence.expected_cents,
-            occurrence: occurrence_view(occurrence, today, settled),
+            occurrence: occurrence_view(occurrence, today, &settleds),
         });
     }
     matches.sort_by_key(|m| m.transaction);

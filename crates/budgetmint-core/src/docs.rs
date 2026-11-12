@@ -196,9 +196,20 @@ impl Snapshot {
         if id != MAIN_ACCOUNT {
             return self.accounts.get(id).cloned();
         }
+        Some(self.main_account())
+    }
+
+    /// The balance `id`'s account holds, when it's there and has one.
+    pub fn balance_of(&self, id: &str) -> Option<crate::model::Balance> {
+        self.account(id).and_then(|account| account.balance)
+    }
+
+    /// The main account: the settings' balance, low mark and checks, under
+    /// the name the user gave it (if any).
+    pub fn main_account(&self) -> Account {
         let settings = self.settings();
         let named = self.accounts.get(MAIN_ACCOUNT);
-        Some(Account {
+        Account {
             id: MAIN_ACCOUNT.into(),
             name: named.map_or(MAIN_ACCOUNT_NAME.into(), |named| named.name.clone()),
             order: named.map_or(0, |named| named.order),
@@ -206,7 +217,7 @@ impl Snapshot {
             low_balance_cents: settings.low_balance_cents,
             checks: settings.checks,
             archived: false,
-        })
+        }
     }
 
     /// Every account, the main one among them, in their order.
@@ -216,7 +227,7 @@ impl Snapshot {
             .values()
             .filter(|account| !account.is_main())
             .cloned()
-            .chain(self.account(MAIN_ACCOUNT))
+            .chain([self.main_account()])
             .collect();
         all.sort_by(|a, b| (a.order, &a.name, &a.id).cmp(&(b.order, &b.name, &b.id)));
         all

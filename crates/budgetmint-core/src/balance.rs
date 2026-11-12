@@ -71,7 +71,7 @@ fn open_since<'a>(
     balance: Balance,
     ctx: &Ctx,
 ) -> Vec<crate::occur::Occurrence<'a>> {
-    let after = open_settled_through(&snapshot.settings(), ctx.today());
+    let after = open_settled_through(snapshot.settings().balance, ctx.today());
     // A day or two short of how far one can be moved, to the day after
     let from = (after + Duration::days(1)).max(balance.as_of - Duration::days(MOVE_DAYS - 1));
     occurrences(snapshot, from, balance.as_of, false)
@@ -181,11 +181,11 @@ pub fn balance_check(
     ctx: &Ctx,
 ) -> BalanceCheckView {
     let today = ctx.today();
-    let settled = crate::views::Settled::of(&snapshot.settings(), today);
+    let settleds = crate::views::Settleds::new(snapshot, today, None);
     let open = open_since(snapshot, balance, ctx);
     let views = open
         .iter()
-        .map(|occurrence| occurrence_view(occurrence, today, settled))
+        .map(|occurrence| occurrence_view(occurrence, today, &settleds))
         .collect::<Vec<_>>();
     let paid = paid_on_due(&views, &still_open)
         .into_iter()

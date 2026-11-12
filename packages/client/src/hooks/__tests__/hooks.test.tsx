@@ -16,6 +16,7 @@ const reminder = (changes: Partial<Reminder>): Reminder => ({
   kind: 'bill',
   itemId: 'rent',
   name: 'Rent',
+  accountId: null,
   due: '2026-12-01',
   amountCents: 120_000,
   leadDays: 3,

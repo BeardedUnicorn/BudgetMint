@@ -121,6 +121,7 @@ fn export_types(cfg: &Config) {
         Estimate,
         ScheduleDate,
         AccountView,
+        AccountCard,
         // What a refused command throws
         Refusal,
         FormField,

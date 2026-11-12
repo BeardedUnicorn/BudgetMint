@@ -78,6 +78,8 @@ export interface CommandMap {
   save_account: { args: SaveAccountArgs; reply: Planned };
   archive_account: { args: ArchiveAccountArgs; reply: Planned };
   delete_account: { args: AccountIdArgs; reply: Planned };
+  get_account_overview: { args: AccountIdArgs; reply: Overview };
+  get_account_forecast: { args: AccountIdArgs; reply: ForecastView };
 }
 
 export type CommandName = keyof CommandMap;

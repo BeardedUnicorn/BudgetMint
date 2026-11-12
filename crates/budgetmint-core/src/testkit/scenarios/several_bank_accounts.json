@@ -213,14 +213,28 @@
       "expect": {
         "todayCents": 100000,
         "dueThisWeek": {
-          "count": 1,
-          "cents": 50000
+          "count": 2,
+          "cents": 50700
         },
         "incomeAheadCents": 0,
         "lowest": {
           "cents": 20000,
           "date": "2026-11-12"
-        }
+        },
+        "accountId": null,
+        "accounts": [
+          {
+            "id": "main",
+            "name": "Checking",
+            "counted": true,
+            "todayCents": 100000
+          },
+          {
+            "id": "savings",
+            "counted": false,
+            "balance": null
+          }
+        ]
       }
     },
     {
@@ -260,6 +274,162 @@
           "count": 2,
           "expectedCents": 50700
         }
+      }
+    },
+    {
+      "call": "get_account_overview",
+      "args": {
+        "accountId": "savings"
+      },
+      "expect": {
+        "accountId": "savings",
+        "balance": null,
+        "lowBalanceCents": 5000,
+        "earnToCover": null
+      }
+    },
+    {
+      "call": "get_account_forecast",
+      "args": {
+        "accountId": "savings"
+      },
+      "expect": {
+        "accountId": "savings",
+        "spendingWeeklyCents": 0
+      }
+    },
+    {
+      "call": "get_account_overview",
+      "args": {
+        "accountId": "nope"
+      },
+      "error": "That account isn't in use any more"
+    },
+    {
+      "call": "get_account_forecast",
+      "args": {
+        "accountId": "nope"
+      },
+      "error": "That account isn't in use any more"
+    },
+    {
+      "call": "apply_docs",
+      "args": {
+        "docs": [
+          {
+            "docId": "account~savings",
+            "json": "{\"id\": \"savings\", \"name\": \"Savings\", \"order\": 1, \"balance\": {\"cents\": 50000, \"asOf\": \"2026-11-09\"}, \"lowBalanceCents\": 5000, \"checks\": [], \"archived\": false}",
+            "schema": 4
+          }
+        ]
+      },
+      "expect": {
+        "applied": 1
+      }
+    },
+    {
+      "call": "get_overview",
+      "expect": {
+        "todayCents": 150000,
+        "lowest": {
+          "cents": 99300,
+          "date": "2026-11-13"
+        },
+        "safeToSpend": {
+          "cents": 65000,
+          "tightest": {
+            "cents": 20000,
+            "date": "2026-11-12"
+          }
+        },
+        "upcoming": [
+          {
+            "date": "2026-11-12",
+            "closingCents": 100000
+          },
+          {
+            "date": "2026-11-13",
+            "closingCents": 99300
+          }
+        ],
+        "accounts": [
+          {
+            "id": "main",
+            "todayCents": 100000,
+            "safeToSpendCents": 20000,
+            "counted": true
+          },
+          {
+            "id": "savings",
+            "todayCents": 50000,
+            "safeToSpendCents": 45000,
+            "counted": true,
+            "stale": false
+          }
+        ]
+      }
+    },
+    {
+      "call": "get_account_overview",
+      "args": {
+        "accountId": "savings"
+      },
+      "expect": {
+        "accountId": "savings",
+        "todayCents": 50000,
+        "balance": {
+          "cents": 50000,
+          "asOf": "2026-11-09"
+        },
+        "dueThisWeek": {
+          "count": 1,
+          "cents": 700
+        },
+        "upcoming": [
+          {
+            "date": "2026-11-12",
+            "closingCents": 80000,
+            "occurrences": [
+              {
+                "itemId": "put",
+                "kind": "transfer",
+                "accountId": "main",
+                "toAccountId": "savings"
+              }
+            ]
+          },
+          {
+            "date": "2026-11-13",
+            "closingCents": 79300
+          }
+        ]
+      }
+    },
+    {
+      "call": "get_account_overview",
+      "args": {
+        "accountId": "main"
+      },
+      "expect": {
+        "accountId": "main",
+        "todayCents": 100000,
+        "dueThisWeek": {
+          "count": 1,
+          "cents": 50000
+        },
+        "lowest": {
+          "cents": 20000,
+          "date": "2026-11-12"
+        }
+      }
+    },
+    {
+      "call": "get_forecast"
+    },
+    {
+      "call": "get_month",
+      "args": {
+        "month": "2026-11"
       }
     },
     {

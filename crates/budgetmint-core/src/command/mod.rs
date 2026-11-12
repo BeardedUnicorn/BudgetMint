@@ -67,6 +67,8 @@ pub enum Command {
     SaveAccount(SaveAccountArgs),
     ArchiveAccount(ArchiveAccountArgs),
     DeleteAccount(AccountIdArgs),
+    GetAccountOverview(AccountIdArgs),
+    GetAccountForecast(AccountIdArgs),
 }
 
 macro_rules! command_types {
@@ -135,6 +137,8 @@ command_types! {
     "save_account": SaveAccountArgs => Planned,
     "archive_account": ArchiveAccountArgs => Planned,
     "delete_account": AccountIdArgs => Planned,
+    "get_account_overview": AccountIdArgs => Overview,
+    "get_account_forecast": AccountIdArgs => ForecastView,
 }
 
 /// `reply` read as a `T` and written back.
@@ -450,6 +454,11 @@ fn to_value<T: Serialize>(value: T) -> serde_json::Value {
     serde_json::to_value(value).expect("replies are plain data")
 }
 
+/// What a page of one account is refused with once it's gone, or archived.
+fn no_account() -> CoreError {
+    CoreError::NotFound("That account isn't in use any more".into())
+}
+
 /// Runs `command` on `budget`, as of `ctx`; its reply as JSON.
 pub fn execute(
     command: Command,
@@ -537,6 +546,26 @@ pub fn execute(
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
         ),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
+        Command::GetAccountOverview(args) => to_value(
+            views::overview_of(
+                snapshot,
+                forecast,
+                &taskmint.status,
+                ctx,
+                Some(&args.account_id),
+            )
+            .ok_or_else(no_account)?,
+        ),
+        Command::GetAccountForecast(args) => to_value(
+            views::forecast_of(
+                snapshot,
+                forecast,
+                &taskmint.status,
+                ctx,
+                Some(&args.account_id),
+            )
+            .ok_or_else(no_account)?,
+        ),
         Command::GetAccounts(_) => to_value(views::accounts(snapshot)),
         Command::SaveAccount(args) => to_value(plan::save_account(snapshot, args.account)?),
         Command::ArchiveAccount(args) => to_value(plan::archive_account(
