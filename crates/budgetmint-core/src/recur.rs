@@ -12,6 +12,9 @@ use chrono::{Datelike, Duration, Months, NaiveDate, Weekday};
 /// for (even from a balance left for years).
 const MAX_DATES: usize = 4000;
 
+/// The most dates `first_dates` gives: ten years of weekly ones.
+pub const MAX_FIRST_DATES: usize = 520;
+
 /// The furthest a weekend moves a date: Saturday to Monday.
 const WEEKEND_DAYS: i64 = 2;
 
@@ -63,6 +66,43 @@ pub fn move_weekend(date: NaiveDate, weekends: Weekends) -> NaiveDate {
     };
     date.checked_add_signed(Duration::days(days))
         .unwrap_or(date)
+}
+
+/// A schedule's first `count` dates from `from` (at most MAX_FIRST_DATES):
+/// each as the schedule has it, and where a weekend moves it. What the item
+/// form shows of a schedule before it's saved (its first date, its last
+/// after so many).
+pub fn first_dates(
+    from: NaiveDate,
+    repeat: Repeat,
+    weekends: Weekends,
+    count: usize,
+) -> Vec<(NaiveDate, NaiveDate)> {
+    let count = count.min(MAX_FIRST_DATES);
+    let segment = Segment {
+        from,
+        until: None,
+        repeat,
+        amount_cents: 0,
+        weekends: Weekends::Keep,
+    };
+    // Wide enough for `count` of them at the most days apart this repeat goes
+    let apart = match repeat {
+        Repeat::Once => 0,
+        Repeat::Days { n } => i64::from(n),
+        Repeat::Weeks { n } => 7 * i64::from(n),
+        Repeat::Months { n, .. } | Repeat::MonthWeekday { n, .. } => 31 * i64::from(n),
+        Repeat::TwiceMonthly { .. } => 31,
+        Repeat::Years { n } => 366 * i64::from(n),
+    };
+    let to = from
+        .checked_add_signed(Duration::days(apart * count as i64 + 31))
+        .unwrap_or(NaiveDate::MAX);
+    schedule_dates(&segment, None, from, to)
+        .into_iter()
+        .take(count)
+        .map(|date| (date, move_weekend(date, weekends)))
+        .collect()
 }
 
 /// The segment's dates in [from, to], ending before `next` (the following
@@ -230,6 +270,72 @@ mod tests {
 
     fn d(y: i32, m: u32, day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, day).unwrap()
+    }
+
+    #[test]
+    fn gives_a_schedules_first_dates_and_where_weekends_move_them() {
+        let firsts = |from: NaiveDate, repeat: Repeat, count: usize| {
+            first_dates(from, repeat, Weekends::Keep, count)
+                .into_iter()
+                .map(|(date, _)| date)
+                .collect::<Vec<_>>()
+        };
+        // Monthly on the 1st from Nov 11: the first is Dec 1
+        assert_eq!(
+            firsts(d(2026, 11, 11), Repeat::Months { n: 1, day: 1 }, 2),
+            [d(2026, 12, 1), d(2027, 1, 1)]
+        );
+        // The 14th of a loan's payments
+        assert_eq!(
+            firsts(d(2026, 11, 15), Repeat::Months { n: 1, day: 15 }, 14).last(),
+            Some(&d(2027, 12, 15))
+        );
+        assert_eq!(firsts(d(2026, 11, 13), Repeat::Once, 3), [d(2026, 11, 13)]);
+        assert_eq!(
+            firsts(d(2026, 11, 13), Repeat::Days { n: 10 }, 2),
+            [d(2026, 11, 13), d(2026, 11, 23)]
+        );
+        assert_eq!(
+            firsts(d(2026, 11, 13), Repeat::Weeks { n: 2 }, 2),
+            [d(2026, 11, 13), d(2026, 11, 27)]
+        );
+        assert_eq!(
+            firsts(
+                d(2026, 11, 13),
+                Repeat::TwiceMonthly {
+                    first: 1,
+                    second: 15
+                },
+                2
+            ),
+            [d(2026, 11, 15), d(2026, 12, 1)]
+        );
+        assert_eq!(
+            firsts(
+                d(2026, 11, 1),
+                Repeat::MonthWeekday {
+                    n: 1,
+                    week: 2,
+                    weekday: 4
+                },
+                1
+            ),
+            [d(2026, 11, 13)]
+        );
+        assert_eq!(
+            firsts(d(2026, 11, 13), Repeat::Years { n: 10 }, 2),
+            [d(2026, 11, 13), d(2036, 11, 13)]
+        );
+        // At most ten years of weekly ones
+        assert_eq!(
+            firsts(d(2026, 11, 13), Repeat::Weeks { n: 1 }, 1000).len(),
+            MAX_FIRST_DATES
+        );
+        // Sat Nov 14 moves to the Monday after
+        assert_eq!(
+            first_dates(d(2026, 11, 14), Repeat::Once, Weekends::After, 1),
+            [(d(2026, 11, 14), d(2026, 11, 16))]
+        );
     }
 
     fn seg(from: NaiveDate, repeat: Repeat) -> Segment {

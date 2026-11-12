@@ -27,6 +27,8 @@ import type { ReportView } from "./ReportView";
 import type { RestoreBudgetArgs } from "./RestoreBudgetArgs";
 import type { SaveItemArgs } from "./SaveItemArgs";
 import type { SaveSettingsArgs } from "./SaveSettingsArgs";
+import type { ScheduleDate } from "./ScheduleDate";
+import type { ScheduleDatesArgs } from "./ScheduleDatesArgs";
 import type { SetBalanceArgs } from "./SetBalanceArgs";
 import type { SetOccurrenceArgs } from "./SetOccurrenceArgs";
 import type { SettingsView } from "./SettingsView";
@@ -63,6 +65,7 @@ export interface CommandMap {
   get_spending_estimate: { args: void; reply: SpendingEstimate | null };
   settle: { args: SettleArgs; reply: Planned };
   read_statement: { args: ReadStatementArgs; reply: StatementView };
+  get_schedule_dates: { args: ScheduleDatesArgs; reply: Array<ScheduleDate> };
 }
 
 export type CommandName = keyof CommandMap;

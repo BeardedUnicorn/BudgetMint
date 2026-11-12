@@ -74,7 +74,14 @@ fn run(scenario: &Scenario) -> Result<BTreeSet<String>, String> {
             step.args.to_string()
         };
         called.insert(step.call.clone());
-        match (host.call(&step.call, &args, scenario.now_ms), &step.error) {
+        // A refusal's message (it comes as JSON, with the field it's about)
+        let result = host
+            .call(&step.call, &args, scenario.now_ms)
+            .map_err(|refusal| {
+                let refusal: Value = serde_json::from_str(&refusal).expect("refusals are JSON");
+                refusal["message"].as_str().expect("a message").to_string()
+            });
+        match (result, &step.error) {
             (Ok(reply), None) => {
                 let reply: Value = serde_json::from_str(&reply).expect("replies are JSON");
                 assert_eq!(

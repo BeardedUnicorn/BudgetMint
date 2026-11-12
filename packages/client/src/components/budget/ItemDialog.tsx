@@ -1,48 +1,37 @@
 /**
  * Adding or editing a bill (or income): what it is, how much, how often
- * (twice a month and a weekday of the month too), where weekend dates go,
- * and (if it does) when it ends. Editing the amount or the schedule asks
- * from when: what's before keeps its occurrences (core's save_item with a
- * change), unless it hasn't started yet. The end is the schedule's last
- * part's: what comes after it doesn't happen. A varying amount is expected
- * at the average of the last few paid; a bill can have money set aside for
- * it a month at a time.
+ * (RepeatField), where weekend dates go, when it's first due, and (if it
+ * does) when it ends: on a date, or after so many payments. Editing the
+ * amount or the schedule asks from when: what's before keeps its
+ * occurrences (core's save_item with a change), unless it hasn't started
+ * yet. The end is the schedule's last part's: what comes after it doesn't
+ * happen. A varying amount is expected at the average of the last few paid;
+ * a bill can have money set aside for it a month at a time. Core's refusals
+ * are said under the field they're about.
  */
 
 import { useRef, useState } from 'react';
 import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
-import type { ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
+import type { FormField, ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
 import { LIMITS } from '@budgetmint/contracts';
-import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import type { CoreRefusal } from '../../core';
+import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { categoriesOf } from '../pages/items/ItemFilters';
-import { parseDay } from '../../utils/dates';
+import { formatWeekday, parseDay } from '../../utils/dates';
 import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
 import { centsToInput, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { type Every, RepeatField } from './RepeatField';
 
-type Every = Repeat['every'];
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** How each repeat reads in the menu, in its order there. */
-const EVERY_CHOICES: Record<Every, string> = {
-  once: 'Once',
-  days: 'Every… days',
-  weeks: 'Every… weeks',
-  months: 'Every… months',
-  twiceMonthly: 'Twice a month',
-  monthWeekday: 'Monthly on a weekday',
-  years: 'Every… years',
-};
+/** Repeats on a day of the month: their first date is where they start from, the day is chosen. */
+const ON_A_DAY: Every[] = ['months', 'twiceMonthly'];
 
-/** The unit "Every how many …" counts, for the repeats that have one. */
-const EVERY_UNITS: Partial<Record<Every, string>> = {
-  days: 'days',
-  weeks: 'weeks',
-  months: 'months',
-  monthWeekday: 'months',
-  years: 'years',
-};
+/** How it ends: it doesn't, on a date, or after so many payments. */
+type Ending = 'never' | 'on' | 'after';
 
 const WEEKEND_CHOICES: Record<Weekends, string> = {
   keep: 'Keep the date',
@@ -121,7 +110,8 @@ export function sameRepeat(a: Repeat, b: Repeat): boolean {
 const endingOn = (schedule: Segment[], until: string | null): Segment[] =>
   schedule.map((segment, index) => (index === schedule.length - 1 ? { ...segment, until } : segment));
 
-type Field = 'amount' | 'changeFrom' | 'endsOn';
+/** The form's fields a refusal can be said under. */
+type Field = 'name' | 'amount' | 'repeat' | 'dates' | 'changeFrom' | 'ends' | 'category' | 'note' | 'reminder';
 
 export interface ItemDialogProps {
   kind: ItemKind;
@@ -136,6 +126,7 @@ export interface ItemDialogProps {
 }
 
 export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, onClose }: ItemDialogProps) {
+  const { core } = useBudget();
   const change = useBudgetChange();
   // The categories already in use, offered as it's typed
   const categories = categoriesOf(useCoreQuery('get_items'));
@@ -144,9 +135,19 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const segment = view?.current ?? null;
   const [name, setName] = useState(item?.name ?? '');
   const [amount, setAmount] = useState(centsToInput(segment?.amountCents ?? null));
-  const [every, setEvery] = useState<Every>(segment?.repeat.every ?? (goal ? 'once' : 'months'));
+  // A paycheck most often comes every two weeks; a bill, every month
+  const fresh: { every: Every; n: number } = goal
+    ? { every: 'once', n: 1 }
+    : kind === 'income'
+      ? { every: 'weeks', n: 2 }
+      : { every: 'months', n: 1 };
+  const [every, setEvery] = useState<Every>(segment?.repeat.every ?? fresh.every);
   const initial = partsOf(segment?.repeat, today);
-  const [n, setN] = useState(String(initial.n));
+  const [n, setN] = useState(String(segment ? initial.n : fresh.n));
+  /** "Something else…" is open: every so many days, weeks, months or years. */
+  const [custom, setCustom] = useState(false);
+  /** The day was chosen: it no longer follows the date it starts on. */
+  const [dayChosen, setDayChosen] = useState(false);
   const [from, setFrom] = useState(segment?.from ?? today);
   const [day, setDay] = useState(initial.day);
   const [second, setSecond] = useState(initial.second);
@@ -155,8 +156,10 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const [weekends, setWeekends] = useState<Weekends>(segment?.weekends ?? 'keep');
   const [changeFrom, setChangeFrom] = useState(today);
   const lastUntil = item?.schedule.at(-1)?.until ?? null;
-  const [ends, setEnds] = useState(lastUntil !== null);
+  const [ending, setEnding] = useState<Ending>(lastUntil !== null ? 'on' : 'never');
   const [endsOn, setEndsOn] = useState(lastUntil ?? '');
+  /** After how many payments it ends, as typed. */
+  const [payments, setPayments] = useState('');
   const [category, setCategory] = useState(item?.category ?? '');
   const [autopay, setAutopay] = useState(item?.autopay ?? false);
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
@@ -179,8 +182,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     weekday,
     weekends,
     changeFrom,
-    ends,
+    ending,
     endsOn,
+    payments,
     category,
     autopay,
     reminded,
@@ -189,10 +193,16 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     varies,
     saveUp,
   ]);
-  const inputs = {
+  const inputs: Record<Field, React.RefObject<HTMLInputElement | null>> = {
+    name: useRef<HTMLInputElement>(null),
     amount: useRef<HTMLInputElement>(null),
+    repeat: useRef<HTMLInputElement>(null),
+    dates: useRef<HTMLInputElement>(null),
     changeFrom: useRef<HTMLInputElement>(null),
-    endsOn: useRef<HTMLInputElement>(null),
+    ends: useRef<HTMLInputElement>(null),
+    category: useRef<HTMLInputElement>(null),
+    note: useRef<HTMLInputElement>(null),
+    reminder: useRef<HTMLInputElement>(null),
   };
   const refuse = (field: Field, message: string) => {
     setProblem(null);
@@ -207,6 +217,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const secondDay = Math.max(second, firstDay + 1);
   const repeat = repeatOf(every, { n: Number(n), day: firstDay, second: secondDay, week, weekday });
   const canSaveUp = kind === 'bill' && SAVES_UP.includes(every);
+  // Something saved up for once: what's paid automatically, varies or moves off a weekend isn't for it
+  const isGoal = every === 'once' && canSaveUp && saveUp;
   // Started already: a change applies from a date, and what's before stays
   const started = view?.started ?? false;
   const scheduleChanged =
@@ -216,30 +228,55 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
       weekends !== segment.weekends ||
       (!started && from !== segment.from));
 
+  /** The schedule's first `count` dates from `start` (none while what's typed doesn't make one). */
+  const datesFrom = (start: string, count: number) => {
+    try {
+      return core.call('get_schedule_dates', { from: start, repeat, weekends, count });
+    } catch {
+      return [];
+    }
+  };
+  const firstDue = every !== 'once' && !started && DAY.test(from) ? datesFrom(from, 1)[0] : undefined;
+  // After so many payments: from when it starts, or (started already) from the change, or from today
+  const counted = Number(payments);
+  const countFrom = !started ? from : scheduleChanged ? changeFrom : today;
+  const lastPayment =
+    ending === 'after' && Number.isInteger(counted) && counted > 0 && DAY.test(countFrom)
+      ? datesFrom(countFrom, counted).at(counted - 1)
+      : undefined;
+  const due = kind === 'bill' ? 'due' : 'comes';
+
+  /** The form's field for core's (a start date, once started, is the change's). */
+  const fieldOf = (field: FormField): Field => (field === 'dates' && started ? 'changeFrom' : field);
+
   const submit = () => {
     if (cents === null) {
       refuse('amount', 'Enter the amount');
       return;
     }
     // Something that happens once has no end
-    const ending = every !== 'once' && ends;
-    if (ending && !endsOn) {
-      refuse('endsOn', 'Choose the date it ends on');
+    const ends = every === 'once' ? 'never' : ending;
+    if (ends === 'on' && !endsOn) {
+      refuse('ends', 'Choose the date it ends on');
       return;
     }
-    const until = ending ? endsOn : null;
+    if (ends === 'after' && !lastPayment) {
+      refuse('ends', 'Enter how many payments are left');
+      return;
+    }
+    const until = ends === 'on' ? endsOn : ends === 'after' ? lastPayment!.scheduled : null;
     setWrong(null);
     const base = {
       id: item?.id ?? crypto.randomUUID(),
       kind,
       name,
       category: category || null,
-      autopay,
+      autopay: autopay && !isGoal,
       // None chosen: no reminder (core's)
       reminder: reminded ? { leadDays: leads } : null,
       archived: item?.archived ?? false,
       note: note || null,
-      varies,
+      varies: varies && every !== 'once',
       saveUp: canSaveUp && saveUp,
     };
     const newSchedule = [{ from, until, repeat, amountCents: cents, weekends }];
@@ -272,7 +309,10 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
         );
       }
     } catch (error) {
-      setProblem((error as Error).message);
+      // Said under its field, when it's about one
+      const field = (error as CoreRefusal).field;
+      if (field) refuse(fieldOf(field), (error as Error).message);
+      else setProblem((error as Error).message);
       return;
     }
     onClose();
@@ -292,6 +332,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           value={name}
           onChange={event => setName(event.target.value)}
           autoFocus
+          inputRef={inputs.name}
+          error={wrong?.field === 'name'}
+          helperText={wrongAt('name')}
           slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NAME } }}
         />
         <CurrencyInput
@@ -302,39 +345,28 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           helperText={wrongAt('amount')}
           inputRef={inputs.amount}
         />
-        {/* One under the other on a phone, where "Every how many months" doesn't fit beside it */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField
-            select
-            label="Repeats"
-            value={every}
-            onChange={event => setEvery(event.target.value as Every)}
-            sx={{ flex: 1 }}
-          >
-            {(Object.keys(EVERY_CHOICES) as Every[]).map(value => (
-              <MenuItem key={value} value={value}>
-                {EVERY_CHOICES[value]}
-              </MenuItem>
-            ))}
-          </TextField>
-          {EVERY_UNITS[every] && (
-            <TextField
-              label={`Every how many ${EVERY_UNITS[every]}`}
-              type="number"
-              value={n}
-              onChange={event => setN(event.target.value)}
-              sx={{ flex: 1 }}
-              slotProps={{ htmlInput: { min: 1 } }}
-            />
-          )}
-        </Stack>
+        <RepeatField
+          every={every}
+          n={n}
+          custom={custom}
+          onChange={(nextEvery, nextN) => {
+            setEvery(nextEvery);
+            setN(nextN);
+          }}
+          onCustom={() => setCustom(true)}
+          problem={wrongAt('repeat')}
+          countRef={inputs.repeat}
+        />
         {(every === 'months' || every === 'twiceMonthly') && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               select
-              label={every === 'months' ? 'On day' : 'First on day'}
+              label={every === 'months' ? (kind === 'bill' ? 'Due on' : 'Comes on') : 'First on day'}
               value={firstDay}
-              onChange={event => setDay(Number(event.target.value))}
+              onChange={event => {
+                setDay(Number(event.target.value));
+                setDayChosen(true);
+              }}
               sx={{ flex: 1 }}
             >
               {Array.from({ length: every === 'months' ? 31 : 30 }, (_, index) => index + 1).map(value => (
@@ -390,7 +422,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             </TextField>
           </Stack>
         )}
-        {every !== 'days' && (
+        {/* Something once is on its day: a weekend's isn't moved */}
+        {every !== 'days' && every !== 'once' && (
           <TextField
             select
             label="On a weekend"
@@ -409,10 +442,18 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
         )}
         {!started && (
           <TextField
-            label={every === 'once' ? 'On' : 'First on'}
+            label={every === 'once' ? 'On' : ON_A_DAY.includes(every) ? 'Starting' : 'First on'}
             type="date"
             value={from}
-            onChange={event => setFrom(event.target.value)}
+            onChange={event => {
+              const date = event.target.value;
+              setFrom(date);
+              // A new one's day follows the date it starts on, until a day is chosen
+              if (!item && !dayChosen && DAY.test(date)) setDay(Number(date.slice(8, 10)));
+            }}
+            inputRef={inputs.dates}
+            error={wrong?.field === 'dates'}
+            helperText={wrongAt('dates') ?? (firstDue && `First ${due}: ${formatWeekday(firstDue.due)}`)}
             slotProps={{ inputLabel: { shrink: true } }}
           />
         )}
@@ -432,22 +473,49 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           />
         )}
         {every !== 'once' && (
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
-            <FormControlLabel
-              control={<Switch checked={ends} onChange={event => setEnds(event.target.checked)} />}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <TextField
+              select
               label="Ends"
-            />
-            {ends && (
+              value={ending}
+              onChange={event => setEnding(event.target.value as Ending)}
+              sx={{ flex: 1 }}
+            >
+              <MenuItem value="never">Never</MenuItem>
+              <MenuItem value="on">On a date</MenuItem>
+              <MenuItem value="after">After a number of payments</MenuItem>
+            </TextField>
+            {ending === 'on' && (
               <TextField
                 label="Last on or before"
                 type="date"
                 value={endsOn}
                 onChange={event => setEndsOn(event.target.value)}
-                inputRef={inputs.endsOn}
-                error={wrong?.field === 'endsOn'}
-                helperText={wrongAt('endsOn') ?? 'Nothing after this date'}
+                inputRef={inputs.ends}
+                error={wrong?.field === 'ends'}
+                helperText={wrongAt('ends') ?? 'Nothing after this date'}
                 sx={{ flex: 1 }}
                 slotProps={{ inputLabel: { shrink: true } }}
+              />
+            )}
+            {ending === 'after' && (
+              <TextField
+                label={started ? 'How many more' : 'How many'}
+                type="number"
+                value={payments}
+                onChange={event => {
+                  setPayments(event.target.value);
+                  // What it said was missing is being given
+                  setWrong(null);
+                }}
+                inputRef={inputs.ends}
+                error={wrong?.field === 'ends'}
+                helperText={
+                  wrongAt('ends') ??
+                  (lastPayment ? `The last on ${formatWeekday(lastPayment.due)}` : 'Payments, counting the next')
+                }
+                sx={{ flex: 1 }}
+                slotProps={{ htmlInput: { min: 1 } }}
               />
             )}
           </Stack>
@@ -460,6 +528,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           renderInput={params => (
             <TextField
               {...params}
+              inputRef={inputs.category}
+              error={wrong?.field === 'category'}
+              helperText={wrongAt('category')}
               label="Category (optional)"
               slotProps={{
                 ...params.slotProps,
@@ -468,14 +539,19 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             />
           )}
         />
-        <FormControlLabel
-          control={<Switch checked={autopay} onChange={event => setAutopay(event.target.checked)} />}
-          label={kind === 'bill' ? 'Paid automatically (autopay)' : 'Comes in automatically'}
-        />
-        <FormControlLabel
-          control={<Switch checked={varies} onChange={event => setVaries(event.target.checked)} />}
-          label={`The amount varies: expect the average of the last ${LIMITS.ESTIMATE_FROM} ${kind === 'bill' ? 'paid' : 'received'}`}
-        />
+        {!isGoal && (
+          <FormControlLabel
+            control={<Switch checked={autopay} onChange={event => setAutopay(event.target.checked)} />}
+            label={kind === 'bill' ? 'Paid automatically (autopay)' : 'Comes in automatically'}
+          />
+        )}
+        {/* Once, it's what it is: nothing to average */}
+        {every !== 'once' && (
+          <FormControlLabel
+            control={<Switch checked={varies} onChange={event => setVaries(event.target.checked)} />}
+            label={`The amount varies: expect the average of the last ${LIMITS.ESTIMATE_FROM} ${kind === 'bill' ? 'paid' : 'received'}`}
+          />
+        )}
         {canSaveUp && (
           <FormControlLabel
             control={<Switch checked={saveUp} onChange={event => setSaveUp(event.target.checked)} />}
@@ -499,7 +575,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
               label="When"
               value={leads}
               onChange={event => setLeads((event.target.value as unknown as number[]).sort((a, b) => a - b))}
-              helperText={`Up to ${LIMITS.MAX_LEADS} times`}
+              inputRef={inputs.reminder}
+              error={wrong?.field === 'reminder'}
+              helperText={wrongAt('reminder') ?? `Up to ${LIMITS.MAX_LEADS} times`}
               sx={{ flex: 1, minWidth: 0 }}
               slotProps={{
                 select: {
@@ -526,6 +604,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           label="Note (optional)"
           value={note}
           onChange={event => setNote(event.target.value)}
+          inputRef={inputs.note}
+          error={wrong?.field === 'note'}
+          helperText={wrongAt('note')}
           multiline
           minRows={2}
           slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NOTE } }}

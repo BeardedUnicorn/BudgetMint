@@ -209,12 +209,21 @@ pub fn report(
         .filter(|o| !o.item.archived || o.status != OccStatus::Open)
         .collect();
 
-    let mut by_category: BTreeMap<(ItemKind, Option<String>), ReportTotals> = BTreeMap::new();
+    // A category is one whatever its letters' case ("Utilities", "utilities"), named as first spelled
+    let mut by_category: BTreeMap<(ItemKind, Option<String>), (Option<String>, ReportTotals)> =
+        BTreeMap::new();
     let mut paid_late = Vec::new();
     for occurrence in &counted {
-        let key = (occurrence.item.kind, occurrence.item.category.clone());
+        let category = occurrence.item.category.clone();
+        let key = (
+            occurrence.item.kind,
+            category.as_ref().map(|name| name.to_lowercase()),
+        );
         add(
-            by_category.entry(key).or_default(),
+            &mut by_category
+                .entry(key)
+                .or_insert((category, ReportTotals::default()))
+                .1,
             occurrence,
             today,
             settled,
@@ -272,7 +281,7 @@ pub fn report(
 
     let mut categories: Vec<CategoryReport> = by_category
         .into_iter()
-        .map(|((kind, category), totals)| CategoryReport {
+        .map(|((kind, _), (category, totals))| CategoryReport {
             category,
             kind,
             totals,
@@ -344,7 +353,8 @@ mod tests {
             Repeat::Months { n: 1, day: 20 },
             8_000,
         );
-        power.category = Some("Home".into());
+        // The same category, spelled another way (before core kept one spelling)
+        power.category = Some("home".into());
         put_item(&mut s, power);
         put_item(
             &mut s,

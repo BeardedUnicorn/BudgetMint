@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CoreStopped, coreClient, deviceZone, getCore, loadCore, setCoreForTest } from '..';
+import { CoreRefusal, CoreStopped, coreClient, deviceZone, getCore, loadCore, setCoreForTest } from '..';
 import { TEST_NOW, wasmBytes } from '../../testing';
 
 afterEach(() => setCoreForTest(null));
@@ -15,13 +15,14 @@ describe('core', () => {
     expect(deviceZone()).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
   });
 
-  it('turns a refusal into an Error with the message to show', () => {
+  it('turns a refusal into a CoreRefusal with the message to show, and its field', () => {
     const calls: unknown[][] = [];
     const client = coreClient(
       {
         call: (...args: unknown[]) => {
           calls.push(args);
-          if (args[0] === 'set_balance') throw 'Set the balance as of today or a day before';
+          if (args[0] === 'set_balance') throw '{"message":"Set the balance as of today or a day before","field":null}';
+          if (args[0] === 'save_item') throw '{"message":"Give it a name","field":"name"}';
           return '{"ok":true}';
         },
         setZone: () => undefined,
@@ -31,8 +32,16 @@ describe('core', () => {
     expect(client.call('get_settings')).toEqual({ ok: true });
     expect(calls[0]).toEqual(['get_settings', '{}', TEST_NOW]);
     expect(() => client.call('set_balance', { balance: { cents: 1, asOf: '2030-01-01' } })).toThrow(
-      new Error('Set the balance as of today or a day before')
+      new CoreRefusal('Set the balance as of today or a day before')
     );
+    let refused: unknown;
+    try {
+      client.call('save_item', {} as never);
+    } catch (error) {
+      refused = error;
+    }
+    expect(refused).toBeInstanceOf(CoreRefusal);
+    expect(refused).toMatchObject({ message: 'Give it a name', field: 'name', name: 'CoreRefusal' });
     client.setZone('UTC');
   });
 

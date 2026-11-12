@@ -15,6 +15,7 @@ use budgetmint_core::bank::{
 use budgetmint_core::command::*;
 use budgetmint_core::docs::{DocWrite, DocsApplied, IncomingDoc, BUDGET_SCHEMA, MAX_ID_LEN};
 use budgetmint_core::earn::EarnToCover;
+use budgetmint_core::error::{FormField, Refusal};
 use budgetmint_core::forecast::contract::FORECAST_SCHEMA;
 use budgetmint_core::forecast::{ForecastDoc, ForecastState, ForecastStatus};
 use budgetmint_core::goals::{GoalPart, GoalView, GoalsView};
@@ -69,6 +70,7 @@ fn export_types(cfg: &Config) {
         BalanceCheckArgs,
         SettleArgs,
         ReadStatementArgs,
+        ScheduleDatesArgs,
         OccRef,
         PaidInput,
         CsvColumns,
@@ -109,6 +111,10 @@ fn export_types(cfg: &Config) {
         SafeToSpend,
         EarnToCover,
         Estimate,
+        ScheduleDate,
+        // What a refused command throws
+        Refusal,
+        FormField,
         // The documents' own types
         Item,
         ItemKind,

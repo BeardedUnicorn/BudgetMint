@@ -10,7 +10,7 @@ use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::goals::{self, GoalsView};
-use crate::model::{Balance, Cents, Repeat, Settings};
+use crate::model::{Balance, Cents, Repeat, Settings, Weekends};
 use crate::plan::{self, ItemInput, OccurrenceInput, Planned, ScheduleChange};
 use crate::reminders::{self, Reminder};
 use crate::report::{self, ReportView};
@@ -56,6 +56,7 @@ pub enum Command {
     GetSpendingEstimate(NoArgs),
     Settle(SettleArgs),
     ReadStatement(ReadStatementArgs),
+    GetScheduleDates(ScheduleDatesArgs),
 }
 
 macro_rules! command_types {
@@ -117,6 +118,7 @@ command_types! {
     "get_spending_estimate": NoArgs => Option<SpendingEstimate>,
     "settle": SettleArgs => Planned,
     "read_statement": ReadStatementArgs => StatementView,
+    "get_schedule_dates": ScheduleDatesArgs => Vec<ScheduleDate>,
 }
 
 /// `reply` read as a `T` and written back.
@@ -257,6 +259,27 @@ pub struct ChangeScheduleArgs {
 pub struct ArchiveItemArgs {
     pub item_id: String,
     pub archived: bool,
+}
+
+/// A schedule not saved yet: its first `count` dates (the item form's "First due", "After N payments").
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleDatesArgs {
+    pub from: NaiveDate,
+    pub repeat: Repeat,
+    #[serde(default)]
+    pub weekends: Weekends,
+    pub count: u16,
+}
+
+/// A date of a schedule: as the schedule has it (what `until` counts), and when it's due.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleDate {
+    pub scheduled: NaiveDate,
+    pub due: NaiveDate,
 }
 
 #[derive(Debug, Deserialize)]
@@ -473,6 +496,19 @@ pub fn execute(
             args.columns,
             ctx,
         )?),
+        Command::GetScheduleDates(args) => {
+            plan::check_date(args.from)?;
+            plan::check_repeat(args.repeat)?;
+            if args.count == 0 {
+                return Err(CoreError::InvalidArgs("Ask for one date or more".into()));
+            }
+            to_value(
+                crate::recur::first_dates(args.from, args.repeat, args.weekends, args.count.into())
+                    .into_iter()
+                    .map(|(scheduled, due)| ScheduleDate { scheduled, due })
+                    .collect::<Vec<_>>(),
+            )
+        }
     })
 }
 

@@ -27,17 +27,22 @@ const ORDERS: Record<ItemOrder, string> = {
 };
 
 /** What the list's items are filed under, A to Z. */
+/** A category whatever its letters' case: "Utilities" and "utilities" are one. */
+const sameCategory = (a: string | null, b: string) => a !== null && a.toLocaleLowerCase() === b.toLocaleLowerCase();
+
+/** The categories in use, each once (as first spelled), in order. */
 export const categoriesOf = (views: ItemView[]) =>
-  [...new Set(views.flatMap(view => (view.item.category ? [view.item.category] : [])))].sort((a, b) =>
-    a.localeCompare(b)
-  );
+  views
+    .flatMap(view => (view.item.category ? [view.item.category] : []))
+    .filter((category, index, all) => all.findIndex(other => sameCategory(other, category)) === index)
+    .sort((a, b) => a.localeCompare(b));
 
 /** `views` as `query` asks: the ones it finds, in its order (core's is next due, then name). */
 export function findItems(views: ItemView[], query: ItemQuery): ItemView[] {
   const words = query.search.trim().toLocaleLowerCase();
   const found = views.filter(
     ({ item }) =>
-      (query.category === '' || item.category === query.category) &&
+      (query.category === '' || sameCategory(item.category, query.category)) &&
       (words === '' || `${item.name} ${item.category ?? ''}`.toLocaleLowerCase().includes(words))
   );
   const by: Record<ItemOrder, ((a: ItemView, b: ItemView) => number) | null> = {
@@ -109,8 +114,10 @@ export function ItemFilters({
 /** What each category comes to a month (the uncategorized last), when there's more than one way to file them. */
 export function CategoryTotals({ views }: { views: ItemView[] }) {
   const totals = new Map<string, number>();
+  const names = categoriesOf(views);
   for (const view of views) {
-    const key = view.item.category ?? '';
+    // Under the category's first spelling
+    const key = names.find(name => sameCategory(view.item.category, name)) ?? '';
     totals.set(key, (totals.get(key) ?? 0) + view.monthlyCents);
   }
   if (totals.size < 2) return null;
