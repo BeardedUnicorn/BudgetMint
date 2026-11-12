@@ -288,8 +288,12 @@ signing") unless a step says otherwise:
       13 and later; a bill's reminder comes at its hour with the app swiped
       away, in Doze (`adb shell dumpsys deviceidle force-idle`) and after a
       reboot.
-- [ ] **Your data:** it says the app can't save files yet (the web app
-      can), and importing a bank statement opens Android's file picker.
+- [ ] **Your data:** Download backup and Download spreadsheet open
+      Android's file picker, suggesting `budgetmint-<date>.json` and
+      `.csv`; Save writes them there (Files opens each, and the backup
+      restores with Restore from a backup…), and backing out of the picker
+      saves nothing and shows no error.
+      Importing a bank statement opens the picker too. A debug APK works.
 
 ## Windows
 

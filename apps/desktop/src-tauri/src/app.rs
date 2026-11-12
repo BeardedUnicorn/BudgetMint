@@ -66,14 +66,17 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init());
+        .plugin(tauri_plugin_notification::init())
+        // The save dialog, for the files the webview makes (platform/os.rs)
+        .plugin(tauri_plugin_dialog::init());
+    // Opens the documents Android's save dialog picks
+    #[cfg(mobile)]
+    let builder = builder.plugin(tauri_plugin_fs::init());
     #[cfg(desktop)]
     let builder = builder
         // Updates from GitHub's latest release (plugins.updater in
         // tauri.conf.json); the webview asks before installing one
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // The save dialog, for the files the webview makes (platform/os.rs)
-        .plugin(tauri_plugin_dialog::init())
         // Open at login, as a launch agent on macOS (the webview turns it on)
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
