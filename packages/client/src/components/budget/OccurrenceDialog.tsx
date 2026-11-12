@@ -1,6 +1,7 @@
 /**
  * One occurrence of a bill or income: paid (when, how much), skipped, or
- * still to come; this time's amount, its due date, and a note.
+ * still to come; this time's amount, its due date, and a note. Newly paid
+ * by the balance's day, it can move the balance too (FromBalance).
  */
 
 import { useRef, useState } from 'react';
@@ -13,6 +14,7 @@ import { formatDay } from '../../utils/dates';
 import { centsToInput, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { FromBalanceField, savedSaying, useFromBalance } from './FromBalance';
 
 type State = OccStatus['state'];
 
@@ -20,6 +22,7 @@ export function OccurrenceDialog({
   occurrence,
   today,
   askAmount = false,
+  paying = false,
   onClose,
 }: {
   occurrence: OccurrenceView;
@@ -30,12 +33,17 @@ export function OccurrenceDialog({
    * its estimate otherwise).
    */
   askAmount?: boolean;
+  /**
+   * Opened to mark it paid (or received) at its amount: Mark paid on the
+   * balance's own day, where whether it's in the balance is asked.
+   */
+  paying?: boolean;
   onClose: () => void;
 }) {
   const change = useBudgetChange();
   const status = occurrence.status;
   const bill = occurrence.kind === 'bill';
-  const [state, setState] = useState<State>(askAmount ? 'done' : status.state);
+  const [state, setState] = useState<State>(askAmount || paying ? 'done' : status.state);
   // Paid today, as Mark paid records it; one on autopay was paid on its day
   const [paidOn, setPaidOn] = useState(
     status.state === 'done' ? status.on : occurrence.autopay && occurrence.due < today ? occurrence.due : today
@@ -53,7 +61,9 @@ export function OccurrenceDialog({
   const [wrong, setWrong] = useState<'paid' | 'expected' | null>(null);
   const paidInput = useRef<HTMLInputElement>(null);
   const expectedInput = useRef<HTMLInputElement>(null);
-  const dirty = useDirty([state, paidOn, paid, expected, usual, due, note]);
+  // Paid just now (not before): it may move the balance
+  const fromBalance = useFromBalance(state === 'done' && status.state !== 'done' ? paidOn : null, occurrence.autopay);
+  const dirty = useDirty([state, paidOn, paid, expected, usual, due, note, fromBalance.checked]);
 
   const submit = () => {
     const paidCents = parseDollars(paid);
@@ -90,8 +100,9 @@ export function OccurrenceDialog({
             movedTo: due === occurrence.scheduled ? null : due,
             note: note || null,
           },
+          fromBalance: fromBalance.checked,
         },
-        `${occurrence.name} saved`
+        savedSaying(`${occurrence.name} saved`, occurrence.kind, fromBalance.checked)
       );
     } catch (error) {
       setProblem((error as Error).message);
@@ -141,6 +152,7 @@ export function OccurrenceDialog({
             />
           </Stack>
         )}
+        <FromBalanceField kind={occurrence.kind} amountCents={parseDollars(paid)} on={paidOn} state={fromBalance} />
         {state === 'open' && (
           <Stack direction="row" spacing={2}>
             <TextField

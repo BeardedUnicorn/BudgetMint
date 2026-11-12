@@ -120,7 +120,7 @@ export function SavingsPage() {
       {view.goals.length === 0 ? (
         <EmptyState
           icon={<SavingsIcon sx={{ fontSize: 48 }} />}
-          title="Nothing saved up for yet"
+          title="Nothing set aside yet"
           description="Add a goal, or turn on “Set money aside” in a yearly or monthly bill’s form: BudgetMint spreads it over the months before it’s due."
           action={add}
         />

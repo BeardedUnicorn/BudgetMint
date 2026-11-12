@@ -308,7 +308,12 @@ describe('the calendar', () => {
     );
     // Today's, to start with
     expect(screen.getByRole('region', { name: 'Tuesday, November 10, 2026' })).toBeInTheDocument();
+    const cell = (name: RegExp) => screen.getByRole('button', { name }).closest('[role="gridcell"]');
+    expect(cell(/^Tuesday, November 10, 2026/)).toHaveAttribute('aria-selected', 'true');
     await user.click(screen.getByRole('button', { name: /^Thursday, November 12, 2026/ }));
+    // The day picked is marked, as well as listed under the month
+    expect(cell(/^Thursday, November 12, 2026/)).toHaveAttribute('aria-selected', 'true');
+    expect(cell(/^Tuesday, November 10, 2026/)).toHaveAttribute('aria-selected', 'false');
     const picked = screen.getByRole('region', { name: 'Thursday, November 12, 2026' });
     expect(within(picked).getByText('Rent')).toBeInTheDocument();
     // Low (below the $600 mark), with a mark as well as a colour

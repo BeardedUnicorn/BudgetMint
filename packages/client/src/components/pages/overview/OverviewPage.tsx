@@ -82,7 +82,7 @@ function safeLine(overview: Overview): string {
   const mark = Math.max(overview.lowBalanceCents, 0);
   const kept = [
     safe.spendingWeeklyCents > 0 && `${formatCents(safe.spendingWeeklyCents)} a week of everyday spending`,
-    setAsideCents > 0 && `${formatCents(setAsideCents)} set aside for bills`,
+    setAsideCents > 0 && `${formatCents(setAsideCents)} set aside`,
   ].filter(Boolean);
   const after = kept.length > 0 ? `after ${kept.join(' and ')}` : '';
   if (safe.cents === 0) {

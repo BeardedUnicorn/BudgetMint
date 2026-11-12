@@ -260,10 +260,16 @@ describe('settings', () => {
     expect(await within(taskmint()).findByText(/Signed in to TaskMint as/)).toHaveTextContent(
       'Signed in to TaskMint as dee@example.com.'
     );
-    // Signing out here forgets TaskMint: Settings only offers to connect it again
+    // Signing out here forgets TaskMint: Settings only offers to connect it again. Firebase
+    // says nobody's signed in only after the sign-out has resolved: it's forgotten even so
+    vi.mocked(store.signOutOfTaskMint).mockImplementationOnce(async () => {
+      setTimeout(() => store.setTaskMintUser(null), 20);
+    });
     await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));
     expect(store.signOutOfTaskMint).toHaveBeenCalled();
-    await user.click(await within(taskmint()).findByRole('button', { name: 'Connect TaskMint' }));
+    // (The section is a new one after: looked up each time)
+    await waitFor(() => expect(within(taskmint()).getByRole('button', { name: 'Connect TaskMint' })).toBeVisible());
+    await user.click(within(taskmint()).getByRole('button', { name: 'Connect TaskMint' }));
     expect(
       within(taskmint()).getByText(/BudgetMint only reads its forecast of what you’ll withdraw/)
     ).toBeInTheDocument();
@@ -395,7 +401,9 @@ describe('settings', () => {
     expect(screen.getByText('Updates go here')).toBeInTheDocument();
     expect(screen.getByText('They come while BudgetMint is open (or in the tray).')).toBeInTheDocument();
     // Whatever version this is (a release changes it)
-    expect(screen.getByText(new RegExp(`BudgetMint ${APP_VERSION.replace(/\./g, '\\.')},`))).toBeInTheDocument();
+    expect(
+      screen.getByText(`BudgetMint ${APP_VERSION}: your bills, income and the balance ahead.`)
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Source and releases' })).toHaveAttribute(
       'href',
       'https://github.com/BeardedUnicorn/BudgetMint'

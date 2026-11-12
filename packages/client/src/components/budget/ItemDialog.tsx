@@ -18,7 +18,7 @@ import type { CoreRefusal } from '../../core';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { categoriesOf } from '../pages/items/ItemFilters';
-import { formatWeekday, parseDay } from '../../utils/dates';
+import { formatWeekdayFrom, parseDay } from '../../utils/dates';
 import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
 import { centsToInput, formatCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
@@ -471,7 +471,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             }}
             inputRef={inputs.dates}
             error={wrong?.field === 'dates'}
-            helperText={wrongAt('dates') ?? (firstDue && `First ${due}: ${formatWeekday(firstDue.due)}`)}
+            helperText={wrongAt('dates') ?? (firstDue && `First ${due}: ${formatWeekdayFrom(firstDue.due, today)}`)}
             slotProps={{ inputLabel: { shrink: true } }}
           />
         )}
@@ -530,7 +530,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
                 error={wrong?.field === 'ends'}
                 helperText={
                   wrongAt('ends') ??
-                  (lastPayment ? `The last on ${formatWeekday(lastPayment.due)}` : 'Payments, counting the next')
+                  (lastPayment
+                    ? `The last on ${formatWeekdayFrom(lastPayment.due, today)}`
+                    : 'Payments, counting the next')
                 }
                 sx={{ flex: 1 }}
                 slotProps={{ htmlInput: { min: 1 } }}
@@ -590,7 +592,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             helperText={
               wrongAt('saved') ??
               (soFar === undefined
-                ? 'What you’ve put by for it already: the rest is spread over the months left'
+                ? 'What you’ve set aside for it already: the rest is spread over the months left'
                 : `${formatCents(soFar)} set aside so far. Say what's set aside now to go on from that.`)
             }
           />

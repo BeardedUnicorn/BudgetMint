@@ -68,9 +68,7 @@ export function SettingsPage() {
       ))}
       <Box id="settings-about">
         <SettingsSection title="About" icon={<AboutIcon />}>
-          <Typography variant="body2">
-            BudgetMint {APP_VERSION}, TaskMint’s companion for bills and cash flow.
-          </Typography>
+          <Typography variant="body2">BudgetMint {APP_VERSION}: your bills, income and the balance ahead.</Typography>
           <Typography variant="body2" color="text.secondary">
             Open source under the MIT license.{' '}
             <Link href="https://github.com/BeardedUnicorn/BudgetMint" target="_blank" rel="noreferrer">

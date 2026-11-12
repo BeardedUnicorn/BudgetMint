@@ -4,7 +4,7 @@
  * and a top bar on a phone) and the page beside it.
  */
 
-import { ComponentType, useEffect, useState } from 'react';
+import { ComponentType, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, CssBaseline, Stack } from '@mui/material';
 import type { CoreClient } from './core';
 import type { BudgetSession } from './cloud/session';
@@ -26,7 +26,7 @@ import { OverviewPage } from './components/pages/overview/OverviewPage';
 import { ReportsPage } from './components/pages/reports/ReportsPage';
 import { SavingsPage } from './components/pages/savings/SavingsPage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
-import { NavigationProvider, useBackDismiss, useNavigation } from './contexts/NavigationContext';
+import { activeViewKey, NavigationProvider, useBackDismiss, useNavigation } from './contexts/NavigationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { BudgetProvider, useBudget, useCoreQuery } from './data/BudgetContext';
@@ -136,8 +136,9 @@ function Gate() {
 /** Signed in, with the data read: onboarding the first time, then the app. */
 function Ready() {
   const { saved } = useCoreQuery('get_settings');
+  const { view } = useBudget();
   return saved ? (
-    <NavigationProvider persist>
+    <NavigationProvider persist={activeViewKey(view.user!.uid)}>
       <AppShell />
     </NavigationProvider>
   ) : (
@@ -171,6 +172,12 @@ function AppShell() {
   useBackDismiss(compact && navigationOpen, () => setNavigationOpen(false));
   const Page = PAGES[activeView];
   const footer = (collapsed: boolean) => <BalanceFooter collapsed={collapsed} />;
+  const main = useRef<HTMLElement>(null);
+  // A page opens at its top, not where the last one was scrolled to: before the page's
+  // own effects, which may scroll it somewhere (Settings to a section)
+  useLayoutEffect(() => {
+    main.current!.scrollTop = 0;
+  }, [activeView]);
 
   return (
     <>
@@ -195,6 +202,7 @@ function AppShell() {
         />
         <Box
           component="main"
+          ref={main}
           sx={{
             flex: 1,
             minWidth: 0,

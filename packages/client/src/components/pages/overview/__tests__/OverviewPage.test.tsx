@@ -242,6 +242,70 @@ describe('the overview', () => {
     uuid.mockRestore();
   });
 
+  it('asks whether what’s paid on the balance’s own day is in the balance, and takes it off', async () => {
+    // The balance was set today: what's paid today may have gone after it
+    const { user, store } = await startBudget({
+      settings: { balance: { cents: 100_000, asOf: '2026-11-10' } },
+      items: [
+        monthly('phone', 'Phone', 12, 6_000),
+        monthly('power', 'Power', 10, 9_000, { autopay: true, varies: true }),
+      ],
+    });
+    const balance = () => JSON.parse(store.docs.get('settings~account')!.json).balance.cents;
+
+    // Mark paid asks, at its amount
+    await user.click(screen.getByRole('button', { name: 'Mark Phone paid' }));
+    let dialog = screen.getByRole('dialog', { name: 'Phone, Nov 12' });
+    expect(within(dialog).getByLabelText('Paid')).toBeChecked();
+    expect(within(dialog).getByLabelText('Amount')).toHaveValue('60.00');
+    const take = within(dialog).getByRole('checkbox', { name: 'Take it off your balance: $1,000.00 → $940.00' });
+    expect(take).toBeChecked();
+    expect(within(dialog).getByText('Your balance is from the same day, Nov 10. Untick this if it counts it already.'));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Phone saved, and taken off your balance')).toBeInTheDocument();
+    expect(balance()).toBe(94_000);
+    // One change: Undo puts both back
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(balance()).toBe(100_000));
+    expect(store.docs.has('occ~2026-11-12~phone')).toBe(false);
+
+    // Unticked: the balance has it already
+    await user.click(screen.getByRole('button', { name: 'Mark Phone paid' }));
+    dialog = screen.getByRole('dialog', { name: 'Phone, Nov 12' });
+    await user.click(within(dialog).getByRole('checkbox', { name: /^Take it off your balance/ }));
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Phone saved')).toBeInTheDocument();
+    expect(balance()).toBe(100_000);
+
+    // On autopay it went by itself on its day: taken to be in the balance, unless ticked
+    await user.click(screen.getAllByRole('button', { name: 'Enter what Power came to on Nov 10' })[0]);
+    dialog = screen.getByRole('dialog', { name: 'Power, Nov 10' });
+    expect(within(dialog).getByRole('checkbox', { name: /^Take it off your balance/ })).not.toBeChecked();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    // A one-off today too; one dated before the balance's day is taken to be in it
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'A one-off spend or income' }));
+    dialog = screen.getByRole('dialog', { name: 'Record a one-off' });
+    await user.click(within(dialog).getByRole('button', { name: 'I got' }));
+    expect(within(dialog).getByRole('checkbox', { name: 'Add it to your balance: $1,000.00' })).toBeChecked();
+    await user.type(within(dialog).getByLabelText('Amount'), '25');
+    await user.type(within(dialog).getByLabelText('From what'), 'Refund');
+    expect(within(dialog).getByRole('checkbox', { name: 'Add it to your balance: $1,000.00 → $1,025.00' }));
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '2026-11-08' } });
+    const add = within(dialog).getByRole('checkbox', { name: /^Add it to your balance/ });
+    expect(add).not.toBeChecked();
+    expect(within(dialog).getByText('It’s before your balance’s day, Nov 10: the balance likely counts it already.'));
+    await user.click(add);
+    // Not a whole day while it's typed: nothing to ask
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '' } });
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '2026-11-08' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Refund recorded, and added to your balance')).toBeInTheDocument();
+    expect(balance()).toBe(102_500);
+  });
+
   it('adds income from Add, and says when everyday spending isn’t counted', async () => {
     // With nothing yet, income can be the first thing added
     const empty = await startBudget();

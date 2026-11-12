@@ -165,8 +165,8 @@ export function ToastViewport({ toasts, ...handlers }: ToastViewportProps) {
       sx={{
         position: 'fixed',
         right: 16,
-        // Above the gesture bar on an edge-to-edge phone screen
-        bottom: 'calc(16px + env(safe-area-inset-bottom))',
+        // Above the gesture bar on an edge-to-edge phone screen, and the bottom bar there (BottomNav)
+        bottom: 'calc(16px + var(--bottom-nav-height, 0px) + env(safe-area-inset-bottom))',
         zIndex: theme => theme.zIndex.snackbar,
         alignItems: 'flex-end',
         // The empty area between toasts mustn't swallow clicks

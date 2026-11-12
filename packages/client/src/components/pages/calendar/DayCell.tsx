@@ -137,19 +137,21 @@ export function Dot({
 export interface DayCellProps {
   day: CalendarDay;
   isToday: boolean;
+  /** The day picked, where days are picked (undefined: they aren't). */
+  selected?: boolean;
   /** In the tab order (the grid's one tabbable day). */
   tabbable: boolean;
   onOpen: (date: string) => void;
   onFocusDay: (date: string) => void;
 }
 
-export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellProps) {
+export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }: DayCellProps) {
   const { billsCents: bills, incomeCents: income } = day;
   const uncertain = day.withdrawalUncertainCents > 0;
   const busy = bills > 0 || income > 0 || day.withdrawalCents > 0;
 
   return (
-    <Box role="gridcell" sx={{ minWidth: 0 }}>
+    <Box role="gridcell" aria-selected={selected} sx={{ minWidth: 0 }}>
       <ButtonBase
         data-date={day.date}
         tabIndex={tabbable ? 0 : -1}
@@ -168,8 +170,12 @@ export function DayCell({ day, isToday, tabbable, onOpen, onFocusDay }: DayCellP
           p: 0.75,
           textAlign: 'left',
           borderRadius: 1,
-          border: `1px solid ${isToday ? theme.palette.primary.main : theme.palette.divider}`,
-          bgcolor: day.short ? alpha(theme.palette.error.main, 0.07) : 'transparent',
+          border: `${selected ? 2 : 1}px solid ${isToday || selected ? theme.palette.primary.main : theme.palette.divider}`,
+          bgcolor: selected
+            ? alpha(theme.palette.primary.main, 0.14)
+            : day.short
+              ? alpha(theme.palette.error.main, 0.07)
+              : 'transparent',
           transition: theme.transitions.create(['background-color', 'border-color'], { duration: 120 }),
           [HOVER]: { '&:hover': { bgcolor: theme.palette.action.hover } },
           '&:focus-visible': { outline: `2px solid ${focusColor(theme.palette.mode)}`, outlineOffset: 1 },
