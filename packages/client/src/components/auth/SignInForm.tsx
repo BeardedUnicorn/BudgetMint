@@ -40,7 +40,7 @@ export interface SignInActions {
 }
 
 const INTRO =
-  'Your bills and balance, on all your devices. Use the same email and password as TaskMint (or the same Google account) to see your withdrawals ahead.';
+  'Your bills, income and balance ahead, on all your devices. Using TaskMint too? Sign in with the same account, and its withdrawals count as income.';
 
 /**
  * Email and password: signing in, making an account, or a reset link. And

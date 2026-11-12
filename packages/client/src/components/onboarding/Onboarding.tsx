@@ -1,7 +1,7 @@
 /**
- * The first time: the balance to start from, and how TaskMint's
- * withdrawals count (shown when TaskMint has published its forecast).
- * Saving the settings is what ends it, so it comes once per account.
+ * The first time: the balance to start from, and (with TaskMint signed in
+ * alongside) how TaskMint's withdrawals count. Saving the settings is what
+ * ends it, so it comes once per account.
  */
 
 import { useRef, useState } from 'react';
@@ -20,6 +20,7 @@ import {
   Link,
 } from '@mui/material';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { useTaskMint } from '../../hooks/useTaskMint';
 import { formatDay } from '../../utils/dates';
 import { formatCents, formatMaybeCents, parseDollars, currencySymbol } from '../../utils/money';
 import { Wordmark } from '../ui/display/Wordmark';
@@ -32,13 +33,14 @@ export function Onboarding() {
   const change = useBudgetChange();
   const [amount, setAmount] = useState('');
   const [asOf, setAsOf] = useState(overview.today);
-  const [useTaskMint, setUseTaskMint] = useState(true);
+  const [counted, setCounted] = useState(true);
   const [delay, setDelay] = useState(settings.taskmint.arrivalDelayHours);
   const [problem, setProblem] = useState<string | null>(null);
   /** Started with a balance that isn't an amount: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState(false);
   const balanceInput = useRef<HTMLInputElement>(null);
   const connected = view.taskmint.state === 'ready';
+  const { shown: taskmintShown } = useTaskMint();
   const next = overview.nextWithdrawal;
 
   const start = (withBalance: boolean) => {
@@ -55,7 +57,7 @@ export function Onboarding() {
       change('save_settings', {
         settings: {
           ...settings,
-          taskmint: { ...settings.taskmint, useForecast: useTaskMint, arrivalDelayHours: delay },
+          taskmint: { ...settings.taskmint, useForecast: counted, arrivalDelayHours: delay },
         },
       });
     } catch (error) {
@@ -72,7 +74,9 @@ export function Onboarding() {
             Welcome to BudgetMint
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Two things, and you’re set: what your account holds, and how TaskMint’s money comes in.
+            {taskmintShown
+              ? 'Two things, and you’re set: what your bank account holds, and how TaskMint’s money comes in.'
+              : 'Start with what your bank account holds: your bills and income come next.'}
           </Typography>
         </Stack>
         {problem && (
@@ -118,46 +122,48 @@ export function Onboarding() {
               />
             </Stack>
           </Box>
-          <Box component="section" aria-labelledby="taskmint-title">
-            <Typography id="taskmint-title" variant="h6" component="h2" sx={{ mb: 1 }}>
-              TaskMint
-            </Typography>
-            {connected ? (
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                {next
-                  ? `Your next withdrawal: ${formatMaybeCents(next.totalCents, next.money.estimatedCents > 0)}, in the bank ${formatDay(next.arrivesOn)}.`
-                  : 'Connected: nothing to withdraw yet.'}
+          {taskmintShown && (
+            <Box component="section" aria-labelledby="taskmint-title">
+              <Typography id="taskmint-title" variant="h6" component="h2" sx={{ mb: 1 }}>
+                TaskMint
               </Typography>
-            ) : (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                {view.taskmint.state === 'checking'
-                  ? 'Checking TaskMint…'
-                  : view.taskmintUser
-                    ? 'Not connected yet: turn on cloud sync in TaskMint, and its withdrawals show up here.'
-                    : 'Not signed in to TaskMint: its account isn’t this one. Sign in to it later in Settings → TaskMint.'}
-              </Typography>
-            )}
-            <FormControlLabel
-              control={<Switch checked={useTaskMint} onChange={event => setUseTaskMint(event.target.checked)} />}
-              label="Count TaskMint’s withdrawals"
-            />
-            {useTaskMint && (
-              <TextField
-                select
-                size="small"
-                label="They reach the bank"
-                value={delay}
-                onChange={event => setDelay(Number(event.target.value))}
-                sx={{ mt: 1, minWidth: 220 }}
-              >
-                {DELAYS.map(hours => (
-                  <MenuItem key={hours} value={hours}>
-                    {delayLabel(hours)}
-                  </MenuItem>
-                ))}
-              </TextField>
-            )}
-          </Box>
+              {connected ? (
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  {next
+                    ? `Your next withdrawal: ${formatMaybeCents(next.totalCents, next.money.estimatedCents > 0)}, in the bank ${formatDay(next.arrivesOn)}.`
+                    : 'Connected: nothing to withdraw yet.'}
+                </Typography>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  {view.taskmint.state === 'checking'
+                    ? 'Checking TaskMint…'
+                    : view.taskmintUser
+                      ? 'Not connected yet: turn on cloud sync in TaskMint, and its withdrawals show up here.'
+                      : 'Not signed in to TaskMint: its account isn’t this one. Sign in to it later in Settings → TaskMint.'}
+                </Typography>
+              )}
+              <FormControlLabel
+                control={<Switch checked={counted} onChange={event => setCounted(event.target.checked)} />}
+                label="Count TaskMint’s withdrawals"
+              />
+              {counted && (
+                <TextField
+                  select
+                  size="small"
+                  label="They reach the bank"
+                  value={delay}
+                  onChange={event => setDelay(Number(event.target.value))}
+                  sx={{ mt: 1, minWidth: 220 }}
+                >
+                  {DELAYS.map(hours => (
+                    <MenuItem key={hours} value={hours}>
+                      {delayLabel(hours)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
+            </Box>
+          )}
           <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
             <Button type="button" onClick={() => start(false)}>
               Start without a balance

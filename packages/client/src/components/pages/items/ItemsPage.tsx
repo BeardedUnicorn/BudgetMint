@@ -41,6 +41,7 @@ import type { ItemKind, ItemView } from '@budgetmint/contracts';
 import { useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { useNotification } from '../../../contexts/NotificationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { formatRelativeDay } from '../../../utils/dates';
 import { describeEnd, describeRepeat, describeWeekends, occurrenceLabel } from '../../../utils/describe';
@@ -70,7 +71,7 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
   income: {
     title: 'Income',
     one: 'income',
-    subtitle: 'Money coming in besides TaskMint’s withdrawals.',
+    subtitle: 'Paychecks and other money coming in.',
     empty: 'A paycheck, a side job, a refund on its way.',
   },
 };
@@ -290,6 +291,10 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   // An item deleted (here or on another device) takes its dialog with it
   const dialog = opened?.view && !all.some(view => view.item.id === opened.view?.item.id) ? null : opened;
   const words = WORDS[kind];
+  const { shown: taskmintShown } = useTaskMint();
+  // With TaskMint connected, its withdrawals are income too, but not listed here
+  const subtitle =
+    kind === 'income' && taskmintShown ? 'Money coming in besides TaskMint’s withdrawals.' : words.subtitle;
   const views = all.filter(view => view.item.kind === kind);
   const unarchived = views.filter(view => !view.item.archived);
   const monthly = unarchived.reduce((sum, view) => sum + view.monthlyCents, 0);
@@ -314,7 +319,7 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
     <PageContainer>
       <PageHeader
         title={words.title}
-        subtitle={unarchived.length > 0 ? `${words.subtitle} About ${formatCents(monthly)} a month.` : words.subtitle}
+        subtitle={unarchived.length > 0 ? `${subtitle} About ${formatCents(monthly)} a month.` : subtitle}
         actions={
           <Button variant="contained" startIcon={<AddIcon />} onClick={add}>
             Add {words.one}

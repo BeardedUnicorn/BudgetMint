@@ -3,9 +3,11 @@
  * TaskMint too when the accounts match; here when they don't), whether its
  * forecast is here and how fresh it is, and how the forecast counts its
  * withdrawals: when you withdraw, how long the money takes, what's counted,
- * and any earnings assumed ahead.
+ * and any earnings assumed ahead. Until TaskMint has been connected, only a
+ * way to connect it (hooks/useTaskMint).
  */
 
+import { useState } from 'react';
 import {
   Alert,
   Box,
@@ -22,6 +24,7 @@ import { Savings as TaskMintIcon } from '@mui/icons-material';
 import type { FutureEarnings, WithdrawPolicy } from '@budgetmint/contracts';
 import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { getShell } from '../../../shell';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
@@ -47,8 +50,51 @@ const hourName = (hour: number) =>
 const SIGN_IN_INTRO =
   'Not signed in to TaskMint. Sign in with your TaskMint account to see its withdrawals here: BudgetMint only reads its forecast.';
 
+/** TaskMint's sign-in form, for TaskMint alone. */
+function TaskMintSignIn({ intro }: { intro: string }) {
+  const { session } = useBudget();
+  return (
+    <SignInForm
+      engine={{
+        signIn: session.signInToTaskMint,
+        signInWithGoogle: session.signInToTaskMintWithGoogle,
+        canUseGoogle: session.canUseGoogle,
+      }}
+      intro={intro}
+      onPhone={getShell().capabilities.runtime === 'mobile'}
+    />
+  );
+}
+
+/** Before TaskMint is connected: what it's for, and a way to connect it. */
+function ConnectTaskMint() {
+  const [connecting, setConnecting] = useState(false);
+  return (
+    <SettingsSection title="TaskMint" icon={<TaskMintIcon />}>
+      {connecting ? (
+        <TaskMintSignIn intro="Sign in with your TaskMint account. BudgetMint only reads its forecast of what you’ll withdraw." />
+      ) : (
+        <Stack spacing={2} sx={{ alignItems: 'flex-start' }}>
+          <Typography variant="body2" color="text.secondary">
+            Use TaskMint? Connect it, and its withdrawals count as income in your forecast.
+          </Typography>
+          <Button variant="outlined" onClick={() => setConnecting(true)}>
+            Connect TaskMint
+          </Button>
+        </Stack>
+      )}
+    </SettingsSection>
+  );
+}
+
 export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
+  const { shown } = useTaskMint();
+  return shown ? <TaskMintSettings nowMs={nowMs} /> : <ConnectTaskMint />;
+}
+
+function TaskMintSettings({ nowMs }: { nowMs: number }) {
   const { session, view } = useBudget();
+  const { forget } = useTaskMint();
   const [settings, save] = useSettings();
   const plan = settings.taskmint;
   const status = view.taskmint;
@@ -90,22 +136,14 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
             Signed in to TaskMint as <strong>{user.email ?? 'you'}</strong>
             {user.providers.includes('google.com') ? ' with Google' : ''}.
           </Typography>
-          <Button size="small" onClick={() => void session.signOutOfTaskMint()}>
+          <Button size="small" onClick={() => void session.signOutOfTaskMint().then(forget)}>
             Sign out of TaskMint
           </Button>
         </Stack>
       )}
       {signedOut && (
         <Box sx={{ mb: 3 }}>
-          <SignInForm
-            engine={{
-              signIn: session.signInToTaskMint,
-              signInWithGoogle: session.signInToTaskMintWithGoogle,
-              canUseGoogle: session.canUseGoogle,
-            }}
-            intro={SIGN_IN_INTRO}
-            onPhone={getShell().capabilities.runtime === 'mobile'}
-          />
+          <TaskMintSignIn intro={SIGN_IN_INTRO} />
         </Box>
       )}
       {user && status.state === 'missing' && (

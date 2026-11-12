@@ -244,8 +244,8 @@ describe('settings', () => {
     expect(within(taskmint()).getByText(/Signed in to TaskMint as/)).toHaveTextContent(
       'Signed in to TaskMint as cal@example.com.'
     );
-    await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));
-    expect(store.signOutOfTaskMint).toHaveBeenCalled();
+    // The sign-in lapsing (not signed out here) keeps the section, to sign in again
+    store.setTaskMintUser(null);
     expect(await within(taskmint()).findByText('Not signed in')).toBeInTheDocument();
     expect(within(taskmint()).getByText(/Not signed in to TaskMint\./)).toBeInTheDocument();
     expect(within(taskmint()).queryByText(/No TaskMint forecast yet/)).not.toBeInTheDocument();
@@ -260,9 +260,19 @@ describe('settings', () => {
     expect(await within(taskmint()).findByText(/Signed in to TaskMint as/)).toHaveTextContent(
       'Signed in to TaskMint as dee@example.com.'
     );
+    // Signing out here forgets TaskMint: Settings only offers to connect it again
+    await user.click(within(taskmint()).getByRole('button', { name: 'Sign out of TaskMint' }));
+    expect(store.signOutOfTaskMint).toHaveBeenCalled();
+    await user.click(await within(taskmint()).findByRole('button', { name: 'Connect TaskMint' }));
+    expect(
+      within(taskmint()).getByText(/BudgetMint only reads its forecast of what you’ll withdraw/)
+    ).toBeInTheDocument();
     store.setTaskMintUser({ uid: 'g', email: null, providers: ['google.com'] });
-    expect(await within(taskmint()).findByText(/Signed in to TaskMint as/)).toHaveTextContent(
-      'Signed in to TaskMint as you with Google.'
+    // Connected again: the whole section is back (a new one, so it's looked up each time)
+    await waitFor(() =>
+      expect(within(taskmint()).getByText(/Signed in to TaskMint as/)).toHaveTextContent(
+        'Signed in to TaskMint as you with Google.'
+      )
     );
   });
 

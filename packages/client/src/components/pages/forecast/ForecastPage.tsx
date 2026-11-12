@@ -25,6 +25,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import type { ForecastView, Flow } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
+import { useTaskMint } from '../../../hooks/useTaskMint';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { formatDay, formatMoment, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
@@ -161,6 +162,7 @@ function BalanceChart({ view }: { view: ForecastView }) {
 export function ForecastPage() {
   const view = useCoreQuery('get_forecast');
   const { navigate } = useNavigation();
+  const { shown: taskmintShown } = useTaskMint();
   // The days money moves besides the everyday spending (each day has that)
   const moving = view.days.filter(day => day.flows.some(flow => flow.kind !== 'spending'));
   const spending = spendingAssumption(view);
@@ -181,7 +183,8 @@ export function ForecastPage() {
       <Paper component="section" aria-label="Balance ahead" sx={SECTION}>
         <BalanceChart view={view} />
         {[
-          ...assumptions(view),
+          // TaskMint's only once it's connected: without it, there's nothing to assume
+          ...(taskmintShown ? assumptions(view) : []),
           ...(spending ? [spending] : []),
           ...(view.days.some(day => day.setAsideCents > 0)
             ? ['The dashed balance line leaves out the money set aside for bills.']

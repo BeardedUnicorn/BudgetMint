@@ -75,6 +75,8 @@ export interface Seed {
   forecast?: ForecastDoc | null;
   shell?: ReturnType<typeof createFakeShell>;
   extensions?: AppExtensions;
+  /** Signed in to TaskMint alongside, as the same user (the default), or not. */
+  taskmint?: boolean;
 }
 
 /** A balance of $1,000 at the end of yesterday. */
@@ -98,6 +100,7 @@ export async function startBudget(seed: Seed = {}) {
   const session = new BudgetSession(store, core, 'desk', null, { historyDays: 400, clock: () => TEST_NOW });
   session.start();
   store.setUser(cal());
+  if (seed.taskmint === false) store.setTaskMintUser(null);
   await waitFor(() => expect(session.getView().phase).toBe('ready'));
   const user = userEvent.setup();
   const rendered = render(<App session={session} core={core} extensions={seed.extensions} />);
