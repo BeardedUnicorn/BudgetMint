@@ -114,10 +114,19 @@ describe('NavigationProvider', () => {
     it('keeps it open when it asks first, and takes its entry off once it closes itself', async () => {
       const onBack = vi.fn(() => false);
       const { result, rerender } = top({ open: true, onBack });
+      const depth = window.history.length;
+      const push = vi.spyOn(window.history, 'pushState');
       act(() => window.history.back());
       await waitFor(() => expect(onBack).toHaveBeenCalled());
-      // Still open: Back again would ask again
-      expect(onTop()).toBe(true);
+      // Still open: Back again would ask again, from the entry it had (one pushed without a tap
+      // would have Chromium skip the entries under it)
+      await waitFor(() => expect(onTop()).toBe(true));
+      expect(push).not.toHaveBeenCalled();
+      expect(window.history.length).toBe(depth);
+      push.mockRestore();
+      act(() => window.history.back());
+      await waitFor(() => expect(onBack).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(onTop()).toBe(true));
       rerender({ open: false, onBack });
       await waitFor(() => expect(onTop()).toBe(false));
       // Its going back wasn't the user's: the page stays
@@ -151,7 +160,7 @@ describe('NavigationProvider', () => {
       act(() => window.history.back());
       await waitFor(() => expect(over).toHaveBeenCalled());
       expect(under).not.toHaveBeenCalled();
-      expect(onTop()).toBe(true);
+      await waitFor(() => expect(onTop()).toBe(true));
       rerender({ second: false });
       act(() => window.history.back());
       await waitFor(() => expect(under).toHaveBeenCalled());

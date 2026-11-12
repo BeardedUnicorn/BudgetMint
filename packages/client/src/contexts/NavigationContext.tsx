@@ -8,7 +8,17 @@
  * the page's, and Back takes that.
  */
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { type NavigationParams, type SidebarView, VIEWS } from '../navigation/views';
 import { readLocal, writeLocal } from '../utils/localStore';
 
@@ -107,7 +117,8 @@ export function NavigationProvider({
     [show]
   );
 
-  useEffect(() => {
+  // Before the pages' effects, so an overlay open from the start pushes its entry after this
+  useLayoutEffect(() => {
     // The page showing now is where Back stops: before it, the window's own history
     window.history.replaceState({ budgetmint: { view: current.current } } satisfies Entry, '');
     const popped = (event: PopStateEvent) => {
@@ -118,9 +129,12 @@ export function NavigationProvider({
       const top = overlays.current.at(-1);
       if (covered.current && top) {
         covered.current = false;
-        // It stays open (asking first), or others are open under it: they keep an entry to go back from
+        // It stays open (asking first), or others are open under it: they keep an entry to go back
+        // from. Forward to the one Back just left, not a new one: an entry added without a tap
+        // makes Chromium skip the one under it on Back (and Android's WebView, out of the app)
         if (!top.back() || overlays.current.length > 1) {
-          window.history.pushState({ budgetmint: { view: current.current, overlay: true } } satisfies Entry, '');
+          ignoring.current += 1;
+          window.history.forward();
           covered.current = true;
         }
         return;
