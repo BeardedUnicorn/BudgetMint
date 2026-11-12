@@ -117,4 +117,34 @@ describe('the forecast', () => {
       'Assuming $12.00 earned a day from tomorrow.',
     ]);
   });
+
+  it('lists each day under the other on a phone, marking the low and short ones', async () => {
+    const { setPhoneViewport } = await import('../../../../__tests__/setup/viewport');
+    setPhoneViewport();
+    const { user } = await startBudget({
+      items: [
+        monthly('rent', 'Rent', 12, 50_000),
+        item({
+          id: 'pay',
+          kind: 'income',
+          name: 'Pay',
+          schedule: [
+            { from: '2026-11-13', until: null, repeat: { every: 'once' }, amountCents: 200_000, weekends: 'keep' },
+          ],
+        }),
+        monthly('car', 'Car', 15, 300_000),
+      ],
+      settings: { balance: { cents: 100_000, asOf: '2026-11-09' }, lowBalanceCents: 60_000, horizonDays: 14 },
+    });
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('button', { name: 'Forecast' })
+    );
+    const days = screen.getByRole('region', { name: 'Day by day' });
+    expect(within(days).queryByRole('table')).not.toBeInTheDocument();
+    const day = (name: string) => within(days).getByRole('heading', { name }).parentElement!.parentElement!;
+    expect(within(day('Thu, Nov 12')).getByTitle('Low')).toBeInTheDocument();
+    expect(day('Thu, Nov 12')).toHaveTextContent('Rent−$500.00'.replace('−', '-'));
+    expect(day('Fri, Nov 13')).toHaveTextContent('+$2,000.00');
+    expect(within(day('Sun, Nov 15')).getByTitle('Below zero')).toBeInTheDocument();
+  });
 });

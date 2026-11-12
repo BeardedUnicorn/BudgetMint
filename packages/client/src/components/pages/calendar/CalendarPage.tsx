@@ -10,13 +10,14 @@ import { Box, Button, IconButton, Paper, Typography } from '@mui/material';
 import { ChevronLeft, ChevronRight } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { useCoreQuery } from '../../../data/BudgetContext';
+import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { PHONE } from '../../../theme/media';
-import { addDays, addMonths, formatMonth } from '../../../utils/dates';
+import { addDays, addMonths, formatLongDay, formatMonth } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { Dot, WIDE } from './DayCell';
-import { DayDialog } from './DayDialog';
+import { DayAgenda, DayDialog } from './DayDialog';
 import { MonthGrid } from './MonthGrid';
 
 function Stat({ label, value }: { label: string; value: string }) {
@@ -81,6 +82,10 @@ export function CalendarPage() {
   const titleId = useId();
   const open = view.days.find(day => day.date === openDay);
   const { shown: taskmintShown } = useTaskMint();
+  // A phone shows the day picked under the month, where there's room, rather than over it
+  const compact = useCompactLayout();
+  const [picked, setPicked] = useState(today);
+  const pickedDay = view.days.find(day => day.date === picked);
 
   const goToMonth = (next: string) => {
     setMonth(next);
@@ -156,7 +161,7 @@ export function CalendarPage() {
           focusedDate={focusedDate}
           onFocusDate={setFocusedDate}
           onMonthChange={setMonth}
-          onOpenDay={setOpenDay}
+          onOpenDay={compact ? setPicked : setOpenDay}
           labelledBy={titleId}
           mondayFirst={settings.weekStartsMonday}
         />
@@ -189,6 +194,14 @@ export function CalendarPage() {
         </Box>
       </Paper>
 
+      {compact && pickedDay && (
+        <Paper component="section" aria-labelledby="picked-title" sx={{ p: 2, mt: 2 }}>
+          <Typography id="picked-title" variant="h6" component="h2" sx={{ mb: 1 }}>
+            {formatLongDay(pickedDay.date)}
+          </Typography>
+          <DayAgenda day={pickedDay} today={today} />
+        </Paper>
+      )}
       {open && <DayDialog day={open} today={today} onStep={step} onClose={() => setOpenDay(null)} />}
     </PageContainer>
   );
