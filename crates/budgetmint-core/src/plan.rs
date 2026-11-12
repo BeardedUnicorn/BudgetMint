@@ -344,8 +344,9 @@ pub fn save_item_from(
     check_schedule(&input.schedule)?;
     let existing = snapshot.items.get(&input.id);
     // Where the first one after the change would come in a period settled already
-    let again =
-        changed_from.and_then(|from| settled_already(snapshot, existing?, &input.schedule, from));
+    let again = existing
+        .zip(changed_from)
+        .and_then(|(old, from)| settled_already(snapshot, old, &input.schedule, from));
     let created_at = existing.map_or(ctx.now, |existing| existing.created_at);
     let save_up = if input.save_up {
         // How often it comes is what refuses it
@@ -397,18 +398,21 @@ pub fn save_item_from(
     }
     let mut planned = write_item(snapshot, &saved);
     if let Some(date) = again {
-        planned.then(set_occurrence(
-            snapshot,
-            OccurrenceInput {
-                item_id: saved.id,
-                date,
-                status: OccStatus::Skipped,
-                amount_cents: None,
-                moved_to: None,
-                note: Some(SETTLED_ALREADY.into()),
-            },
-            ctx,
-        )?);
+        planned.then(
+            set_occurrence(
+                snapshot,
+                OccurrenceInput {
+                    item_id: saved.id,
+                    date,
+                    status: OccStatus::Skipped,
+                    amount_cents: None,
+                    moved_to: None,
+                    note: Some(SETTLED_ALREADY.into()),
+                },
+                ctx,
+            )
+            .expect("a date of the schedule just saved, with nothing on it, can be skipped"),
+        );
     }
     Ok(planned)
 }
