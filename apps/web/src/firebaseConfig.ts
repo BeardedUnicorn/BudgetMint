@@ -16,6 +16,8 @@ export const WEB_FIREBASE: CloudConfig['firebase'] = {
   storageBucket: 'budgetmint.firebasestorage.app',
   messagingSenderId: '554414035346',
   appId: '1:554414035346:web:5c5e0ccc1ae069f0e9b14b',
+  // Its Google Analytics stream: usage analytics (analytics.ts)
+  measurementId: 'G-D5MP3TWGFK',
 };
 
 export const TASKMINT_WEB_FIREBASE: CloudConfig['taskmint'] = {

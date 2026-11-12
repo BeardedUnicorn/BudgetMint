@@ -21,7 +21,6 @@ import {
   missingAssets,
   packageJsonVersion,
   parseNote,
-  RELEASE_TARGETS,
   releaseAssets,
   releaseDownloadUrl,
   renderSection,
@@ -252,9 +251,13 @@ describe('targets', () => {
     );
   });
 
-  it('ships the desktop installers, and no APK until the workflow builds one', () => {
-    assert.deepEqual(RELEASE_TARGETS, ['macos-arm64', 'macos-x64', 'windows-x64']);
-    assert.ok(!releaseAssets('BudgetMint', '2.2.0').includes('BudgetMint-2.2.0-android-arm64.apk'));
+  it('ships the desktop installers and the APK', () => {
+    assert.deepEqual(releaseAssets('BudgetMint', '2.2.0').slice(0, TARGETS.length), [
+      'BudgetMint-2.2.0-macos-arm64.dmg',
+      'BudgetMint-2.2.0-macos-x64.dmg',
+      'BudgetMint-2.2.0-windows-x64-setup.exe',
+      'BudgetMint-2.2.0-android-arm64.apk',
+    ]);
   });
 
   it('tells a target from anything else', () => {
@@ -269,16 +272,16 @@ describe('targets', () => {
   it("lists the release's files that aren't there", () => {
     const all = releaseAssets('BudgetMint', '2.2.0');
     assert.deepEqual(missingAssets('BudgetMint', '2.2.0', all), []);
-    const updates = all.slice(RELEASE_TARGETS.length);
+    const updates = all.slice(TARGETS.length);
     assert.deepEqual(
       missingAssets('BudgetMint', '2.2.0', [
         'BudgetMint-2.2.0-macos-arm64.dmg',
         'BudgetMint-2.1.0-macos-x64.dmg',
         ...updates,
       ]),
-      ['BudgetMint-2.2.0-macos-x64.dmg', 'BudgetMint-2.2.0-windows-x64-setup.exe']
+      ['BudgetMint-2.2.0-macos-x64.dmg', 'BudgetMint-2.2.0-windows-x64-setup.exe', 'BudgetMint-2.2.0-android-arm64.apk']
     );
-    assert.deepEqual(missingAssets('BudgetMint', '2.2.0', all.slice(0, RELEASE_TARGETS.length)), updates);
+    assert.deepEqual(missingAssets('BudgetMint', '2.2.0', all.slice(0, TARGETS.length)), updates);
   });
 
   it('builds a Mac installer natively, or cross-compiled for the other CPU', () => {
@@ -366,7 +369,7 @@ describe('desktop updates', () => {
         },
       ]
     );
-    assert.deepEqual(releaseAssets('BudgetMint', '2.3.0').slice(RELEASE_TARGETS.length), [
+    assert.deepEqual(releaseAssets('BudgetMint', '2.3.0').slice(TARGETS.length), [
       'BudgetMint-2.3.0-macos-arm64.app.tar.gz',
       'BudgetMint-2.3.0-macos-arm64.app.tar.gz.sig',
       'BudgetMint-2.3.0-macos-x64.app.tar.gz',

@@ -403,3 +403,23 @@ describe('settings', () => {
     await waitFor(() => expect(scroll).toHaveBeenCalledWith({ block: 'start' }));
   });
 });
+
+describe('privacy', () => {
+  it('turns usage statistics off and on where the shell has them', async () => {
+    localStorage.clear();
+    const shell = createFakeShell();
+    const { user } = await settings({ shell });
+    const toggle = within(section('Privacy')).getByRole('switch', { name: 'Share usage statistics' });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(shell.platform.analytics.setEnabled).toHaveBeenLastCalledWith(false);
+    await user.click(toggle);
+    expect(shell.platform.analytics.setEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it('has no Privacy section where the shell has no analytics (the desktop)', async () => {
+    await settings({ shell: createFakeShell({ without: ['analytics'] }) });
+    expect(screen.queryByRole('heading', { name: 'Privacy' })).not.toBeInTheDocument();
+  });
+});

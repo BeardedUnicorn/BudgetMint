@@ -250,6 +250,36 @@ folder), as NSIS installers:
       matches TaskMint's Payouts (policy "as soon as open", no assumed
       earnings).
 
+## Android
+
+On the emulator or a phone with Google Play services, with the release APK
+(`pnpm release --rebuild --target android-arm64`, the README's "Android
+signing") unless a step says otherwise:
+
+- [ ] **Installs over the last one:** the APK installs over the previous
+      release's and keeps the sign-in.
+- [ ] **Launch screen:** a cold start (swipe BudgetMint out of Recents, then
+      open it from the launcher) shows the leaf on teal, with the BudgetMint
+      wordmark at the bottom on Android 12 and later, until the app fades in.
+      No black or white screen between them.
+- [ ] **Status bar** follows the app's theme (Settings → Appearance), light
+      and dark, once the launch screen has gone (its icons are light on the
+      teal while it shows).
+- [ ] **Google sign-in:** Continue with Google shows Android's account sheet
+      (the form says "Choose your Google account.") and signs in to
+      BudgetMint, and to TaskMint when that Google account has one (Settings
+      → TaskMint). A debug APK works too: both keys are registered.
+- [ ] **Analytics:** with Settings → Privacy → Share usage statistics on,
+      each page opened reaches Firebase (Analytics → DebugView, after
+      `adb shell setprop debug.firebase.analytics.app com.budgetmint.android`)
+      with only the page's name; off, nothing more goes.
+- [ ] **Reminders:** Settings → Reminders asks for notifications on Android
+      13 and later; a bill's reminder comes at its hour with the app swiped
+      away, in Doze (`adb shell dumpsys deviceidle force-idle`) and after a
+      reboot.
+- [ ] **Your data:** it says the app can't save files yet (the web app
+      can), and importing a bank statement opens Android's file picker.
+
 ## Windows
 
 - [ ] **No console window** opens with the app (`main.rs`).

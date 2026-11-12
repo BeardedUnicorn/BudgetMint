@@ -63,6 +63,10 @@ login.
 - **The desktop:** installed apps update only to a newer version, so a bad
   release is fixed by releasing the next one (or installing the previous one
   by hand). The data is the cloud's, so reinstalling loses nothing.
+- **Android:** the APK doesn't update itself. A bad release is fixed by the
+  next one, or by installing the previous release's APK by hand: Android
+  refuses an older version over a newer one, so uninstall first (the budget
+  is the cloud's; only the device's own settings go).
 - **The rules:** Firebase console → `budgetmint` → Firestore → Rules → the
   version before → Publish. Or deploy the previous tag's
   `rules/firestore.rules` as above.
@@ -107,6 +111,15 @@ scheduled backups (Blaze plan) is the fix if that ever matters.
   to do"); with email, that TaskMint's Email/Password sign-in is on.
 - **A leaked update signing key:** make a new key, replace the secrets and
   `plugins.updater.pubkey`, and release (the README's "Desktop updates").
+- **A lost or leaked Android release key:** make a new one, replace
+  `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_SIGNER_SHA256`,
+  register its fingerprints on the Firebase Android app and download
+  `google-services.json` again (the README's "Android signing"). Phones
+  can't install the new APK over the old one: each uninstalls first.
+- **Usage statistics stop arriving** (Analytics in the `budgetmint`
+  console): on the web, check the CSP in `firebase.json` still lets Google's
+  tag in and `apps/web/src/firebaseConfig.ts` has the `measurementId`; on
+  Android, that `google-services.json` is the "BudgetMint Android" app's.
 - **A leaked Google desktop client secret:** Google treats it as public
   (PKCE protects the flow); to rotate it anyway, reset the secret in Google
   Cloud console → Credentials → BudgetMint desktop, and update `.env` and the

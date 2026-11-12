@@ -22,6 +22,7 @@ import { Savings as TaskMintIcon } from '@mui/icons-material';
 import type { FutureEarnings, WithdrawPolicy } from '@budgetmint/contracts';
 import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
+import { getShell } from '../../../shell';
 import { formatMoment } from '../../../utils/dates';
 import { formattingLocale } from '../../../utils/locale';
 import { importIsStale } from '../../../utils/taskmint';
@@ -103,6 +104,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
               canUseGoogle: session.canUseGoogle,
             }}
             intro={SIGN_IN_INTRO}
+            onPhone={getShell().capabilities.runtime === 'mobile'}
           />
         </Box>
       )}

@@ -73,6 +73,14 @@ describe('signing in', () => {
     expect(screen.queryByText(/timed out/)).not.toBeInTheDocument();
   });
 
+  it("on a phone, waits on Google's account sheet, not a browser", async () => {
+    const engine = actions({ signInWithGoogle: vi.fn(() => new Promise<void>(() => undefined)) });
+    render(<SignInForm engine={engine} onPhone />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Continue with Google' }));
+    expect(screen.getByText('Choose your Google account.')).toBeInTheDocument();
+    expect(screen.queryByText('Finish signing in in your browser.')).not.toBeInTheDocument();
+  });
+
   it('signs in with Google, and says when it was closed', async () => {
     const engine = actions({
       signInWithGoogle: vi.fn(async () => Promise.reject({ code: 'auth/popup-closed-by-user' })),

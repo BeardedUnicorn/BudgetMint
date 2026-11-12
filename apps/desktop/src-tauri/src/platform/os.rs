@@ -552,10 +552,12 @@ impl Platform for TauriPlatform {
             return;
         };
         show_dock_icon(&self.app, true);
-        let shown = window
-            .unminimize()
-            .and_then(|()| window.show())
-            .and_then(|()| window.set_focus());
+        // A phone's window is never minimized: Tauri has no unminimize there
+        #[cfg(desktop)]
+        let shown = window.unminimize().and_then(|()| window.show());
+        #[cfg(mobile)]
+        let shown = window.show();
+        let shown = shown.and_then(|()| window.set_focus());
         if let Err(e) = shown {
             log::error!("Failed to bring the window forward: {}", e);
         }

@@ -13,6 +13,7 @@ afterEach(() => {
   delete window.BudgetMintSystemBars;
   delete window.BudgetMintSplash;
   delete window.BudgetMintGoogleSignIn;
+  delete window.BudgetMintAnalytics;
   delete window.__budgetmintGoogleSignIn;
 });
 
@@ -25,7 +26,8 @@ describe('the Tauri shell', () => {
 
   it('on a desktop: notifications while it runs, the tray, and Google in the browser with a client', async () => {
     const shell = createTauriShell({ runtime: 'desktop' }, { clientId: 'id', clientSecret: 'secret' });
-    const { notifications, tray, autostart, googleSignIn, systemBars, splashScreen, saveFile } = shell.platform;
+    const { notifications, tray, autostart, googleSignIn, systemBars, splashScreen, saveFile, analytics } =
+      shell.platform;
     expect(notifications.firesWhenClosed).toBe(false);
     await notifications.request();
     await notifications.schedule([{ id: 1, atMs: 2, title: 'Rent', body: '$1' }]);
@@ -49,6 +51,8 @@ describe('the Tauri shell', () => {
     ]);
     expect(systemBars).toBeUndefined();
     expect(splashScreen).toBeUndefined();
+    // No Google tag in a webview that can call every command
+    expect(analytics).toBeUndefined();
     // Without a client, email and password only
     expect(createTauriShell({ runtime: 'desktop' }).platform.googleSignIn).toBeUndefined();
   });
@@ -61,23 +65,30 @@ describe('the Tauri shell', () => {
     expect(platform.googleSignIn).toBeUndefined();
     expect(platform.systemBars).toBeUndefined();
     expect(platform.splashScreen).toBeUndefined();
+    expect(platform.analytics).toBeUndefined();
     // No save dialog: the client says to save the files elsewhere
     expect(platform.saveFile).toBeUndefined();
   });
 
-  it("on Android: the status bar, the launch screen and Google's account picker", async () => {
+  it("on Android: the status bar, the launch screen, Google's account picker and analytics", async () => {
     const bars = { setTheme: vi.fn() };
     const splash = { hide: vi.fn() };
+    const analytics = { setEnabled: vi.fn(), screen: vi.fn() };
     const picker = { start: vi.fn(() => window.__budgetmintGoogleSignIn!({ idToken: 'android-token' })) };
     window.BudgetMintSystemBars = bars;
     window.BudgetMintSplash = splash;
     window.BudgetMintGoogleSignIn = picker;
+    window.BudgetMintAnalytics = analytics;
     const { platform } = createTauriShell({ runtime: 'mobile' });
     platform.systemBars!.setDark(true);
     platform.systemBars!.setDark(false);
     expect(bars.setTheme.mock.calls).toEqual([['dark'], ['light']]);
     platform.splashScreen!.hide();
     expect(splash.hide).toHaveBeenCalled();
+    platform.analytics!.setEnabled(false);
+    platform.analytics!.screen('overview');
+    expect(analytics.setEnabled).toHaveBeenCalledWith(false);
+    expect(analytics.screen).toHaveBeenCalledWith('overview');
     expect(await platform.googleSignIn!()).toBe('android-token');
     picker.start.mockImplementationOnce(() => window.__budgetmintGoogleSignIn!({ error: 'Cancelled' }));
     await expect(platform.googleSignIn!()).rejects.toBe('Cancelled');

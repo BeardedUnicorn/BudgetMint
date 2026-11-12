@@ -9,8 +9,9 @@
  *   and saves the files the client makes through the system's dialog.
  * - A phone or tablet (runtime 'mobile') has no tray; the system keeps its
  *   reminders as alarms, which come with the app closed. On Android it also
- *   has the status bar, the launch screen and Google's account picker, which
- *   MainActivity.kt hands the webview directly, outside dispatch.
+ *   has the status bar, the launch screen, Google's account picker and
+ *   Firebase Analytics, which MainActivity.kt hands the webview directly,
+ *   outside dispatch.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -60,6 +61,12 @@ interface AndroidGoogleSignIn {
   start(): void;
 }
 
+/** What Android's MainActivity.kt adds for Firebase Analytics (its native SDK). */
+interface AndroidAnalytics {
+  setEnabled(enabled: boolean): void;
+  screen(name: string): void;
+}
+
 type GoogleAnswer = { idToken: string } | { error: string };
 
 declare global {
@@ -68,6 +75,7 @@ declare global {
     BudgetMintSystemBars?: AndroidSystemBars;
     BudgetMintSplash?: AndroidSplash;
     BudgetMintGoogleSignIn?: AndroidGoogleSignIn;
+    BudgetMintAnalytics?: AndroidAnalytics;
   }
 }
 
@@ -77,13 +85,20 @@ export interface GoogleDesktopClient {
   clientSecret: string;
 }
 
-/** Android's status bar and launch screen; elsewhere there are none. */
-function androidParts(): Pick<Platform, 'systemBars' | 'splashScreen'> {
-  const { BudgetMintSystemBars: bars, BudgetMintSplash: splash } = window;
+/**
+ * Android's status bar, launch screen and usage analytics; elsewhere there
+ * are none. The desktop has no analytics: Google's tag would run in a
+ * webview that can call every command.
+ */
+function androidParts(): Pick<Platform, 'systemBars' | 'splashScreen' | 'analytics'> {
+  const { BudgetMintSystemBars: bars, BudgetMintSplash: splash, BudgetMintAnalytics: analytics } = window;
   return {
     // Called on the bridge itself: Android refuses a method taken off it
     ...(bars ? { systemBars: { setDark: dark => bars.setTheme(dark ? 'dark' : 'light') } } : {}),
     ...(splash ? { splashScreen: { hide: () => splash.hide() } } : {}),
+    ...(analytics
+      ? { analytics: { setEnabled: enabled => analytics.setEnabled(enabled), screen: name => analytics.screen(name) } }
+      : {}),
   };
 }
 

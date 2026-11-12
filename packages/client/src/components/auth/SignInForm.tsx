@@ -42,8 +42,20 @@ export interface SignInActions {
 const INTRO =
   'Your bills and balance, on all your devices. Use the same email and password as TaskMint (or the same Google account) to see your withdrawals ahead.';
 
-/** Email and password: signing in, making an account, or a reset link. And Google, where the build can. */
-export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; intro?: string }) {
+/**
+ * Email and password: signing in, making an account, or a reset link. And
+ * Google, where the build can. `onPhone`: Google's own account sheet asks
+ * (Android), not a browser page, so the wait says to choose an account.
+ */
+export function SignInForm({
+  engine,
+  intro = INTRO,
+  onPhone = false,
+}: {
+  engine: SignInActions;
+  intro?: string;
+  onPhone?: boolean;
+}) {
   const [mode, setMode] = useState<FormMode>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,7 +66,7 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
   const [problem, setProblem] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  /** The Google sign-in being waited for (it's finished in the browser); null when none is. */
+  /** The Google sign-in being waited for (it's finished in the browser, or a phone's account sheet); null when none is. */
   const [googleAttempt, setGoogleAttempt] = useState<number | null>(null);
   const attempts = useRef(0);
 
@@ -208,7 +220,7 @@ export function SignInForm({ engine, intro = INTRO }: { engine: SignInActions; i
             {googleAttempt !== null && (
               <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary" role="status">
-                  Finish signing in in your browser.
+                  {onPhone ? 'Choose your Google account.' : 'Finish signing in in your browser.'}
                 </Typography>
                 <Button size="small" onClick={cancelGoogle}>
                   Cancel
