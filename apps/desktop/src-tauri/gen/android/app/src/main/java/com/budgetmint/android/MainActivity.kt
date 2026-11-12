@@ -9,7 +9,9 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.splashscreen.SplashScreenViewProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.credentials.CredentialManager
 import androidx.credentials.CredentialManagerCallback
 import androidx.credentials.GetCredentialRequest
@@ -81,6 +83,26 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(SystemBars(), "BudgetMintSystemBars")
     webView.addJavascriptInterface(GoogleSignIn(), "BudgetMintGoogleSignIn")
     webView.addJavascriptInterface(Analytics(), "BudgetMintAnalytics")
+    releaseFieldWhenKeyboardHides(webView)
+  }
+
+  /**
+   * Back with a field in the page still focused after its keyboard has gone
+   * goes to the input method, which has nothing left to close, so the page
+   * never hears it: a dialog stays open, the page doesn't go back. Once the
+   * keyboard is down, the field lets go of the focus, and the next Back
+   * reaches the page (NavigationContext's back stack). A tap on the field
+   * brings the keyboard back.
+   */
+  private fun releaseFieldWhenKeyboardHides(webView: WebView) {
+    var keyboardShown = false
+    ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+      val shown = insets.isVisible(WindowInsetsCompat.Type.ime())
+      if (keyboardShown && !shown) webView.evaluateJavascript(RELEASE_FIELD, null)
+      keyboardShown = shown
+      // The webview handles its insets as it would without this
+      ViewCompat.onApplyWindowInsets(view, insets)
+    }
   }
 
   /**
@@ -188,6 +210,10 @@ class MainActivity : TauriActivity() {
   }
 
   private companion object {
+    /** Blurs the focused text field, if one is. */
+    const val RELEASE_FIELD =
+      "(() => { const field = document.activeElement; " +
+        "if (field && field.matches('input, textarea, [contenteditable]')) field.blur(); })()"
     const val SPLASH_FADE_MS = 250L
     const val SPLASH_TIMEOUT_MS = 10_000L
   }
