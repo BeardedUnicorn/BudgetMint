@@ -13,7 +13,8 @@ use crate::model::{
 };
 use crate::occur::{estimate, item_occurrences, occurrences, Estimate, Occurrence};
 use crate::project::{
-    project, recorded_arrivals, settled_through, DayRow, FlowKind, FlowStatus, Projection,
+    open_settled_through, project, recorded_arrivals, settled_through, DayRow, FlowKind,
+    FlowStatus, Projection,
 };
 use crate::time::{in_calendar, into_calendar, Ctx};
 use chrono::{Datelike, Duration, NaiveDate};
@@ -55,7 +56,8 @@ pub struct OccurrenceView {
     pub note: Option<String>,
 }
 
-/// `settled`: the last day the balance has settled (project::settled_through).
+/// `settled`: the last day whose open occurrences the balance has settled
+/// (project::open_settled_through).
 pub(crate) fn occurrence_view(
     occurrence: &Occurrence<'_>,
     today: NaiveDate,
@@ -207,7 +209,7 @@ fn late_views(
     late: &[crate::project::Late],
     today: NaiveDate,
 ) -> Vec<OccurrenceView> {
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = open_settled_through(&snapshot.settings(), today);
     late.iter()
         .filter_map(|late| {
             // The projection names only items that are there
@@ -228,7 +230,7 @@ pub fn overview(
 ) -> Overview {
     let settings = snapshot.settings();
     let today = ctx.today();
-    let settled = settled_through(&settings, today);
+    let settled = open_settled_through(&settings, today);
     let projection = project(snapshot, taskmint, ctx, horizon_end(&settings, today));
     let ahead = projection.ahead();
     let lowest = ahead
@@ -395,7 +397,7 @@ pub fn month(
     let last = first
         + Duration::days(i64::from(crate::recur::days_in_month(first.year(), first.month())) - 1);
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = open_settled_through(&snapshot.settings(), today);
     let settings = snapshot.settings();
     let end = last
         .max(horizon_end(&settings, today))
@@ -595,7 +597,9 @@ fn monthly_cents(item: &Item, today: NaiveDate, each: Option<Cents>) -> Cents {
 
 pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = open_settled_through(&snapshot.settings(), today);
+    // Autopay went by itself: the balance has its own day's too
+    let in_balance = settled_through(&snapshot.settings(), today);
     let mut views: Vec<ItemView> = snapshot
         .items
         .values()
@@ -610,7 +614,7 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                 // Open, and not settled by the balance: late ones too, unless on autopay
                 .find(|o| {
                     o.status == OccStatus::Open
-                        && o.due > settled
+                        && o.due > if item.autopay { in_balance } else { settled }
                         && (o.due >= today || !item.autopay)
                 })
                 .map(|o| occurrence_view(o, today, settled));
@@ -664,7 +668,7 @@ pub fn history(
 ) -> Option<Vec<OccurrenceView>> {
     let item = snapshot.items.get(item_id)?;
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settled = open_settled_through(&snapshot.settings(), today);
     let (from, to) = (into_calendar(from), into_calendar(to));
     let mut found: Vec<OccurrenceView> = item_occurrences(snapshot, item, from, to)
         .iter()
@@ -1270,8 +1274,9 @@ mod tests {
             ..Settings::default()
         };
         s.write(DocKey::Settings, Some(&settings));
-        // Never ticked off: the 3rd's is in the balance already, the 7th's is still owed
-        for (id, day) in [("phone", 3), ("rent", 7)] {
+        // Never ticked off: the 3rd's is in the balance already, the 7th's is still owed,
+        // and so is the one due on the balance's own day
+        for (id, day) in [("phone", 3), ("net", 5), ("rent", 7)] {
             let on = Repeat::Months { n: 1, day };
             put_item(
                 &mut s,
@@ -1281,6 +1286,7 @@ mod tests {
         let november = month(&s, None, "2026-11", &ctx()).unwrap();
         let late = |day: usize| november.days[day - 1].occurrences[0].late;
         assert!(!late(3));
+        assert!(late(5));
         assert!(late(7));
         let phone = history(&s, "phone", d(2026, 11, 1), d(2026, 11, 30), &ctx()).unwrap();
         assert!(!phone[0].late);

@@ -515,7 +515,8 @@ describe('bills and income', () => {
     const { user, store } = await startBudget({
       items: [
         monthly('power', 'Power', 20, 9_000, { category: 'Utilities' }),
-        monthly('water', 'Water', 9, 3_000, { category: 'utilities' }),
+        // (Not on the balance's day, the 9th: unmarked, it would still be owed, and listed first)
+        monthly('water', 'Water', 25, 3_000, { category: 'utilities' }),
         monthly('gym', 'Gym', 5, 3_000),
       ],
     });

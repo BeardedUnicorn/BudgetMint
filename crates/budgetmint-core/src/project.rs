@@ -165,6 +165,21 @@ pub fn settled_through(settings: &Settings, today: NaiveDate) -> NaiveDate {
         )
 }
 
+/// The last day whose open occurrences, not on autopay, the balance is taken
+/// to have settled: the day before its own. One due on the balance's day and
+/// never marked may have been still to pay when the balance was read, so it
+/// stays owed until it's marked (and says then whether the balance had it:
+/// plan::moved_balance) or the next balance asks about it.
+pub fn open_settled_through(settings: &Settings, today: NaiveDate) -> NaiveDate {
+    settings
+        .balance
+        .filter(|balance| balance.as_of <= today)
+        .map_or_else(
+            || settled_through(settings, today),
+            |balance| balance.as_of - Duration::days(1),
+        )
+}
+
 /// TaskMint's recorded withdrawals and the day each reaches the bank (after
 /// the arrival delay), newest first.
 pub fn recorded_arrivals(
@@ -195,7 +210,7 @@ pub fn project(
     let end = end.max(today);
     let balance = settings.balance.filter(|balance| balance.as_of <= today);
     let base = balance.map_or(today - Duration::days(1), |balance| balance.as_of);
-    let overdue_after = settled_through(&settings, today);
+    let overdue_after = open_settled_through(&settings, today);
 
     let mut flows: Vec<Flow> = Vec::new();
     let mut overdue = Vec::new();
@@ -542,6 +557,61 @@ mod tests {
         assert_eq!(row(&p, d(2026, 11, 10)), (10_000, 10_000, false, false));
         assert_eq!(row(&p, d(2026, 11, 11)), (10_000, 4_000, false, true));
         assert_eq!(row(&p, d(2026, 11, 12)), (4_000, -2_000, true, false));
+    }
+
+    #[test]
+    fn a_bill_due_on_the_balances_day_and_never_marked_is_still_owed() {
+        let ctx = ctx();
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 10_000, d(2026, 11, 10), 0);
+        // Due today, the balance's day: one by hand, one on autopay, and pay by hand
+        put_item(
+            &mut s,
+            item("net", ItemKind::Bill, d(2026, 11, 10), Repeat::Once, 6_500),
+        );
+        let mut auto = item("gym", ItemKind::Bill, d(2026, 11, 10), Repeat::Once, 2_000);
+        auto.autopay = true;
+        put_item(&mut s, auto);
+        put_item(
+            &mut s,
+            item(
+                "pay",
+                ItemKind::Income,
+                d(2026, 11, 10),
+                Repeat::Once,
+                50_000,
+            ),
+        );
+        let p = project(&s, None, &ctx, d(2026, 11, 12));
+        // The bill by hand comes off today; autopay's is in the balance; pay isn't counted till it's in
+        assert_eq!(row(&p, d(2026, 11, 10)), (10_000, 3_500, false, false));
+        assert_eq!(p.overdue.len(), 1);
+        assert_eq!(p.overdue[0].item_id, "net");
+        assert_eq!(p.late_income.len(), 1);
+
+        // The day before the balance's: taken as in it, as ever
+        put_item(
+            &mut s,
+            item("old", ItemKind::Bill, d(2026, 11, 9), Repeat::Once, 1_000),
+        );
+        let p = project(&s, None, &ctx, d(2026, 11, 12));
+        assert_eq!(p.overdue.len(), 1);
+
+        // Marked paid that day: the forecast leaves it out (the balance says whether it had it)
+        put_over(
+            &mut s,
+            over(
+                "net",
+                d(2026, 11, 10),
+                OccStatus::Done {
+                    on: d(2026, 11, 10),
+                    amount_cents: 6_500,
+                },
+            ),
+        );
+        let p = project(&s, None, &ctx, d(2026, 11, 12));
+        assert_eq!(row(&p, d(2026, 11, 10)), (10_000, 10_000, false, false));
+        assert!(p.overdue.is_empty());
     }
 
     #[test]
