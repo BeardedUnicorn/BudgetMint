@@ -20,7 +20,10 @@ has to stay clear of it.
 2. **Only page views.** Each page opened is a `screen_view` with the page's
    name (`overview`, `forecast`, …), from `utils/analytics.ts` in the
    client. No bills, amounts, balances, categories, dates or anything else
-   of the budget, and no events besides the SDK's own.
+   of the budget, and no events besides what Google's SDK and tag record
+   on their own: visits and their length, the device and rough location,
+   and on the web the stream's enhanced measurement (such as scrolls and
+   links followed out).
 3. **On until turned off, per device.** Settings → Privacy → Share usage
    statistics turns it off on that device, at once. The section shows only
    where the shell has analytics.
@@ -31,11 +34,20 @@ has to stay clear of it.
    when the build's Firebase app has a `measurementId` and isn't on the
    emulators. Hosting's CSP (`firebase.json`) lets Google's tag and
    collection hosts in.
+6. **Nothing for ads.** On Android the SDK collects no advertising ID and
+   its data isn't for personalised ads (the manifest's
+   `google_analytics_adid_collection_enabled` and
+   `google_analytics_default_allow_ad_personalization_signals`), and the
+   manifest removes the `AD_ID` and `ACCESS_ADSERVICES_*` permissions the
+   SDK brings in. TaskMint keeps them; BudgetMint's privacy page says it
+   has no ads. The web's tag has Google signals and ad personalisation off
+   (`TAG_CONFIG`).
 
 ## Consequences
 
 - The web's CSP is wider: `www.googletagmanager.com` may run script, and
   Google Analytics' hosts may be connected to and loaded as images.
-- The privacy page has to say so (the unmerged public-launch work's
-  `privacy.html`).
+- The privacy page (`apps/web/public/privacy.html`) says what's sent, what
+  Google records with it, and how to turn it off; a change to what's
+  measured changes it too.
 - Turning analytics off on one device leaves the others as they are.

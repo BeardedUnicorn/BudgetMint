@@ -282,6 +282,8 @@ signing") unless a step says otherwise:
       each page opened reaches Firebase (Analytics → DebugView, after
       `adb shell setprop debug.firebase.analytics.app com.budgetmint.android`)
       with only the page's name; off, nothing more goes.
+- [ ] **No advertising ID:** `aapt2 dump permissions` on the APK lists no
+      `AD_ID` or `ACCESS_ADSERVICES_*` permission.
 - [ ] **Reminders:** Settings → Reminders asks for notifications on Android
       13 and later; a bill's reminder comes at its hour with the app swiped
       away, in Doze (`adb shell dumpsys deviceidle force-idle`) and after a

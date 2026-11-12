@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Adapted from TaskMint apps/desktop/src-tauri/gen/android/app/src/main/AndroidManifest.xml @ ce9f22f. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- BudgetMint: no advertising ID or ad attribution. Firebase Analytics'
+         SDK brings these permissions in; usage statistics need none of them
+         (the privacy page says so). -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
     <!-- A bill's reminder fires at its exact time (the
          notification plugin falls back to an inexact alarm without these).
          USE_EXACT_ALARM is granted at install from Android 13; Android 12
@@ -17,6 +24,10 @@
         android:label="@string/app_name"
         android:theme="@style/Theme.budgetmint"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
+        <!-- BudgetMint: Analytics collects no advertising ID, and its data isn't
+             for personalised ads. -->
+        <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
+        <meta-data android:name="google_analytics_default_allow_ad_personalization_signals" android:value="false" />
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"

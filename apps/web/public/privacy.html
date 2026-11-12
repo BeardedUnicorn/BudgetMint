@@ -6,7 +6,7 @@
     <title>Privacy · BudgetMint</title>
     <meta
       name="description"
-      content="What BudgetMint stores about you, where, who else sees it, and how to delete it. No analytics, no ads, no trackers."
+      content="What BudgetMint stores about you, where, who else sees it, and how to delete it. No ads, and none of your budget in its usage statistics."
     />
     <link rel="canonical" href="https://budgetmint.web.app/privacy" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -104,8 +104,9 @@
         about you, where, who else sees it, and how to delete it.
       </p>
       <p>
-        <strong>In short:</strong> your budget is stored in Google Firebase so that your devices share it. BudgetMint
-        has no analytics, no ads and no trackers, and it doesn’t sell or share your data.
+        <strong>In short:</strong> your budget is stored in Google Firebase so that your devices share it. The web and
+        Android apps also count which pages you open, through Google Analytics, until you turn that off; nothing of your
+        budget goes with it. BudgetMint has no ads, and it doesn’t sell or share your data.
       </p>
 
       <h2>Your account</h2>
@@ -151,9 +152,30 @@
       <h2>On your devices</h2>
       <p>
         Each device keeps a copy of your budget so that BudgetMint works offline: in the browser’s storage for the web
-        app, and in the app’s own folder on the desktop. Each also keeps your preferences for that device, such as the
-        theme and when reminders come. The web app keeps its own files for opening offline, and the desktop app keeps a
-        log of its own errors on your computer. None of this is sent anywhere. Reminders are made on your device.
+        app, and in the app’s own folder on the desktop and Android. Each also keeps your preferences for that device,
+        such as the theme, when reminders come and whether usage statistics are on. The web app keeps its own files for
+        opening offline, and the desktop app keeps a log of its own errors on your computer. None of this is sent
+        anywhere. Reminders are made on your device.
+      </p>
+
+      <h2>Usage statistics</h2>
+      <p>
+        So that BudgetMint’s maker can see which parts are used, the web and Android apps tell Google Analytics, through
+        Firebase, each page you open, by its name: Overview, Bills, Income, Savings, Calendar, Forecast, Reports or
+        Settings. With that goes what Google Analytics records on its own: when you open BudgetMint and for how long, on
+        the web how you use the page (such as scrolling, or following a link out of BudgetMint), your kind of device, its
+        system, browser and language, and roughly where you are, which Google works out from your IP address. Google
+        says it doesn’t store the address.
+      </p>
+      <p>
+        They’re counted under a random ID for that browser (kept in a cookie) or that installed app, not under your
+        account, and nothing of your budget goes with them: no bills, income, amounts, balances or notes. The Android app
+        doesn’t collect the advertising ID, and BudgetMint turns off Google’s advertising features for them.
+      </p>
+      <p>
+        Usage statistics are on until you turn them off, on each device: Settings → Privacy →
+        <em>Share usage statistics</em>. Once they’re off, nothing more is sent, and the web app no longer loads
+        Google’s tag. The desktop app sends no usage statistics.
       </p>
 
       <h2>Who else sees it</h2>
@@ -166,15 +188,19 @@
         </li>
         <li><strong>Google</strong> signs you in, if you choose Continue with Google.</li>
         <li>
-          <strong>GitHub</strong> hosts the desktop app’s updates. The desktop app checks GitHub for a new version when
-          it opens and once a day, which shows GitHub your IP address as any download does, and nothing from your
-          budget. Settings → Updates turns the daily check off.
+          <strong>Google Analytics</strong> receives the usage statistics above, unless you’ve turned them off, under the
+          same Firebase terms.
+        </li>
+        <li>
+          <strong>GitHub</strong> hosts the desktop app’s updates and the Android app. The desktop app checks GitHub for
+          a new version when it opens and once a day, which shows GitHub your IP address as any download does, and
+          nothing from your budget. Settings → Updates turns the daily check off.
         </li>
       </ul>
       <p>
-        That’s all. BudgetMint has no analytics, advertising or tracking of any kind, and doesn’t sell, rent or share
-        your data with anyone else. As the administrator of BudgetMint’s Firebase project, BudgetMint’s maker can reach
-        its database, and does so only to keep the service working or when you ask for help.
+        That’s all. BudgetMint has no ads, and doesn’t sell, rent or share your data with anyone else. As the
+        administrator of BudgetMint’s Firebase project, BudgetMint’s maker can reach its database and its usage
+        statistics, and reaches your budget only to keep the service working or when you ask for help.
       </p>
 
       <h2>Deleting your data</h2>
@@ -188,14 +214,22 @@
           <strong>Your account:</strong> Settings → Account → <em>Delete account</em> deletes your BudgetMint account and
           its data. It only signs you out of TaskMint: your TaskMint account and its data are TaskMint’s to delete.
         </li>
+        <li>
+          <strong>Usage statistics:</strong> they aren’t linked to your account, so deleting it doesn’t reach them, and
+          they can’t be picked out to delete. Turning them off stops them. Clearing this site’s data, or uninstalling the
+          Android app, drops the random ID they were counted under.
+        </li>
       </ul>
       <p>
-        There are no backups, so deleted data can’t be brought back. Uninstalling the desktop app, or clearing this
-        site’s data in your browser, removes the copy on that device.
+        There are no backups, so deleted data can’t be brought back. Uninstalling the desktop or Android app, or
+        clearing this site’s data in your browser, removes the copy on that device.
       </p>
 
       <h2>How long it’s kept</h2>
-      <p>Until you delete it. Google keeps its own server logs for the time its policies say.</p>
+      <p>
+        Your account and budget: until you delete them. Usage statistics: Google Analytics keeps each one for two months,
+        and after that only in totals. Google keeps its own server logs for the time its policies say.
+      </p>
 
       <h2>Children</h2>
       <p>BudgetMint isn’t meant for children under 13, and doesn’t knowingly keep their data.</p>

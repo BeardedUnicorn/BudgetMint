@@ -27,7 +27,9 @@ describe('web analytics', () => {
 
     web.setEnabled(true);
     await settle();
-    expect(analytics.initializeAnalytics).toHaveBeenCalledWith('app', { config: { send_page_view: false } });
+    expect(analytics.initializeAnalytics).toHaveBeenCalledWith('app', {
+      config: { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false },
+    });
     expect(analytics.setAnalyticsCollectionEnabled).toHaveBeenLastCalledWith('analytics', true);
     web.screen('forecast');
     await settle();
