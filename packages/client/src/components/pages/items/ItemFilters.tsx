@@ -20,7 +20,7 @@ export interface ItemQuery {
 export const ALL_ITEMS: ItemQuery = { search: '', category: '', order: 'next' };
 
 const ORDERS: Record<ItemOrder, string> = {
-  next: 'Next due',
+  next: 'Next date',
   name: 'Name',
   amount: 'Amount',
   monthly: 'A month',

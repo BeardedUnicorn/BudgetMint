@@ -282,6 +282,13 @@ describe('settings', () => {
     );
   });
 
+  it('says when TaskMint couldn’t be signed out of', async () => {
+    const { user, store } = await settings();
+    vi.mocked(store.signOutOfTaskMint).mockRejectedValueOnce(new Error('offline'));
+    await user.click(within(section('TaskMint')).getByRole('button', { name: 'Sign out of TaskMint' }));
+    expect(await screen.findByText('TaskMint couldn’t be signed out of. Try again.')).toBeInTheDocument();
+  });
+
   it('changes how TaskMint’s withdrawals count', async () => {
     const { user, store } = await settings({
       forecast: forecastDoc({ asOfMs: TEST_NOW, lastImportMs: TEST_NOW - 3_600_000 }),

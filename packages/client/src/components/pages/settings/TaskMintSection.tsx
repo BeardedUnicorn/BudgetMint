@@ -24,6 +24,7 @@ import { Savings as TaskMintIcon } from '@mui/icons-material';
 import type { FutureEarnings, WithdrawPolicy } from '@budgetmint/contracts';
 import { useBudget } from '../../../data/BudgetContext';
 import { useSettings } from '../../../hooks/useSettingsChange';
+import { useNotification } from '../../../contexts/NotificationContext';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { getShell } from '../../../shell';
 import { formatMoment } from '../../../utils/dates';
@@ -95,6 +96,7 @@ export function TaskMintSection({ nowMs = Date.now() }: { nowMs?: number }) {
 function TaskMintSettings({ nowMs }: { nowMs: number }) {
   const { session, view } = useBudget();
   const { forget } = useTaskMint();
+  const { showError } = useNotification();
   const [settings, save] = useSettings();
   const plan = settings.taskmint;
   const status = view.taskmint;
@@ -140,7 +142,8 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
             size="small"
             onClick={() => {
               forget();
-              void session.signOutOfTaskMint();
+              // Not signed out (offline, say): said, and TaskMint stays as it was
+              session.signOutOfTaskMint().catch(() => showError('TaskMint couldn’t be signed out of. Try again.'));
             }}
           >
             Sign out of TaskMint

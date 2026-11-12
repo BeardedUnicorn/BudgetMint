@@ -21,6 +21,7 @@ import {
   Typography,
 } from '@mui/material';
 import { BalanceFlag } from '../../budget/BalanceFlag';
+import { delayLabel } from '../settings/TaskMintSection';
 import { useTheme } from '@mui/material/styles';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ForecastView, Flow } from '@budgetmint/contracts';
@@ -38,9 +39,32 @@ import { SECTION } from '../overview/OverviewPage';
 
 const MONO = '"Roboto Mono", monospace';
 
-/** A flow's line in the day table. */
-function flowLabel(flow: Flow): string {
-  if (flow.kind === 'spending') return 'Everyday spending';
+/**
+ * The days money moves besides the everyday spending (each day has that),
+ * each with the spending of the days since the one listed before it: the
+ * balance has fallen by all of them, so the lines add up to it.
+ */
+export function movingDays(days: ForecastView['days']): { day: ForecastView['days'][number]; spendingDays: number }[] {
+  const moving: { day: ForecastView['days'][number]; spendingDays: number }[] = [];
+  let spent = 0;
+  let count = 0;
+  for (const day of days) {
+    const spending = day.flows.find(flow => flow.kind === 'spending');
+    spent += spending?.amountCents ?? 0;
+    count += 1;
+    if (day.flows.some(flow => flow.kind !== 'spending')) {
+      const flows = day.flows.map(flow => (flow === spending ? { ...flow, amountCents: spent } : flow));
+      moving.push({ day: { ...day, flows }, spendingDays: count });
+      spent = 0;
+      count = 0;
+    }
+  }
+  return moving;
+}
+
+/** A flow's line in the day table (`days`: how many days of everyday spending it stands for). */
+function flowLabel(flow: Flow, days: number): string {
+  if (flow.kind === 'spending') return days > 1 ? `Everyday spending, ${days} days` : 'Everyday spending';
   if (flow.kind === 'withdrawal')
     return flow.status === 'projected' ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal';
   const bill = flow.kind === 'bill';
@@ -62,7 +86,8 @@ export function assumptions(view: ForecastView): string[] {
     plan.policy.kind === 'asSoonAsOpen'
       ? 'You withdraw as soon as the site allows'
       : `You withdraw on ${new Intl.DateTimeFormat(formattingLocale(), { weekday: 'long' }).format(new Date(2026, 10, 2 + plan.policy.weekday))}s`,
-    `it reaches the bank ${plan.arrivalDelayHours} hours later`,
+    // As Settings says it: at once, so many hours later, or days
+    `it reaches the bank ${delayLabel(plan.arrivalDelayHours).toLowerCase()}`,
   ];
   if (plan.minWithdrawalCents > 0) lines.push(`and only once there's ${formatCents(plan.minWithdrawalCents)}`);
   const counted = [
@@ -166,7 +191,7 @@ export function ForecastPage() {
   const { shown: taskmintShown } = useTaskMint();
   const compact = useCompactLayout();
   // The days money moves besides the everyday spending (each day has that)
-  const moving = view.days.filter(day => day.flows.some(flow => flow.kind !== 'spending'));
+  const moving = movingDays(view.days);
   const spending = spendingAssumption(view);
   const last = view.days[view.days.length - 1];
 
@@ -256,7 +281,7 @@ export function ForecastPage() {
         ) : compact ? (
           // A phone has no room for four columns: each day, its money, and the balance it leaves
           <Stack spacing={2}>
-            {moving.map(day => (
+            {moving.map(({ day, spendingDays }) => (
               <Box key={day.date}>
                 <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
                   <Typography variant="subtitle2" component="h3" sx={{ fontWeight: 600 }}>
@@ -276,7 +301,7 @@ export function ForecastPage() {
                 </Stack>
                 {day.flows.map((flow, index) => (
                   <Stack key={index} direction="row" sx={{ justifyContent: 'space-between', gap: 1 }}>
-                    <Typography variant="body2">{flowLabel(flow)}</Typography>
+                    <Typography variant="body2">{flowLabel(flow, spendingDays)}</Typography>
                     <Typography
                       variant="body2"
                       sx={{ fontFamily: MONO, color: flow.amountCents > 0 ? 'success.main' : 'text.primary' }}
@@ -301,11 +326,11 @@ export function ForecastPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {moving.flatMap(day =>
+                {moving.flatMap(({ day, spendingDays }) =>
                   day.flows.map((flow, index) => (
                     <TableRow key={`${day.date} ${index}`}>
                       <TableCell>{index === 0 ? formatWeekday(day.date) : ''}</TableCell>
-                      <TableCell>{flowLabel(flow)}</TableCell>
+                      <TableCell>{flowLabel(flow, spendingDays)}</TableCell>
                       <TableCell
                         align="right"
                         sx={{ fontFamily: MONO, color: flow.amountCents > 0 ? 'success.main' : 'text.primary' }}

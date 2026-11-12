@@ -88,6 +88,8 @@ export function SavingsPage() {
   /** A goal being added (null), or the bill being edited. */
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
   const edited = editing ? items.find(view => view.item.id === editing) : undefined;
+  // Archived goals aren't among get_goals' (nothing's set aside for them): listed apart, to bring back
+  const archived = items.filter(({ item }) => item.archived && item.saveUp !== null);
   /** The goal asked about deleting. */
   const [deleting, setDeleting] = useState<GoalView | null>(null);
   const change = useBudgetChange();
@@ -146,6 +148,32 @@ export function SavingsPage() {
             />
           ))}
         </Box>
+      )}
+      {archived.length > 0 && (
+        // Archived on this page, a goal is brought back on it too (not only from Bills)
+        <Paper component="section" aria-labelledby="archived-goals-title" sx={SECTION}>
+          <Typography id="archived-goals-title" variant="h6" component="h2" sx={{ mb: 1 }}>
+            Archived
+          </Typography>
+          {archived.map(({ item }) => (
+            <Stack
+              key={item.id}
+              direction="row"
+              sx={{ alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}
+            >
+              <Typography variant="body2">{item.name}</Typography>
+              <Button
+                size="small"
+                aria-label={`Bring back ${item.name}`}
+                onClick={() =>
+                  act(() => change('archive_item', { itemId: item.id, archived: false }, `${item.name} brought back`))
+                }
+              >
+                Bring back
+              </Button>
+            </Stack>
+          ))}
+        </Paper>
       )}
       {editing !== undefined && (editing === null || edited) && (
         <ItemDialog

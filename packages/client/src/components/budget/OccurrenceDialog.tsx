@@ -121,7 +121,8 @@ export function OccurrenceDialog({
       <Stack spacing={2}>
         {problem && <Alert severity="error">{problem}</Alert>}
         <Typography variant="body2" color="text.secondary">
-          {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} due {formatDay(occurrence.due)}
+          {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} {bill ? 'due' : 'expected'}{' '}
+          {formatDay(occurrence.due)}
           {occurrence.autopay ? (bill ? ', on autopay' : ', comes in automatically') : ''}
           {occurrence.estimated ? ' (its amount varies: this is the average of the last few)' : ''}
         </Typography>

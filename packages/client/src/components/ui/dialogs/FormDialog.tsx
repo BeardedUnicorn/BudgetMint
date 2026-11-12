@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: a click outside doesn't close it, Escape (or Back) asks before throwing a change away.
+// Adapted from TaskMint packages/client/src/components/ui/dialogs/FormDialog.tsx @ 1623bee: a click outside doesn't close it; Escape, Back and Cancel ask before throwing a change away; Cancel and Save stay in view over a long form.
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box } from '@mui/material';
 import { FormDialogProps } from '../../../types/ui';
@@ -38,7 +38,13 @@ export function FormDialog({ onClose, title, children, onSubmit, dirty = false }
       >
         {/* noValidate: dialogs do their own validation and render MUI helper
             text; native constraint bubbles would block submit before it runs. */}
-        <form onSubmit={handleSubmit} noValidate>
+        {/* A column the height of the dialog, so only the fields scroll and the buttons stay put */}
+        <Box
+          component="form"
+          onSubmit={handleSubmit}
+          noValidate
+          sx={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}
+        >
           <DialogTitle>{title}</DialogTitle>
 
           <DialogContent>
@@ -46,14 +52,14 @@ export function FormDialog({ onClose, title, children, onSubmit, dirty = false }
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={onClose} color="secondary">
+            <Button onClick={() => (dirty ? setAsking(true) : onClose())} color="secondary">
               Cancel
             </Button>
             <Button type="submit" variant="contained" color="primary">
               Save
             </Button>
           </DialogActions>
-        </form>
+        </Box>
       </Dialog>
       <ConfirmDialog
         open={asking}

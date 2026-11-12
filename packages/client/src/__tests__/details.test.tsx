@@ -189,11 +189,13 @@ describe('an occurrence’s dialog', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Pay on Nov 13: details' }));
     let dialog = screen.getByRole('dialog', { name: 'Pay, Nov 13' });
-    expect(within(dialog).getByText('$90.00 due Nov 13, comes in automatically')).toBeInTheDocument();
+    expect(within(dialog).getByText('$90.00 expected Nov 13, comes in automatically')).toBeInTheDocument();
     expect(within(dialog).getByRole('radio', { name: 'Still to come' })).toBeChecked();
     await user.click(within(dialog).getByRole('radio', { name: 'Received' }));
     expect(within(dialog).getByLabelText('Received on')).toHaveValue('2026-11-10');
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    // Something was changed: Cancel asks first
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
     await user.click(screen.getByRole('button', { name: 'Water on Nov 9: details' }));
     dialog = screen.getByRole('dialog', { name: 'Water, Nov 9' });
     await user.click(within(dialog).getByRole('radio', { name: 'Paid' }));
