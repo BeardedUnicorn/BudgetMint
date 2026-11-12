@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the main window's webview may call, and nothing more. The webview reaches the shell through its one command, dispatch (allow-dispatch, from build.rs's app manifest), and listens for the shell's events (the update's progress, the menus' Settings… and Check for Updates…). The opener plugin's script opens BudgetMint's own page on GitHub in the browser (the About link). The notification plugin's script asks whether notifications are allowed at load, for its window.Notification; without the permission that's an error in the log at every launch. Notifications themselves, the tray, the menus, sign-in's browser, the logs folder and the updater all run in Rust and need no capability.",
+  "description": "What the main window's webview may call, and nothing more. The webview reaches the shell through its one command, dispatch (allow-dispatch, from build.rs's app manifest), and listens for the shell's events (the update's progress, the menus' Settings… and Check for Updates…). The opener plugin's script opens BudgetMint's own page on GitHub in the browser (the About link). The notification plugin's script asks whether notifications are allowed at load, for its window.Notification; without the permission that's an error in the log at every launch. Notifications themselves, the tray, the menus, sign-in's browser, the budgetmint:// links that bring the window back from it, the logs folder and the updater all run in Rust and need no capability.",
   "windows": [
     "main"
   ],

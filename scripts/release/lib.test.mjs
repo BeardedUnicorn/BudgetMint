@@ -11,6 +11,7 @@ import {
   cargoTomlName,
   cargoTomlVersion,
   changelogVersions,
+  CHECKSUMS,
   DESKTOP_TARGETS,
   extractSection,
   highestBump,
@@ -27,6 +28,7 @@ import {
   setCargoLockVersions,
   setCargoTomlVersion,
   setPackageJsonVersion,
+  sha256Sums,
   TARGETS,
   UPDATE_MANIFEST,
   updateAssetNames,
@@ -561,5 +563,20 @@ describe('verifyApkSigner', () => {
       () => verifyApkSigner({ output: `${signer(1, digest)}\n${signer(2, other)}`, digest }),
       /The APK has 2 signers; a release has one/
     );
+  });
+});
+
+describe('checksums', () => {
+  it("lists each file's SHA-256 as sha256sum does, in the order given", () => {
+    assert.equal(CHECKSUMS, 'SHA256SUMS');
+    assert.equal(
+      sha256Sums([
+        { name: 'BudgetMint-1.0.0-macos-arm64.dmg', data: Buffer.from('abc') },
+        { name: 'latest.json', data: '' },
+      ]),
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  BudgetMint-1.0.0-macos-arm64.dmg\n' +
+        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  latest.json\n'
+    );
+    assert.equal(sha256Sums([]), '');
   });
 });

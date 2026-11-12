@@ -12,11 +12,15 @@ name: Release
 # Android APK is signed with the release key in the ANDROID_KEYSTORE secret,
 # so each one installs over the one before (the README's "Android signing").
 #
+# The release also gets SHA256SUMS, the checksums of every file it ships.
+#
 # The web app is built too, and a tag deploys it to Firebase Hosting (the
 # budgetmint site in BudgetMint's budgetmint project) with BudgetMint's
 # Firestore rules (rules/firestore.rules) once every build has passed, when
 # the repository has the Workload Identity Federation variables. TaskMint's
-# project and its rules are TaskMint's, deployed from TaskMint.
+# project and its rules are TaskMint's, deployed from TaskMint. The GitHub
+# release waits for the web build, not the deploy, so a failed deploy can be
+# re-run on its own.
 on:
   push:
     tags: ['v*']
@@ -29,6 +33,13 @@ on:
       - apps/desktop/src-tauri/tauri.updater.conf.json
       - apps/desktop/src-tauri/tauri.android.conf.json
       - apps/desktop/src-tauri/gen/android/**
+      # What the desktop builds compile, so a change that breaks the Windows
+      # build fails on its pull request
+      - apps/desktop/src-tauri/src/**
+      - apps/desktop/src-tauri/Cargo.toml
+      - Cargo.toml
+      - Cargo.lock
+      - pnpm-lock.yaml
       - firebase.json
       - rules/firestore.rules
       - scripts/build-wasm.mjs
@@ -89,7 +100,7 @@ jobs:
           VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET }}
         run: |
           if [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_ID" ] || [ -z "$VITE_GOOGLE_DESKTOP_CLIENT_SECRET" ]; then
-            echo "::error::The VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET secrets aren't both set, so the desktop would have no Google sign-in (the README's \"Firebase setup still to do\")"
+            echo "::error::The VITE_GOOGLE_DESKTOP_CLIENT_ID and VITE_GOOGLE_DESKTOP_CLIENT_SECRET secrets aren't both set, so the desktop would have no Google sign-in (the README's \"Firebase setup\")"
             exit 1
           fi
 
@@ -219,8 +230,8 @@ jobs:
 
   deploy-web:
     name: Deploy the web app
-    # Skipped until the repository has both variables: the budgetmint Hosting
-    # site and the provider aren't set up yet
+    # Skipped when the repository lacks either variable (the README's
+    # "Firebase setup" names the provider and the service account)
     if: >-
       github.ref_type == 'tag' &&
       vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' &&
@@ -264,7 +275,8 @@ jobs:
 
   github-release:
     if: github.ref_type == 'tag'
-    needs: build
+    # The web build too: a release whose web app doesn't build isn't made
+    needs: [build, web]
     runs-on: ubuntu-26.04
     permissions:
       contents: write

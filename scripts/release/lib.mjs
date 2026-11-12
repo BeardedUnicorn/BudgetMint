@@ -3,8 +3,9 @@
  * The release's pure parts (scripts/release.mjs does the files, git and
  * builds): reading change notes, the next version, the CHANGELOG section,
  * the version in each manifest, what a release ships and how each host
- * builds it, and the desktop app's updates (their files, their signatures
- * and latest.json). Tested by lib.test.mjs (`node --test`).
+ * builds it, the desktop app's updates (their files, their signatures and
+ * latest.json), and the release's checksums. Tested by lib.test.mjs
+ * (`node --test`).
  */
 
 import { createHash, createPublicKey, verify } from 'node:crypto';
@@ -446,4 +447,15 @@ export function verifyApkSigner({ output, digest }) {
   if (found[0] !== digest.toLowerCase()) {
     throw new Error(`The APK is signed with certificate ${found[0]}, but releases are signed with ${digest}`);
   }
+}
+
+// The release's checksums, so a download can be checked against the release
+// it came from.
+
+/** The checksums file a release ships. */
+export const CHECKSUMS = 'SHA256SUMS';
+
+/** SHA256SUMS for `files` (`{ name, data }`), as `sha256sum` writes it and `sha256sum -c` checks it. */
+export function sha256Sums(files) {
+  return files.map(({ name, data }) => `${createHash('sha256').update(data).digest('hex')}  ${name}\n`).join('');
 }

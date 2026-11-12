@@ -51,6 +51,13 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "budgetmint"
+        ]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNkMwQkQ1QTNDMzhDNzEKUldSeGpNT2oxUXRzZjVDeTZDU2FUR2NTNy8rUFRiQ1d2eUxMVUZHLzVQV0tNVHhRSVpBUDEyMk0K",
       "endpoints": [

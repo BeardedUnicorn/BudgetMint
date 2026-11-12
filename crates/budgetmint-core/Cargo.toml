@@ -1,6 +1,6 @@
 [package]
 name = "budgetmint-core"
-version = "2.0.0"
+version = "2.0.2"
 description = "BudgetMint's rules: bills and income, their schedules, TaskMint's withdrawals ahead and the cash-flow forecast, shared by every app"
 authors = ["Mike Herold"]
 license = "MIT"

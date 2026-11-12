@@ -6,8 +6,8 @@
 //! menu.rs the menus and their clicks).
 //!
 //! On Android and iOS (Tauri's `mobile` cfg) there's no second instance,
-//! tray, menu bar, hide-on-close, saved window place or updater, and the
-//! system keeps the reminders.
+//! tray, menu bar, hide-on-close, saved window place, budgetmint:// link or
+//! updater, and the system keeps the reminders.
 
 use crate::dispatch;
 use crate::platform::os::TauriPlatform;
@@ -47,6 +47,10 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
         show_window(app)
     }));
+    // budgetmint:// links (tauri.conf.json's plugins.deep-link): Google
+    // sign-in's page opens one to bring the app back (start_desktop)
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_deep_link::init());
     let builder = builder
         // The shell's log, with the webview's errors and warnings (logs.rs),
         // in the app's log folder (Settings → Troubleshooting opens it)
@@ -154,6 +158,7 @@ pub fn run() {
 #[cfg(desktop)]
 fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
     use crate::{menu, reminders, tray, window};
+    use tauri_plugin_deep_link::DeepLinkExt;
     // The app menu's and the tray menu's clicks both come here
     let menu_state = state.clone();
     app.on_menu_event(move |_app, event| {
@@ -164,6 +169,21 @@ fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
     }
     let started_at_login = std::env::args().any(|arg| arg == STARTED_AT_LOGIN);
     window::at_launch(state.platform.as_ref(), started_at_login);
+
+    // budgetmint:// links bring the window forward (window.rs). The macOS
+    // app's Info.plist and the Windows installer register the scheme; this
+    // registers it for Linux and Windows development builds. (A macOS
+    // development build gets no links: only a built .app can.) A link that
+    // starts the app needs nothing more: the window shows at launch.
+    #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+    if let Err(e) = app.deep_link().register_all() {
+        log::error!("Failed to register the budgetmint:// links: {}", e);
+    }
+    // Links opened while running (macOS's Apple events; on Windows and
+    // Linux, a second launch's, forwarded by the single-instance plugin)
+    let link_state = state.clone();
+    app.deep_link()
+        .on_open_url(move |event| window::link_opened(link_state.platform.as_ref(), &event.urls()));
 
     let state = state.clone();
     std::thread::spawn(move || loop {

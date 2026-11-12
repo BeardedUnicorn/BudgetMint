@@ -15,7 +15,8 @@
  * apps read to update themselves (the README's "Desktop updates"). The
  * Android APK is always signed with the release key, from
  * BUDGETMINT_ANDROID_KEYSTORE and BUDGETMINT_ANDROID_KEYSTORE_PASSWORD (the
- * README's "Android signing").
+ * README's "Android signing"). github-release adds SHA256SUMS, the
+ * checksums of every file the release ships.
  *
  * Run it in the main checkout, on main: `pnpm release --help`.
  */
@@ -23,7 +24,7 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   assetName,
@@ -34,6 +35,7 @@ import {
   bundlePath,
   cargoTomlName,
   cargoTomlVersion,
+  CHECKSUMS,
   DESKTOP_TARGETS,
   extractSection,
   highestBump,
@@ -49,6 +51,7 @@ import {
   setCargoLockVersions,
   setCargoTomlVersion,
   setPackageJsonVersion,
+  sha256Sums,
   TARGETS,
   UPDATE_MANIFEST,
   updateAssetNames,
@@ -132,8 +135,9 @@ publish                  Push main and the current version's tag. The tag starts
                          creates the GitHub release.
 github-release           (The Release workflow's last step) Create the current
                          version's GitHub release with its CHANGELOG section,
-                         every installer and update in releases/ and the
-                         latest.json made from them, or replace its files`;
+                         every installer and update in releases/, and the
+                         latest.json and SHA256SUMS made from them, or
+                         replace its files`;
 
 class Stop extends Error {}
 const stop = message => {
@@ -513,12 +517,19 @@ function writeUpdateManifest(version, notes, dir) {
   return file;
 }
 
+/** SHA256SUMS for `files` (paths), beside them in `dir`. */
+function writeChecksums(files, dir) {
+  const file = join(dir, CHECKSUMS);
+  writeFileSync(file, sha256Sums(files.map(path => ({ name: basename(path), data: readFileSync(path) }))));
+  return file;
+}
+
 /**
  * The Release workflow's last step: creates the GitHub release for the
  * checked-out tag with its CHANGELOG section, every target's file and
- * update from releases/ (the build jobs' artifacts) and latest.json, or
- * replaces the files of a release that already exists. A release is never
- * made with a file missing.
+ * update from releases/ (the build jobs' artifacts), latest.json, and
+ * SHA256SUMS for all of them, or replaces the files of a release that
+ * already exists. A release is never made with a file missing.
  */
 function githubRelease(version = currentVersion()) {
   const tag = tagOf(version);
@@ -536,6 +547,7 @@ function githubRelease(version = currentVersion()) {
     ...releaseAssets(name, version).map(file => join(dir, file)),
     writeUpdateManifest(version, notes, dir),
   ];
+  files.push(writeChecksums(files, dir));
 
   if (succeeds('gh', ['release', 'view', tag])) {
     run('gh', ['release', 'upload', tag, '--clobber', ...files]);

@@ -38,7 +38,6 @@ TaskMint, BudgetMint works as a plain bill tracker.
 **Reminders** come the days before a bill is due (and when income should
 arrive, and when the balance would go short), at the hour you choose:
 
-- **Android** sets them with the system, so they come with the app closed.
 - **The desktop** shows them while the app runs. Closing the window keeps it
   in the tray (the menu bar on macOS), which also shows today's balance and
   the lowest point ahead. Settings → Reminders → **Open BudgetMint at login**
@@ -46,6 +45,14 @@ arrive, and when the balance would go short), at the hour you choose:
   (in the last day) come when it opens.
 - **The web app** shows them while a BudgetMint tab is open, and the ones it
   missed when it's opened again.
+- **Android** sets them with the system, so they come with the app closed.
+
+**The web app** is at [budgetmint.web.app](https://budgetmint.web.app). It
+can be installed from the browser, and opens without a connection once it has been opened online: its
+service worker keeps the app's own files, and Firestore keeps the budget.
+[Privacy](https://budgetmint.web.app/privacy) and
+[terms](https://budgetmint.web.app/terms) are pages of the site
+(`apps/web/public/`).
 
 ## How it fits with TaskMint
 
@@ -350,39 +357,51 @@ Change notes go in `changes/` ([changes/README.md](changes/README.md));
 `pnpm release` turns them into the next CHANGELOG section and version,
 commits and tags. Pushing the `vX.Y.Z` tag runs the Release workflow, which
 builds the macOS and Windows apps with their signed updates and
-`latest.json`, the Android APK, and the web app, and creates the GitHub
-release.
+`latest.json`, the Android APK, and the web app, then creates the GitHub
+release with `SHA256SUMS`, every file's checksum (`sha256sum -c
+--ignore-missing SHA256SUMS` checks a download).
 
-## Firebase setup still to do
+**The web app**, as TaskMint's: once every build has passed, a tag deploys
+BudgetMint's Firestore rules (`rules/firestore.rules`), then the web app, to
+its project `budgetmint`. The GitHub release doesn't wait for the deploy, and
+a failed deploy can be re-run on its own. The deploy signs in to Google
+without a stored key ("Firebase setup" below says how), and
+[docs/runbook.md](docs/runbook.md) says how to deploy by hand and how to roll
+back.
 
-The project `budgetmint` exists, with the "BudgetMint web", "BudgetMint
-desktop" and "BudgetMint Android" apps (the Android one with the debug and
-release keys' fingerprints), Firestore in nam5, the Hosting site `budgetmint`
-and Google Analytics. Before a release it needs these one-time steps, in the
-Firebase or Google Cloud console:
+The installers aren't signed (the Mac app is signed ad hoc), as TaskMint's
+aren't. The first time a downloaded build is opened, macOS says it can't
+verify BudgetMint: open System Settings → Privacy & Security and click
+**Open Anyway**. On Windows, SmartScreen says it protected the PC: click
+**More info**, then **Run anyway**.
 
-1. **Auth in `budgetmint`:** turn on Email/Password and Google. In its
-   Google provider, safelist the "BudgetMint desktop" OAuth client ID. That
-   client is in `taskmint-f9a05`'s Credentials, and it's what the desktop
-   signs in to both projects with. Add `budgetmint.web.app` and
-   `budgetmint.firebaseapp.com` to the authorized domains.
-2. **Auth in `taskmint-f9a05`:** in its Google provider, safelist
-   `budgetmint`'s web client ID ("Web client (auto created by Google
-   Service)"), so the web's Google sign-in also signs in to TaskMint. Add
-   `budgetmint.web.app` and `budgetmint.firebaseapp.com` to its authorized
-   domains, for Settings' Google sign-in to TaskMint. The desktop's Google
-   sign-in uses BudgetMint's own "Desktop app" OAuth client, "BudgetMint
-   desktop", from `.env` locally and the repository secrets
-   `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET` in a release. A build without
-   them hides Continue with Google (a development build says so in the
-   console), and a release tag's build stops.
-3. **Deploys:** a Workload Identity Federation provider in `budgetmint` that
-   trusts only this repository's `v*` tags, and a service account with
-   Firebase Hosting Admin and Firebase Rules Admin only. Set the repository
-   variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and
-   `GCP_DEPLOY_SERVICE_ACCOUNT`; until then a release skips the web deploy.
-4. **The move** from `taskmint-f9a05`, once, when the first release on
-   `budgetmint` is out ([the runbook](docs/runbook.md#moving-from-taskmints-project)).
+## Firebase setup
+
+The project `budgetmint` (Spark plan) has the "BudgetMint web",
+"BudgetMint desktop" and "BudgetMint Android" apps (the Android one with
+the debug and release keys' fingerprints), Firestore in nam5, the Hosting
+site `budgetmint` and Google Analytics, and:
+
+- **Auth:** Email/Password and Google. Its Google provider safelists the
+  "BudgetMint desktop" OAuth client, which is in `taskmint-f9a05`'s
+  Credentials and is what the desktop signs in to both projects with. In
+  `taskmint-f9a05`, the Google provider safelists `budgetmint`'s web client
+  ("Web client (auto created by Google Service)"), so the web's Google
+  sign-in also signs in to TaskMint. Its authorized domains include
+  `budgetmint.web.app` and `budgetmint.firebaseapp.com`, for Settings'
+  Google sign-in to TaskMint. The desktop's client comes from `.env` locally
+  and from the repository secrets `VITE_GOOGLE_DESKTOP_CLIENT_ID` / `_SECRET`
+  in a release. A build without them hides Continue with Google (a
+  development build says so in the console), and a release tag's build
+  stops.
+- **Deploys:** the Workload Identity pool `github`, with the provider
+  `budgetmint-releases`. It takes only GitHub's tokens for this repository
+  (by its id), on a `v*` tag, from `release.yml`. It can act as
+  `github-deploy@budgetmint.iam.gserviceaccount.com`, which has no key and
+  only Firebase Hosting Admin, Firebase Rules Admin and Service Usage
+  Consumer (firebase-tools checks the APIs are on). The repository
+  variables `GCP_WORKLOAD_IDENTITY_PROVIDER` and `GCP_DEPLOY_SERVICE_ACCOUNT`
+  name them. Without them, a release skips the web deploy.
 
 ## Repository layout
 
@@ -392,7 +411,7 @@ crates/budgetmint-wasm/     core for the webview (wasm-bindgen)
 packages/contracts/         TypeScript types generated from core
 packages/client/            the React app every shell runs
 apps/desktop/               the Tauri shell (desktop and Android) and its entry
-apps/web/                   the web app's entry, for Firebase Hosting
+apps/web/                   the web app's entry, its public files and service worker, for Firebase Hosting
 rules/                      BudgetMint's Firestore rules and their tests
 firebase/                   TaskMint's rules, pinned (UPSTREAM.json), for the tests
 docs/                       ADRs, and TaskMint's forecast contract (pinned)

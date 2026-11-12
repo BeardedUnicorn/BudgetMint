@@ -1,8 +1,7 @@
 rules_version = '2';
 
-// TaskMint's cloud copy (crates/taskmint-core/src/sync), what it publishes
-// for other apps, and BudgetMint's data (it signs in with the same account):
-// each user's own, and nobody else's.
+// TaskMint's cloud copy (crates/taskmint-core/src/sync), and what it
+// publishes for other apps: each user's own, and nobody else's.
 //
 //   users/{uid}                  { epoch }: deleting the cloud data starts a
 //                                new epoch, and writes from an older one are
@@ -14,12 +13,6 @@ rules_version = '2';
 //                                payoutForecast (docs/contracts/
 //                                payout-forecast.md): { schema, json, hash,
 //                                deviceId, appVersion, epoch, updatedAt }
-//   budgetmint/{uid}             BudgetMint's { epoch }, as users/{uid}
-//   budgetmint/{uid}/data/{id}   one BudgetMint settings, item or occurrence:
-//                                { kind, json, schema, deviceId, epoch,
-//                                updatedAt }. Its JSON is BudgetMint's own, so
-//                                its model changes without a change here; a
-//                                new kind needs one.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedInAs(uid) {
@@ -86,50 +79,6 @@ service cloud.firestore {
       match /published/{name} {
         allow read: if signedInAs(uid);
         allow create, update: if signedInAs(uid) && validPublished(name);
-        allow delete: if signedInAs(uid);
-      }
-    }
-
-    match /budgetmint/{uid} {
-      allow read: if signedInAs(uid);
-      allow create: if signedInAs(uid)
-        && request.resource.data.keys().hasOnly(['epoch'])
-        && request.resource.data.epoch == 1;
-      // One epoch at a time
-      allow update: if signedInAs(uid)
-        && request.resource.data.keys().hasOnly(['epoch'])
-        && request.resource.data.epoch == resource.data.epoch + 1;
-      allow delete: if signedInAs(uid);
-
-      function budgetAccount() {
-        return get(/databases/$(database)/documents/budgetmint/$(uid)).data;
-      }
-
-      function validBudgetDoc(docId) {
-        let doc = request.resource.data;
-        let fields = ['kind', 'json', 'schema', 'deviceId', 'epoch', 'updatedAt'];
-        // Each kind's ids, and how large its JSON may be
-        let ids = {
-          'settings': 'settings~account',
-          'item': 'item~[A-Za-z0-9-]{1,64}',
-          'occ': 'occ~[0-9]{4}-[0-9]{2}-[0-9]{2}~[A-Za-z0-9-]{1,64}'
-        };
-        let sizes = { 'settings': 20000, 'item': 50000, 'occ': 4000 };
-        return doc.keys().hasOnly(fields)
-          && doc.keys().hasAll(fields)
-          && doc.kind is string && doc.kind in ids
-          && docId.matches(ids[doc.kind])
-          && doc.json is string && doc.json.size() <= sizes[doc.kind]
-          && doc.schema is int && doc.schema >= 1
-          && (resource == null || doc.schema >= resource.data.schema)
-          && doc.deviceId is string && doc.deviceId.size() <= 64
-          && doc.updatedAt == request.time
-          && doc.epoch == budgetAccount().epoch;
-      }
-
-      match /data/{docId} {
-        allow read: if signedInAs(uid);
-        allow create, update: if signedInAs(uid) && validBudgetDoc(docId);
         allow delete: if signedInAs(uid);
       }
     }

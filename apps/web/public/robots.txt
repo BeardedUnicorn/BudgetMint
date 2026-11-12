@@ -1,0 +1,4 @@
+# The sign-in page and the privacy and terms pages are public; everything
+# else needs an account, so there's nothing more for a crawler to find.
+User-agent: *
+Allow: /

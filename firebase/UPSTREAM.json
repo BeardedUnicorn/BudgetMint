@@ -1,7 +1,7 @@
 {
   "$comment": "What BudgetMint keeps from TaskMint, pinned to a TaskMint commit (scripts/sync-upstream.mjs): pnpm upstream:check checks the copies, pnpm upstream:pull refreshes them. Never edit them here.",
   "repo": "BeardedUnicorn/taskmint",
-  "ref": "c1e730218e71edee227eccada18b243749ad495c",
+  "ref": "f45f918afa5476b3f3b025bf7c8b6597dd91b1aa",
   "sources": [
     {
       "from": "firebase/firestore.rules",
@@ -17,7 +17,7 @@
     }
   ],
   "files": {
-    "firebase/firestore.rules": "bbf36761dc59e8026fa404d84dbe5da3b65a2ccaa6bf99d9e71c44d15822e84b",
+    "firebase/firestore.rules": "c860654963fb2fe092c147a2ebe5ccb678941955cf41fe3df918f9e8b4e24d7f",
     "docs/taskmint/payout-forecast.md": "6ac8e290f913a9693e59557234667d2be8f14225560effc4ac34b600739fcc4c",
     "crates/budgetmint-core/src/testkit/taskmint/after-withdrawal.json": "ac9c6c6b8015b27bbb82699018e1e1658ed29d5bc2be8c6463ef51fb6dd94566",
     "crates/budgetmint-core/src/testkit/taskmint/no-withdrawal.json": "4709e450b245d480a4b757afe19ad821c0c014f8daef4313393b13671d858584",
