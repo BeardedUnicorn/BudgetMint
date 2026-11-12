@@ -31,6 +31,9 @@ tiny_http = "0.12"
 ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
 sha2 = "0.11"
 uuid = { version = "1.0", features = ["v4"] }
+# The save dialog (Settings → Your data's backup and spreadsheet); on Android
+# the system's document picker
+tauri-plugin-dialog = "2.8"
 
 [dev-dependencies]
 # A mock app, so the tests can call `dispatch` as the webview does
@@ -49,10 +52,11 @@ tauri-plugin-updater = "2.14"
 tauri-plugin-autostart = "2.7"
 # The window's size and position, kept between launches
 tauri-plugin-window-state = "2.5"
-# The save dialog (Settings → Your data's backup and spreadsheet)
-tauri-plugin-dialog = "2.8"
 
 # Only a phone or tablet sets notifications for the system to show later: the
 # time one fires at, as the notification plugin takes it (platform/os.rs)
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 time = "0.3"
+# Android's save dialog picks a document (a content:// address) that only the
+# fs plugin can open (platform/os.rs). A desktop writes the path itself.
+tauri-plugin-fs = "2.7"

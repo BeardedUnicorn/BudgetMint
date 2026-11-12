@@ -309,9 +309,11 @@ its own, and `google-services.json` downloaded again. The ID token is for
 `budgetmint`'s web client, which TaskMint's project safelists, so it signs
 in to both. The parts only a desktop has are left out, in the Rust
 (`#[cfg(desktop)]`, and those crates are desktop-only dependencies) and in
-the webview (`tauriShell.ts`, `extensions.tsx`): the tray, opening at login,
-the save dialog (so Settings → Your data's backup and spreadsheet can't be
-saved there yet) and updates.
+the webview (`tauriShell.ts`, `extensions.tsx`): the tray, opening at login
+and updates. Settings → Your data's backup and spreadsheet are saved through
+Android's file picker, which picks a document (a `content://` address)
+rather than a path: `tauri-plugin-fs`, a mobile-only dependency, opens it
+(`platform/os.rs`).
 
 To check the Rust compiles for Android without the Gradle build, point Cargo
 at the NDK's compiler (the `tauri android` commands do this themselves):

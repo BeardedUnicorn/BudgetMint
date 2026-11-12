@@ -76,8 +76,8 @@ pub trait Platform: Send + Sync {
     fn open_url(&self, url: &str) -> Result<(), String>;
     /// Opens the folder the log files are in (Finder, Explorer).
     fn open_logs_folder(&self) -> Result<(), String>;
-    /// Asks where to save `file` (the system's save dialog) and writes it
-    /// there; false when the user cancels. Only a desktop can.
+    /// Asks where to save `file` (the system's save dialog; on Android its
+    /// document picker) and writes it there; false when the user cancels.
     fn save_file(&self, file: &SaveFile) -> Result<bool, String>;
     /// Shows and focuses the main window, unminimized; on macOS the Dock
     /// icon and the app menu come back with it.
