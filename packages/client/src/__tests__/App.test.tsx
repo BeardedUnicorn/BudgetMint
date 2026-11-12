@@ -121,7 +121,8 @@ describe('the app', () => {
     // Pay is saved already: there as it was saved, and not added twice
     expect(screen.getByLabelText('Each pays')).toHaveValue('1820');
     await user.click(screen.getByRole('button', { name: 'Skip' }));
-    expect(screen.getByLabelText('A week')).toHaveValue('150');
+    // Shown again, it's written out in full
+    expect(screen.getByLabelText('A week')).toHaveValue('150.00');
     await user.click(screen.getByRole('button', { name: 'Next' }));
 
     // The bills most have: ticked ones need an amount
