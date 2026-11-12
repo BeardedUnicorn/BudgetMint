@@ -2,15 +2,16 @@
  * Occurrences as a list: name, amount, what's become of each, and its
  * actions: mark it paid (or received) in one click, or open it for the
  * rest. One whose amount varies asks what it came to instead (its estimate
- * isn't what was paid), and so does one on autopay once it's due. Used by
- * the overview and the calendar's day.
+ * isn't what was paid), and so does one on autopay once it's due; on the
+ * balance's own day, Mark paid opens it too, to ask whether the balance
+ * has it already (FromBalance). Used by the overview and the calendar's day.
  */
 
 import { useState } from 'react';
-import { Box, Button, Chip, IconButton, List, ListItem, Stack, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Chip, IconButton, List, ListItem, Tooltip, Typography } from '@mui/material';
 import { CheckCircleOutlined as PaidIcon, MoreHoriz as MoreIcon } from '@mui/icons-material';
 import type { OccurrenceView } from '@budgetmint/contracts';
-import { useBudgetChange } from '../../data/BudgetContext';
+import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { occurrenceLabel } from '../../utils/describe';
 import { formatCents, formatMaybeCents } from '../../utils/money';
@@ -33,7 +34,9 @@ const CHIP_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default' | 
 export function OccurrenceList({ occurrences, today }: { occurrences: OccurrenceView[]; today: string }) {
   const change = useBudgetChange();
   const { showError } = useNotification();
-  const [open, setOpen] = useState<{ occurrence: OccurrenceView; askAmount: boolean } | null>(null);
+  const [open, setOpen] = useState<{ occurrence: OccurrenceView; askAmount?: boolean; paying?: boolean } | null>(null);
+  // Set today, the balance may or may not have what's paid now: Mark paid asks
+  const balanceToday = useCoreQuery('get_settings').settings.balance?.asOf === today;
 
   const markDone = (occurrence: OccurrenceView) => {
     try {
@@ -70,14 +73,17 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
               key={`${occurrence.itemId} ${occurrence.scheduled}`}
               disableGutters
               sx={{
-                // Name, amount, actions; on a phone the actions go under, so amounts line up
+                // Name, amount, Mark paid, details; on a phone Mark paid goes under, so amounts line up
                 display: 'grid',
-                gridTemplateColumns: '1fr auto auto',
+                gridTemplateColumns: '1fr auto auto auto',
                 alignItems: 'center',
                 columnGap: 1,
                 py: 0.5,
                 opacity: occurrence.status.state === 'skipped' ? 0.6 : 1,
-                [PHONE]: { gridTemplateColumns: '1fr auto', gridTemplateAreas: '"name amount" "actions actions"' },
+                [PHONE]: {
+                  gridTemplateColumns: '1fr auto auto',
+                  gridTemplateAreas: '"name amount details" "action action action"',
+                },
               }}
             >
               <Box sx={{ minWidth: 0, [PHONE]: { gridArea: 'name' } }}>
@@ -119,17 +125,17 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   ? formatCents(occurrence.status.amountCents)
                   : formatMaybeCents(occurrence.expectedCents, occurrence.estimated)}
               </Typography>
-              <Stack
-                direction="row"
-                spacing={0.5}
-                sx={{ justifyContent: 'flex-end', [PHONE]: { gridArea: 'actions' } }}
-              >
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', [PHONE]: { gridArea: 'action' } }}>
                 {!done && !occurrence.autopay ? (
                   <Button
                     size="small"
                     startIcon={<PaidIcon />}
                     onClick={() =>
-                      occurrence.varies ? setOpen({ occurrence, askAmount: true }) : markDone(occurrence)
+                      occurrence.varies
+                        ? setOpen({ occurrence, askAmount: true })
+                        : balanceToday
+                          ? setOpen({ occurrence, paying: true })
+                          : markDone(occurrence)
                     }
                     aria-label={`Mark ${occurrence.name} ${verb}`}
                   >
@@ -145,19 +151,18 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                   >
                     Enter amount
                   </Button>
-                ) : (
-                  <Box sx={{ width: 0 }} />
-                )}
-                <Tooltip title="Details">
-                  <IconButton
-                    size="small"
-                    aria-label={`${occurrence.name} on ${formatDay(occurrence.scheduled)}: details`}
-                    onClick={() => setOpen({ occurrence, askAmount: false })}
-                  >
-                    <MoreIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
+                ) : null}
+              </Box>
+              <Tooltip title="Details">
+                <IconButton
+                  size="small"
+                  aria-label={`${occurrence.name} on ${formatDay(occurrence.scheduled)}: details`}
+                  onClick={() => setOpen({ occurrence })}
+                  sx={{ [PHONE]: { gridArea: 'details' } }}
+                >
+                  <MoreIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </ListItem>
           );
         })}
@@ -166,6 +171,7 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
         <OccurrenceDialog
           occurrence={open.occurrence}
           askAmount={open.askAmount}
+          paying={open.paying}
           today={today}
           onClose={() => setOpen(null)}
         />

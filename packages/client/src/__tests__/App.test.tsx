@@ -172,6 +172,14 @@ describe('the app', () => {
     expect(await screen.findByRole('heading', { name: 'Sign in to BudgetMint' })).toBeInTheDocument();
   });
 
+  it('opens an account just set up on the Overview, not where another left this device', async () => {
+    writeLocal('activeView.someone-else', 'calendar', null);
+    const { user } = await startBudget({ settings: null });
+    for (const _ of [1, 2, 3]) await user.click(screen.getByRole('button', { name: 'Skip' }));
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
+  });
+
   it('says “you” in onboarding for an account without an email', async () => {
     const { store } = await startBudget({ settings: null });
     store.setUser({ uid: 'cal', email: null, providers: ['google.com'] });
@@ -217,8 +225,11 @@ describe('the app', () => {
       extensions: { Background },
     });
     expect(screen.getByText('shell background')).toBeInTheDocument();
+    // Each page opens at its top, not where the one before was scrolled to
+    screen.getByRole('main').scrollTop = 400;
     await user.click(screen.getByRole('button', { name: 'Bills' }));
     expect(screen.getByRole('heading', { name: 'Bills' })).toBeInTheDocument();
+    expect(screen.getByRole('main').scrollTop).toBe(0);
     await user.click(screen.getByRole('button', { name: 'Income' }));
     expect(screen.getByRole('heading', { name: 'Income' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Calendar' }));
@@ -326,6 +337,8 @@ describe('the app', () => {
     const topBar = () => document.querySelector('header.MuiAppBar-root')!;
     const bar = screen.getByRole('navigation', { name: 'Pages' });
     expect(topBar()).toHaveTextContent('Overview');
+    // Toasts sit above the bar while it's there
+    expect(document.documentElement.style.getPropertyValue('--bottom-nav-height')).toBe('56px');
     await user.click(within(bar).getByRole('button', { name: 'Bills' }));
     expect(topBar()).toHaveTextContent('Bills');
     // The rest are in the sidebar, slid in

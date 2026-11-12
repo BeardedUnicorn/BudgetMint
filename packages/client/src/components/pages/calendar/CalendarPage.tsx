@@ -162,6 +162,7 @@ export function CalendarPage() {
           onFocusDate={setFocusedDate}
           onMonthChange={setMonth}
           onOpenDay={compact ? setPicked : setOpenDay}
+          selectedDate={compact ? picked : undefined}
           labelledBy={titleId}
           mondayFirst={settings.weekStartsMonday}
         />

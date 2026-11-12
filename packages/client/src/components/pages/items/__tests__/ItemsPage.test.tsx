@@ -267,7 +267,7 @@ describe('bills and income', () => {
     expect(within(dialog).getByText('Enter how many payments are left')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('How many')).toHaveFocus();
     await user.type(within(dialog).getByLabelText('How many'), '14');
-    expect(within(dialog).getByText('The last on Wed, Dec 15')).toBeInTheDocument();
+    expect(within(dialog).getByText('The last on Wed, Dec 15, 2027')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     const loan = [...store.docs.values()].map(doc => JSON.parse(doc.json)).find(doc => doc.name === 'Car loan');
@@ -283,7 +283,7 @@ describe('bills and income', () => {
     await user.click(screen.getByRole('option', { name: 'After a number of payments' }));
     // Dec 1, Jan 1 and Feb 1
     await user.type(within(dialog).getByLabelText('How many more'), '3');
-    expect(within(dialog).getByText('The last on Mon, Feb 1')).toBeInTheDocument();
+    expect(within(dialog).getByText('The last on Mon, Feb 1, 2027')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(docOf(store, 'rent').schedule[0].until).toBe('2027-02-01'));
 
@@ -297,7 +297,7 @@ describe('bills and income', () => {
     await user.click(within(again).getByLabelText('Ends'));
     await user.click(screen.getByRole('option', { name: 'After a number of payments' }));
     await user.type(within(again).getByLabelText('How many more'), '2');
-    expect(within(again).getByText('The last on Thu, Apr 1')).toBeInTheDocument();
+    expect(within(again).getByText('The last on Thu, Apr 1, 2027')).toBeInTheDocument();
   });
 
   it('finds a bill by name or category, in another order, and sums each category', async () => {

@@ -2,11 +2,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { ReactNode } from 'react';
-import { NavigationProvider, useBackDismiss, useNavigation, ACTIVE_VIEW_KEY } from '../NavigationContext';
+import { NavigationProvider, useBackDismiss, useNavigation, activeViewKey } from '../NavigationContext';
 import { readLocal, writeLocal } from '../../utils/localStore';
 
+const ACTIVE_VIEW_KEY = activeViewKey('ann');
+
 const persisted = ({ children }: { children: ReactNode }) => (
-  <NavigationProvider persist>{children}</NavigationProvider>
+  <NavigationProvider persist={ACTIVE_VIEW_KEY}>{children}</NavigationProvider>
 );
 
 describe('NavigationProvider', () => {
@@ -34,6 +36,15 @@ describe('NavigationProvider', () => {
 
     const second = renderHook(() => useNavigation(), { wrapper: persisted });
     expect(second.result.current.view).toBe('forecast');
+    second.unmount();
+
+    // Another account's (one just set up, say) opens on the Overview
+    const other = renderHook(() => useNavigation(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <NavigationProvider persist={activeViewKey('bo')}>{children}</NavigationProvider>
+      ),
+    });
+    expect(other.result.current.view).toBe('overview');
   });
 
   it('ignores a stored page that no longer exists', () => {

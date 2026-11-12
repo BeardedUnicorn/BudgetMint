@@ -298,6 +298,10 @@ pub struct ItemIdArgs {
 #[serde(rename_all = "camelCase")]
 pub struct SetOccurrenceArgs {
     pub occurrence: OccurrenceInput,
+    /// Paid on or before the balance's day, after it was set: the balance moves by it too.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub from_balance: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -305,6 +309,10 @@ pub struct SetOccurrenceArgs {
 #[serde(rename_all = "camelCase")]
 pub struct RecordArgs {
     pub record: RecordInput,
+    /// On or before the balance's day, after it was set: the balance moves by it too.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub from_balance: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -477,11 +485,19 @@ pub fn execute(
             ctx,
         )?),
         Command::DeleteItem(args) => to_value(plan::delete_item(snapshot, &args.item_id)?),
-        Command::SetOccurrence(args) => {
-            to_value(plan::set_occurrence(snapshot, args.occurrence, ctx)?)
-        }
+        Command::SetOccurrence(args) => to_value(plan::set_occurrence_with_balance(
+            snapshot,
+            args.occurrence,
+            args.from_balance.unwrap_or(false),
+            ctx,
+        )?),
         Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
-        Command::Record(args) => to_value(plan::record(snapshot, args.record, ctx)?),
+        Command::Record(args) => to_value(plan::record_with_balance(
+            snapshot,
+            args.record,
+            args.from_balance.unwrap_or(false),
+            ctx,
+        )?),
         Command::ExportMonth(args) => to_value(
             crate::backup::month_csv(snapshot, &args.month)
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,

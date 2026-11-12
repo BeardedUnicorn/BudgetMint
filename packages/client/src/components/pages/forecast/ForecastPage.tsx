@@ -189,7 +189,7 @@ export function ForecastPage() {
           ...(taskmintShown ? assumptions(view) : []),
           ...(spending ? [spending] : []),
           ...(view.days.some(day => day.setAsideCents > 0)
-            ? ['The dashed balance line leaves out the money set aside for bills.']
+            ? ['The dashed balance line leaves out the money set aside.']
             : []),
         ].map(line => (
           <Typography key={line} variant="caption" color="text.secondary" component="p">

@@ -42,6 +42,12 @@ export const formatDayInYear = (day: string) => format(day, { month: 'short', da
 /** "Mon, Nov 30" */
 export const formatWeekday = (day: string) => format(day, { weekday: 'short', month: 'short', day: 'numeric' });
 
+/** "Mon, Nov 30", with the year ("Wed, Dec 15, 2027") when it isn't `today`'s. */
+export const formatWeekdayFrom = (day: string, today: string) =>
+  day.slice(0, 4) === today.slice(0, 4)
+    ? formatWeekday(day)
+    : format(day, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
 /** "Monday, November 30, 2026" */
 export const formatLongDay = (day: string) =>
   format(day, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });

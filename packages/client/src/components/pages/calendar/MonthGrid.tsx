@@ -66,6 +66,8 @@ export interface MonthGridProps {
   labelledBy: string;
   /** Weeks start on Monday (the settings'). */
   mondayFirst?: boolean;
+  /** The day picked, where one is (a phone shows its agenda under the grid). */
+  selectedDate?: string;
 }
 
 export function MonthGrid({
@@ -76,6 +78,7 @@ export function MonthGrid({
   onOpenDay,
   labelledBy,
   mondayFirst = false,
+  selectedDate,
 }: MonthGridProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   // A key moved the focus: put it on the day once it's rendered
@@ -129,6 +132,7 @@ export function MonthGrid({
                   key={day.date}
                   day={day}
                   isToday={day.date === view.today}
+                  selected={selectedDate === undefined ? undefined : day.date === selectedDate}
                   tabbable={day.date === tabbable}
                   onOpen={onOpenDay}
                   onFocusDay={onFocusDate}

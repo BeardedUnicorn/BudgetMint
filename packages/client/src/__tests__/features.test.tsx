@@ -216,7 +216,7 @@ describe('savings', () => {
     await user.type(within(dialog).getByLabelText('Name'), 'Trip');
     await user.type(within(dialog).getByLabelText('Amount'), '1000');
     fireEvent.change(within(dialog).getByLabelText('On'), { target: { value: '2027-03-15' } });
-    expect(within(dialog).getByText(/What you’ve put by for it already/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/What you’ve set aside for it already/)).toBeInTheDocument();
     await user.type(within(dialog).getByLabelText('Already set aside (optional)'), '300');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -334,7 +334,7 @@ describe('savings', () => {
   it('says how to start when nothing is saved up for, and that all of one is set aside', async () => {
     const { user, store } = await startBudget();
     await user.click(screen.getByRole('button', { name: 'Savings' }));
-    expect(screen.getByText('Nothing saved up for yet')).toBeInTheDocument();
+    expect(screen.getByText('Nothing set aside yet')).toBeInTheDocument();
     expect(
       screen.getByText('Set money aside a month at a time for yearly bills and things to come.')
     ).toBeInTheDocument();
@@ -377,14 +377,14 @@ describe('safe to spend, everyday spending and TaskMint’s cover', () => {
     const safe = screen.getByRole('group', { name: 'Safe to spend' });
     expect(
       within(safe).getByText(
-        'It stays above $0.00 through Jan 9, after $70.00 a week of everyday spending and $100.00 set aside for bills'
+        'It stays above $0.00 through Jan 9, after $70.00 a week of everyday spending and $100.00 set aside'
       )
     ).toBeInTheDocument();
 
     // The forecast takes a day's share each day, and draws the balance besides what's set aside
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getByText('Everyday spending: $70.00 a week, a day’s share each day.')).toBeInTheDocument();
-    expect(screen.getByText('The dashed balance line leaves out the money set aside for bills.')).toBeInTheDocument();
+    expect(screen.getByText('The dashed balance line leaves out the money set aside.')).toBeInTheDocument();
     expect(screen.getAllByText('Everyday spending').length).toBeGreaterThan(0);
     expect(tooltipMoney(10, 'free')).toEqual(['$10.00', 'Besides what’s set aside']);
 
@@ -400,9 +400,7 @@ describe('safe to spend, everyday spending and TaskMint’s cover', () => {
     store.putDoc('settings~account', JSON.stringify({ balance: { cents: 5_000, asOf: '2026-11-10' } }));
     await user.click(screen.getByRole('button', { name: 'Overview' }));
     expect(
-      await screen.findByText(
-        /^Nothing to spare: after \$100\.00 set aside for bills, it gets to -\$[\d,.]+ on \w+, \w+ \d+$/
-      )
+      await screen.findByText(/^Nothing to spare: after \$100\.00 set aside, it gets to -\$[\d,.]+ on \w+, \w+ \d+$/)
     ).toBeInTheDocument();
     // Nothing set aside or spent besides, and a mark above zero
     store.putDoc('item~car', null);

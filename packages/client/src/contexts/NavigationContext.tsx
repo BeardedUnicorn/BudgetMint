@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/contexts/NavigationContext.tsx @ 1623bee: Back goes back.
+// Adapted from TaskMint packages/client/src/contexts/NavigationContext.tsx @ 1623bee: Back goes back, and each account keeps its own page.
 /**
  * Which page is showing, and Back. Each page opened is an entry in the
  * window's history (the address doesn't change), so the browser's Back and
@@ -12,11 +12,15 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import { type NavigationParams, type SidebarView, VIEWS } from '../navigation/views';
 import { readLocal, writeLocal } from '../utils/localStore';
 
-/** The page showing when the app was last closed (with `persist`). */
-export const ACTIVE_VIEW_KEY = 'activeView';
+/**
+ * Where an account's page is kept when the app closes (`persist`): its own,
+ * so a new account (just set up) opens on the Overview, not on the page
+ * another one left open on this device.
+ */
+export const activeViewKey = (uid: string) => `activeView.${uid}`;
 
-function storedView(fallback: SidebarView): SidebarView {
-  const stored = readLocal<unknown>(ACTIVE_VIEW_KEY, null);
+function storedView(key: string, fallback: SidebarView): SidebarView {
+  const stored = readLocal<unknown>(key, null);
   return VIEWS.includes(stored as SidebarView) ? (stored as SidebarView) : fallback;
 }
 
@@ -61,15 +65,15 @@ const viewOf = (state: unknown): SidebarView | null => {
 export function NavigationProvider({
   children,
   initialView = 'overview',
-  persist = false,
+  persist,
 }: {
   children: ReactNode;
   initialView?: SidebarView;
-  /** Reopen on the page that was showing last time. */
-  persist?: boolean;
+  /** Reopen on the page that was showing last time, kept under this key (activeViewKey). */
+  persist?: string;
 }) {
   const [state, setState] = useState<{ view: SidebarView; params: NavigationParams }>(() => ({
-    view: persist ? storedView(initialView) : initialView,
+    view: persist ? storedView(persist, initialView) : initialView,
     params: NO_PARAMS,
   }));
   const current = useRef(state.view);
@@ -84,7 +88,7 @@ export function NavigationProvider({
     (view: SidebarView, params: NavigationParams) => {
       current.current = view;
       setState({ view, params });
-      if (persist) writeLocal<SidebarView | null>(ACTIVE_VIEW_KEY, view, null);
+      if (persist) writeLocal<SidebarView | null>(persist, view, null);
     },
     [persist]
   );

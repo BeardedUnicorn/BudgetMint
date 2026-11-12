@@ -136,7 +136,13 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
             Signed in to TaskMint as <strong>{user.email ?? 'you'}</strong>
             {user.providers.includes('google.com') ? ' with Google' : ''}.
           </Typography>
-          <Button size="small" onClick={() => void session.signOutOfTaskMint().then(forget)}>
+          <Button
+            size="small"
+            onClick={() => {
+              forget();
+              void session.signOutOfTaskMint();
+            }}
+          >
             Sign out of TaskMint
           </Button>
         </Stack>

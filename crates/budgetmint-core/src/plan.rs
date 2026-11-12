@@ -704,12 +704,98 @@ pub fn set_balance(
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
     check_balance(snapshot, balance, ctx)?;
+    Ok(write_balance(snapshot, balance))
+}
+
+fn write_balance(snapshot: &mut Snapshot, balance: Balance) -> Planned {
     let settings = Settings {
         balance: Some(balance),
         ..snapshot.settings()
     };
     let mut planned = Planned::default();
     planned.add(snapshot.write(DocKey::Settings, Some(&settings)));
+    planned
+}
+
+/// The balance once money paid (or received) on or before its day is
+/// taken off it (or added): the user says it went after the balance was
+/// set. Left as it is, the balance is taken to count it already, and the
+/// forecast leaves it out. Checked before anything is written.
+fn moved_balance(
+    snapshot: &Snapshot,
+    kind: ItemKind,
+    amount_cents: Cents,
+    on: NaiveDate,
+    ctx: &Ctx,
+) -> Result<Balance, CoreError> {
+    let Some(balance) = snapshot.settings().balance else {
+        return Err(invalid("Set your balance first"));
+    };
+    if on > balance.as_of {
+        return Err(invalid(
+            "It's after your balance's day: the forecast counts it already",
+        ));
+    }
+    let moved = Balance {
+        cents: match kind {
+            ItemKind::Bill => balance.cents - amount_cents,
+            ItemKind::Income => balance.cents + amount_cents,
+        },
+        as_of: balance.as_of,
+    };
+    check_balance(snapshot, moved, ctx)?;
+    Ok(moved)
+}
+
+/// `record`, and with `from_balance`, what it records moves the balance
+/// too (moved_balance): one change, with one undo.
+pub fn record_with_balance(
+    snapshot: &mut Snapshot,
+    input: RecordInput,
+    from_balance: bool,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    let moved = from_balance
+        .then(|| moved_balance(snapshot, input.kind, input.amount_cents, input.on, ctx))
+        .transpose()?;
+    let mut planned = record(snapshot, input, ctx)?;
+    if let Some(moved) = moved {
+        planned.then(write_balance(snapshot, moved));
+    }
+    Ok(planned)
+}
+
+/// `set_occurrence`, and with `from_balance`, what was paid moves the
+/// balance too (moved_balance): one change, with one undo.
+pub fn set_occurrence_with_balance(
+    snapshot: &mut Snapshot,
+    input: OccurrenceInput,
+    from_balance: bool,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    let moved = if from_balance {
+        let OccStatus::Done { on, amount_cents } = input.status else {
+            return Err(invalid("Only what's paid moves the balance"));
+        };
+        let kind = item(snapshot, &input.item_id)?.kind;
+        // Marked paid before, it moved the balance then (or the balance had it)
+        if snapshot
+            .overrides
+            .get(&(input.item_id.clone(), input.date))
+            .is_some_and(|over| matches!(over.status, OccStatus::Done { .. }))
+        {
+            return Err(invalid(
+                "It's marked paid already: the balance stays as it is",
+            ));
+        }
+        Some(moved_balance(snapshot, kind, amount_cents, on, ctx)?)
+    } else {
+        None
+    };
+    let mut planned = set_occurrence(snapshot, input, ctx)?;
+    if let Some(moved) = moved {
+        planned.then(write_balance(snapshot, moved));
+    }
     Ok(planned)
 }
 
@@ -1202,6 +1288,140 @@ mod tests {
             moved_to: None,
             note: None,
         }
+    }
+
+    #[test]
+    fn moves_the_balance_by_what_was_paid_after_it_was_set() {
+        let mut s = Snapshot::default();
+        let balance = |s: &Snapshot| s.settings().balance.unwrap().cents;
+        let one = |id: &str, kind: ItemKind, on: NaiveDate| RecordInput {
+            id: id.into(),
+            kind,
+            name: "Repair".into(),
+            amount_cents: 60_000,
+            on,
+            category: None,
+            note: None,
+        };
+        let repair = || one("repair", ItemKind::Bill, d(2026, 11, 10));
+        assert_eq!(
+            message(record_with_balance(&mut s, repair(), true, &ctx())),
+            "Set your balance first"
+        );
+        // Today's (Nov 10) balance
+        set_balance(
+            &mut s,
+            Balance {
+                cents: 100_000,
+                as_of: d(2026, 11, 10),
+            },
+            &ctx(),
+        )
+        .unwrap();
+        let planned = record_with_balance(&mut s, repair(), true, &ctx()).unwrap();
+        assert_eq!(balance(&s), 40_000);
+        // One change: undone, the balance goes back first
+        assert_eq!(planned.writes.len(), 3);
+        assert_eq!(planned.undo[0].doc_id, "settings~account");
+        // Income adds; without, the balance is taken to have it already
+        record_with_balance(
+            &mut s,
+            one("refund", ItemKind::Income, d(2026, 11, 9)),
+            true,
+            &ctx(),
+        )
+        .unwrap();
+        record_with_balance(
+            &mut s,
+            one("gift", ItemKind::Bill, d(2026, 11, 10)),
+            false,
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(balance(&s), 100_000);
+        // After the balance's day the forecast counts it: refused, and nothing's written
+        assert_eq!(
+            message(record_with_balance(
+                &mut s,
+                one("later", ItemKind::Bill, d(2026, 11, 11)),
+                true,
+                &ctx()
+            )),
+            "It's after your balance's day: the forecast counts it already"
+        );
+        assert!(!s.items.contains_key("later"));
+
+        put_item(
+            &mut s,
+            item(
+                "rent",
+                ItemKind::Bill,
+                d(2026, 11, 1),
+                Repeat::Months { n: 1, day: 1 },
+                30_000,
+            ),
+        );
+        let paid = |on: NaiveDate| OccStatus::Done {
+            on,
+            amount_cents: 30_000,
+        };
+        assert_eq!(
+            message(set_occurrence_with_balance(
+                &mut s,
+                occurrence("rent", d(2026, 11, 1), OccStatus::Skipped),
+                true,
+                &ctx()
+            )),
+            "Only what's paid moves the balance"
+        );
+        let planned = set_occurrence_with_balance(
+            &mut s,
+            occurrence("rent", d(2026, 11, 1), paid(d(2026, 11, 10))),
+            true,
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(balance(&s), 70_000);
+        assert_eq!(planned.writes.len(), 2);
+        // Paid already: it moved the balance then
+        assert_eq!(
+            message(set_occurrence_with_balance(
+                &mut s,
+                occurrence("rent", d(2026, 11, 1), paid(d(2026, 11, 9))),
+                true,
+                &ctx()
+            )),
+            "It's marked paid already: the balance stays as it is"
+        );
+        // Without: only the occurrence
+        let planned = set_occurrence_with_balance(
+            &mut s,
+            occurrence("rent", d(2026, 11, 1), paid(d(2026, 11, 9))),
+            false,
+            &ctx(),
+        )
+        .unwrap();
+        assert_eq!(planned.writes.len(), 1);
+        assert_eq!(balance(&s), 70_000);
+        // A balance it would push out of range: refused before anything's written
+        set_balance(
+            &mut s,
+            Balance {
+                cents: -MAX_CENTS,
+                as_of: d(2026, 11, 10),
+            },
+            &ctx(),
+        )
+        .unwrap();
+        let before = s.overrides.len();
+        assert!(set_occurrence_with_balance(
+            &mut s,
+            occurrence("rent", d(2026, 12, 1), paid(d(2026, 11, 10))),
+            true,
+            &ctx()
+        )
+        .is_err());
+        assert_eq!(s.overrides.len(), before);
     }
 
     #[test]

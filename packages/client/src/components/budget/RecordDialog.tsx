@@ -17,6 +17,7 @@ import { parseDollars } from '../../utils/money';
 import { categoriesOf } from '../pages/items/ItemFilters';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { FromBalanceField, savedSaying, useFromBalance } from './FromBalance';
 
 type Wrong = 'amount' | 'name' | 'on' | 'category';
 
@@ -30,7 +31,9 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
   const [category, setCategory] = useState('');
   const [wrong, setWrong] = useState<{ field: Wrong; message: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const dirty = useDirty([kind, amount, name, on, category]);
+  // Dated today or before, it's paid: by the balance's day, it may move the balance
+  const fromBalance = useFromBalance(on <= today ? on : null);
+  const dirty = useDirty([kind, amount, name, on, category, fromBalance.checked]);
   const inputs: Record<Wrong, React.RefObject<HTMLInputElement | null>> = {
     amount: useRef<HTMLInputElement>(null),
     name: useRef<HTMLInputElement>(null),
@@ -63,8 +66,9 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
             category: category || null,
             note: null,
           },
+          fromBalance: fromBalance.checked,
         },
-        `${name.trim()} recorded`
+        savedSaying(`${name.trim()} recorded`, kind, fromBalance.checked)
       );
     } catch (error) {
       // Said under its field, when it's about one (a start date is when it was)
@@ -118,6 +122,7 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
           helperText={wrongAt('on') ?? (on > today ? 'Still to come: it counts in the forecast' : undefined)}
           slotProps={{ inputLabel: { shrink: true } }}
         />
+        <FromBalanceField kind={kind} amountCents={parseDollars(amount)} on={on} state={fromBalance} />
         <Autocomplete
           freeSolo
           options={categories}
