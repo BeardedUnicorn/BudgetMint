@@ -21,6 +21,7 @@ import type { OccurrenceView } from "./OccurrenceView";
 import type { Overview } from "./Overview";
 import type { Planned } from "./Planned";
 import type { ReadStatementArgs } from "./ReadStatementArgs";
+import type { RecordArgs } from "./RecordArgs";
 import type { Reminder } from "./Reminder";
 import type { RemindersArgs } from "./RemindersArgs";
 import type { ReportView } from "./ReportView";
@@ -66,6 +67,7 @@ export interface CommandMap {
   settle: { args: SettleArgs; reply: Planned };
   read_statement: { args: ReadStatementArgs; reply: StatementView };
   get_schedule_dates: { args: ScheduleDatesArgs; reply: Array<ScheduleDate> };
+  record: { args: RecordArgs; reply: Planned };
 }
 
 export type CommandName = keyof CommandMap;

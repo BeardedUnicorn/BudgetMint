@@ -55,6 +55,8 @@ export type { PaidLate } from "./PaidLate";
 export type { Planned } from "./Planned";
 export type { ProjectedWithdrawal } from "./ProjectedWithdrawal";
 export type { ReadStatementArgs } from "./ReadStatementArgs";
+export type { RecordArgs } from "./RecordArgs";
+export type { RecordInput } from "./RecordInput";
 export type { Refusal } from "./Refusal";
 export type { Reminder } from "./Reminder";
 export type { ReminderKind } from "./ReminderKind";

@@ -430,6 +430,9 @@ describe('the pages’ other buttons and states', () => {
       settings: { taskmint: { policy: { kind: 'weekly', weekday: 2, hour: 8 } } },
     });
     await user.click(screen.getByRole('button', { name: 'Bills' }));
+    // Its day has passed, and the balance has it: finished, a click away
+    expect(screen.getByText('Nothing more to come.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show' }));
     await user.click(screen.getByRole('button', { name: 'Edit Repair' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit Repair' });
     expect(within(dialog).getByRole('switch', { name: 'Remind me' })).not.toBeChecked();
@@ -458,7 +461,7 @@ describe('the pages’ other buttons and states', () => {
 
   it('starts without a balance from onboarding', async () => {
     const { user, store } = await startBudget({ settings: null });
-    await user.click(screen.getByRole('button', { name: 'Start without a balance' }));
+    for (const _ of [1, 2, 3, 4]) await user.click(screen.getByRole('button', { name: 'Skip' }));
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(JSON.parse(store.docs.get('settings~account')!.json).balance).toBeNull();
   });

@@ -22,7 +22,8 @@ use budgetmint_core::goals::{GoalPart, GoalView, GoalsView};
 use budgetmint_core::model::*;
 use budgetmint_core::occur::{Estimate, ESTIMATE_FROM};
 use budgetmint_core::plan::{
-    ItemInput, OccurrenceInput, Planned, MAX_CATEGORY, MAX_LEADS, MAX_LEAD_DAYS, MAX_NAME, MAX_NOTE,
+    ItemInput, OccurrenceInput, Planned, RecordInput, MAX_CATEGORY, MAX_LEADS, MAX_LEAD_DAYS,
+    MAX_NAME, MAX_NOTE,
 };
 use budgetmint_core::reminders::{Reminder, ReminderKind, MAX_REMINDERS, MAX_WINDOW_DAYS};
 use budgetmint_core::report::{
@@ -71,6 +72,8 @@ fn export_types(cfg: &Config) {
         SettleArgs,
         ReadStatementArgs,
         ScheduleDatesArgs,
+        RecordArgs,
+        RecordInput,
         OccRef,
         PaidInput,
         CsvColumns,

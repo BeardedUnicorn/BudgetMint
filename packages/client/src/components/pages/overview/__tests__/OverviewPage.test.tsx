@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { forecastDoc, item, monthly, override, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 
@@ -142,7 +142,8 @@ describe('the overview', () => {
   it('adds a bill, and opens the calendar', async () => {
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 50_000)] });
     expect(screen.getByText('Nothing due or coming in.')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Add bill' }));
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'A bill' }));
     const dialog = screen.getByRole('dialog', { name: 'Add bill' });
     await user.type(within(dialog).getByLabelText('Name'), 'Gym');
     await user.type(within(dialog).getByLabelText('Amount'), '30');
@@ -176,5 +177,89 @@ describe('the overview', () => {
     const section = screen.getByRole('region', { name: 'Past due' });
     expect(within(section).getByText('Late')).toBeInTheDocument();
     expect(screen.getByText('Moved from Dec 1 · Early this time')).toBeInTheDocument();
+  });
+
+  it('records a one-off spend or income from Add, saying what to fix under its field', async () => {
+    const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 50_000)] });
+    const recorded = () =>
+      [...store.docs.values()]
+        .map(doc => JSON.parse(doc.json))
+        .filter(doc => doc.schedule?.[0].repeat.every === 'once');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'A one-off spend or income' }));
+    let dialog = screen.getByRole('dialog', { name: 'Record a one-off' });
+    expect(within(dialog).getByRole('button', { name: 'I spent' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).getByLabelText('Amount')).toHaveFocus();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter the amount')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText('Amount'), '600');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    // Core's refusals, under their fields
+    expect(within(dialog).getByLabelText('On what')).toBeInvalid();
+    await user.type(within(dialog).getByLabelText('On what'), 'Car repair');
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '1000-01-01' } });
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByLabelText('When')).toBeInvalid();
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '2026-11-10' } });
+    await user.type(within(dialog).getByLabelText('Category (optional)'), 'Car');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Car repair recorded')).toBeInTheDocument();
+    // Paid today, as recorded
+    const [repair] = recorded();
+    expect(repair).toMatchObject({ kind: 'bill', name: 'Car repair', category: 'Car', reminder: null });
+    expect(JSON.parse(store.docs.get(`occ~2026-11-10~${repair.id}`)!.json).status).toEqual({
+      state: 'done',
+      on: '2026-11-10',
+      amountCents: 60_000,
+    });
+
+    // Income still to come
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'A one-off spend or income' }));
+    dialog = screen.getByRole('dialog', { name: 'Record a one-off' });
+    await user.click(within(dialog).getByRole('button', { name: 'I got' }));
+    // Pressing the chosen one again keeps it
+    await user.click(within(dialog).getByRole('button', { name: 'I got' }));
+    await user.type(within(dialog).getByLabelText('Amount'), '45');
+    await user.type(within(dialog).getByLabelText('From what'), 'Refund');
+    fireEvent.change(within(dialog).getByLabelText('When'), { target: { value: '2026-11-20' } });
+    expect(within(dialog).getByText('Still to come: it counts in the forecast')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(recorded()).toHaveLength(2));
+    expect(recorded().find(doc => doc.name === 'Refund')).toMatchObject({ kind: 'income' });
+
+    // A refusal that's about no field (the same one recorded twice) is said above
+    const uuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue('1-1-1-1-1');
+    for (const _ of [1, 2]) {
+      await user.click(screen.getByRole('button', { name: 'Add' }));
+      await user.click(screen.getByRole('menuitem', { name: 'A one-off spend or income' }));
+      dialog = screen.getByRole('dialog', { name: 'Record a one-off' });
+      await user.type(within(dialog).getByLabelText('Amount'), '5');
+      await user.type(within(dialog).getByLabelText('On what'), 'Coffee');
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    }
+    expect(await within(dialog).findByText('That’s recorded already'.replace('’', "'"))).toBeInTheDocument();
+    uuid.mockRestore();
+  });
+
+  it('adds income from Add, and says when everyday spending isn’t counted', async () => {
+    // With nothing yet, income can be the first thing added
+    const empty = await startBudget();
+    await empty.user.click(screen.getByRole('button', { name: 'Add income' }));
+    expect(screen.getByRole('dialog', { name: 'Add income' })).toBeInTheDocument();
+    empty.unmount();
+
+    const { user } = await startBudget({ items: [monthly('rent', 'Rent', 1, 50_000)] });
+    // The menu closes without a choice too
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Income' }));
+    expect(screen.getByRole('dialog', { name: 'Add income' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText(/Everyday spending \(food, fuel\) isn’t counted yet/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Set it' }));
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
 });

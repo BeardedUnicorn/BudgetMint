@@ -32,4 +32,8 @@ current: Segment,
 /**
  * Its schedule has begun: a change to it applies from a date, and what's before stays.
  */
-started: boolean, };
+started: boolean, 
+/**
+ * Nothing more to come or to pay: a one-off that's done, a schedule that's ended.
+ */
+finished: boolean, };

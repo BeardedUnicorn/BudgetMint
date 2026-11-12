@@ -11,7 +11,7 @@ use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::goals::{self, GoalsView};
 use crate::model::{Balance, Cents, Repeat, Settings, Weekends};
-use crate::plan::{self, ItemInput, OccurrenceInput, Planned, ScheduleChange};
+use crate::plan::{self, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange};
 use crate::reminders::{self, Reminder};
 use crate::report::{self, ReportView};
 use crate::time::Ctx;
@@ -57,6 +57,7 @@ pub enum Command {
     Settle(SettleArgs),
     ReadStatement(ReadStatementArgs),
     GetScheduleDates(ScheduleDatesArgs),
+    Record(RecordArgs),
 }
 
 macro_rules! command_types {
@@ -119,6 +120,7 @@ command_types! {
     "settle": SettleArgs => Planned,
     "read_statement": ReadStatementArgs => StatementView,
     "get_schedule_dates": ScheduleDatesArgs => Vec<ScheduleDate>,
+    "record": RecordArgs => Planned,
 }
 
 /// `reply` read as a `T` and written back.
@@ -299,6 +301,13 @@ pub struct SetOccurrenceArgs {
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
+pub struct RecordArgs {
+    pub record: RecordInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
 pub struct SetBalanceArgs {
     pub balance: Balance,
 }
@@ -462,6 +471,7 @@ pub fn execute(
             to_value(plan::set_occurrence(snapshot, args.occurrence, ctx)?)
         }
         Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
+        Command::Record(args) => to_value(plan::record(snapshot, args.record, ctx)?),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),

@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react';
-import { Alert, Box, Button, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Link, Menu, MenuItem, Paper, Stack, Typography } from '@mui/material';
 import {
   Add as AddIcon,
   CallReceived as IncomeIcon,
@@ -24,6 +24,7 @@ import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/
 import { importIsStale, WITHDRAWALS_NOTE } from '../../../utils/taskmint';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
+import { RecordDialog } from '../../budget/RecordDialog';
 import { OccurrenceList } from '../../budget/OccurrenceList';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { EmptyState } from '../../ui/display/EmptyState';
@@ -107,7 +108,13 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
   const { settings } = useCoreQuery('get_settings');
   const items = useCoreQuery('get_items');
   const { navigate } = useNavigation();
-  const [dialog, setDialog] = useState<'balance' | 'bill' | null>(null);
+  const [dialog, setDialog] = useState<'balance' | 'bill' | 'income' | 'record' | null>(null);
+  /** The Add button's menu, while it's open. */
+  const [adding, setAdding] = useState<HTMLElement | null>(null);
+  const add = (what: 'bill' | 'income' | 'record') => {
+    setAdding(null);
+    setDialog(what);
+  };
   const { today, balance, lowest, firstShort, firstLow, nextWithdrawal } = overview;
 
   const withdrawalValue = nextWithdrawal
@@ -139,9 +146,19 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             <Button variant="outlined" onClick={() => setDialog('balance')}>
               Update balance
             </Button>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
-              Add bill
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={event => setAdding(event.currentTarget)}
+              aria-haspopup="menu"
+            >
+              Add
             </Button>
+            <Menu anchorEl={adding} open={adding !== null} onClose={() => setAdding(null)}>
+              <MenuItem onClick={() => add('bill')}>A bill</MenuItem>
+              <MenuItem onClick={() => add('income')}>Income</MenuItem>
+              <MenuItem onClick={() => add('record')}>A one-off spend or income</MenuItem>
+            </Menu>
           </>
         }
       />
@@ -210,6 +227,15 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             <Typography variant="body2" color="text.secondary">
               {safeLine(overview)}
             </Typography>
+            {overview.safeToSpend.spendingWeeklyCents === 0 && (
+              // Without it, all of the balance but the bills looks free to spend
+              <Typography variant="body2" color="warning.main">
+                Everyday spending (food, fuel) isn’t counted yet.{' '}
+                <Link component="button" onClick={() => navigate('settings', { section: 'forecast' })}>
+                  Set it
+                </Link>
+              </Typography>
+            )}
           </Box>
         </Stack>
       </Paper>
@@ -268,9 +294,14 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
           title="No bills yet"
           description="Add your bills and other income, and see your balance ahead."
           action={
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
-              Add your first bill
-            </Button>
+            <Stack direction="row" spacing={1} sx={{ justifyContent: 'center' }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
+                Add your first bill
+              </Button>
+              <Button variant="outlined" onClick={() => setDialog('income')}>
+                Add income
+              </Button>
+            </Stack>
           }
         />
       ) : (
@@ -294,14 +325,15 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
       )}
 
       {dialog === 'balance' && <BalanceDialog balance={balance} today={today} onClose={() => setDialog(null)} />}
-      {dialog === 'bill' && (
+      {(dialog === 'bill' || dialog === 'income') && (
         <ItemDialog
-          kind="bill"
+          kind={dialog}
           today={today}
           defaultLeadDays={settings.reminders.leadDays}
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog === 'record' && <RecordDialog today={today} onClose={() => setDialog(null)} />}
     </PageContainer>
   );
 }

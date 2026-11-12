@@ -78,10 +78,13 @@ export function useReminders(): void {
     return () => window.clearInterval(timer);
   }, []);
   // On, but never allowed: the system asks where it can on its own (Android);
-  // a browser asks only at a click, so a toast offers one
+  // a browser asks only at a click, so a toast offers one. Not before
+  // there's anything to remind of: a bill (or income) with a reminder
   const { showWarning } = useNotification();
+  const items = useCoreQuery('get_items');
+  const wanted = on && items.some(view => !view.item.archived && view.item.reminder !== null);
   useEffect(() => {
-    if (!on) return;
+    if (!wanted) return;
     const { notifications } = getShell().platform;
     const failed = (error: unknown) => console.warn('Failed to ask about notifications:', error);
     if (!notifications.granted) {
@@ -97,7 +100,7 @@ export function useReminders(): void {
         });
       })
       .catch(failed);
-  }, [on, showWarning]);
+  }, [wanted, showWarning]);
   const reminders = useCoreQuery('get_reminders', {
     windowDays: REMINDER_WINDOW_DAYS,
     max: MAX_SCHEDULED,
