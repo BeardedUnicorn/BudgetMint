@@ -20,7 +20,7 @@ import { useDirty } from '../../hooks/useDirty';
 import { categoriesOf } from '../pages/items/ItemFilters';
 import { formatWeekday, parseDay } from '../../utils/dates';
 import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
-import { centsToInput, parseDollars } from '../../utils/money';
+import { centsToInput, formatCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
 import { type Every, RepeatField } from './RepeatField';
@@ -111,7 +111,17 @@ const endingOn = (schedule: Segment[], until: string | null): Segment[] =>
   schedule.map((segment, index) => (index === schedule.length - 1 ? { ...segment, until } : segment));
 
 /** The form's fields a refusal can be said under. */
-type Field = 'name' | 'amount' | 'repeat' | 'dates' | 'changeFrom' | 'ends' | 'category' | 'note' | 'reminder';
+type Field =
+  | 'name'
+  | 'amount'
+  | 'repeat'
+  | 'dates'
+  | 'changeFrom'
+  | 'ends'
+  | 'category'
+  | 'note'
+  | 'reminder'
+  | 'saved';
 
 export interface ItemDialogProps {
   kind: ItemKind;
@@ -167,6 +177,10 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const [note, setNote] = useState(item?.note ?? '');
   const [varies, setVaries] = useState(item?.varies ?? false);
   const [saveUp, setSaveUp] = useState(item ? item.saveUp !== null : goal);
+  /** What's set aside for it already, as typed: given, setting aside starts over from it today. */
+  const [alreadySaved, setAlreadySaved] = useState('');
+  // What's set aside so far for the next time it's due (core's goals)
+  const soFar = useCoreQuery('get_goals').goals.find(goal => goal.itemId === item?.id)?.setAsideCents;
   const [problem, setProblem] = useState<string | null>(null);
   /** A field left wrong: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState<{ field: Field; message: string } | null>(null);
@@ -192,6 +206,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     note,
     varies,
     saveUp,
+    alreadySaved,
   ]);
   const inputs: Record<Field, React.RefObject<HTMLInputElement | null>> = {
     name: useRef<HTMLInputElement>(null),
@@ -203,6 +218,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     category: useRef<HTMLInputElement>(null),
     note: useRef<HTMLInputElement>(null),
     reminder: useRef<HTMLInputElement>(null),
+    saved: useRef<HTMLInputElement>(null),
   };
   const refuse = (field: Field, message: string) => {
     setProblem(null);
@@ -278,6 +294,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
       note: note || null,
       varies: varies && every !== 'once',
       saveUp: canSaveUp && saveUp,
+      // Left empty: what's set aside stays as it is
+      savedCents: canSaveUp && saveUp ? (parseDollars(alreadySaved) ?? undefined) : undefined,
     };
     const newSchedule = [{ from, until, repeat, amountCents: cents, weekends }];
     const saved = `${name.trim()} ${item ? 'saved' : 'added'}`;
@@ -559,6 +577,21 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
               every === 'once'
                 ? 'Set money aside for it each month until then'
                 : 'Set money aside for it each month, so it’s ready when it’s due'
+            }
+          />
+        )}
+        {canSaveUp && saveUp && (
+          <CurrencyInput
+            label="Already set aside (optional)"
+            value={alreadySaved}
+            onChange={setAlreadySaved}
+            inputRef={inputs.saved}
+            error={wrong?.field === 'saved'}
+            helperText={
+              wrongAt('saved') ??
+              (soFar === undefined
+                ? 'What you’ve put by for it already: the rest is spread over the months left'
+                : `${formatCents(soFar)} set aside so far. Say what's set aside now to go on from that.`)
             }
           />
         )}

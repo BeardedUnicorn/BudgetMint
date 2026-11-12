@@ -14,4 +14,9 @@ varies: boolean,
 /**
  * Set money aside for it ahead of each time (bills that come monthly or less often).
  */
-saveUp: boolean, };
+saveUp: boolean, 
+/**
+ * What's set aside for it already, as of today: given, setting aside
+ * starts over from today with it; none keeps what there is.
+ */
+savedCents?: number, };

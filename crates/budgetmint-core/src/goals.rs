@@ -86,6 +86,8 @@ pub fn savings(snapshot: &Snapshot, ctx: &Ctx, from: NaiveDate, to: NaiveDate) -
         // Past the window, the first time due: it's saved up for in it
         let ahead = to + Duration::days(LOOK_BACK_DAYS);
         let mut before: Option<NaiveDate> = None;
+        // Set aside already when saving began: the first time saved for has it
+        let mut already = save_up.saved_cents.unwrap_or(0);
         for occurrence in item_occurrences(snapshot, item, back.max(save_up.since), ahead) {
             let start = before.map_or(save_up.since, |due| {
                 (due + Duration::days(1)).max(save_up.since)
@@ -104,13 +106,30 @@ pub fn savings(snapshot: &Snapshot, ctx: &Ctx, from: NaiveDate, to: NaiveDate) -
                 }
             };
             let days = part_days(start, by);
+            // What's set aside already is its first day's part (none of it past the whole), and
+            // the rest is spread over the months after; with none after, that day has it all
+            let ahead_of_time = already.clamp(0, cents.max(0));
+            already = 0;
+            let parts: Vec<(NaiveDate, Cents)> = match days.split_first() {
+                Some((first, later)) if ahead_of_time > 0 && !later.is_empty() => {
+                    std::iter::once((*first, ahead_of_time))
+                        .chain(
+                            later
+                                .iter()
+                                .copied()
+                                .zip(split(cents - ahead_of_time, later.len())),
+                        )
+                        .collect()
+                }
+                _ => days.iter().copied().zip(split(cents, days.len())).collect(),
+            };
             let saving = Saving {
                 item_id: item.id.clone(),
                 name: item.name.clone(),
                 scheduled: occurrence.scheduled,
                 due: occurrence.due,
                 cents,
-                parts: days.iter().copied().zip(split(cents, days.len())).collect(),
+                parts,
                 freed,
             };
             let meets = saving.parts.first().is_some_and(|(first, _)| *first <= to) && freed > from;
@@ -243,7 +262,10 @@ mod tests {
         since: NaiveDate,
     ) -> crate::model::Item {
         let mut bill = item(id, ItemKind::Bill, from, repeat, cents);
-        bill.save_up = Some(SaveUp { since });
+        bill.save_up = Some(SaveUp {
+            since,
+            saved_cents: None,
+        });
         bill
     }
 
@@ -258,6 +280,64 @@ mod tests {
         };
         s.write(DocKey::Settings, Some(&settings));
         s
+    }
+
+    #[test]
+    fn counts_what_was_set_aside_already_on_its_first_day() {
+        let mut s = Snapshot::default();
+        let mut car = saved(
+            "car",
+            d(2027, 3, 3),
+            Repeat::Years { n: 1 },
+            120_000,
+            d(2026, 11, 10),
+        );
+        car.save_up = Some(SaveUp {
+            since: d(2026, 11, 10),
+            saved_cents: Some(30_000),
+        });
+        put_item(&mut s, car.clone());
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2028, 3, 3));
+        // $300 now, and the $900 left over the three months after, to March 3
+        assert_eq!(
+            found[0].parts,
+            vec![
+                (d(2026, 11, 10), 30_000),
+                (d(2026, 12, 10), 30_000),
+                (d(2027, 1, 10), 30_000),
+                (d(2027, 2, 10), 30_000),
+            ]
+        );
+        // The next year's starts from nothing
+        assert_eq!(found[1].parts[0], (d(2027, 3, 4), 10_000));
+        // More than the whole is the whole
+        car.save_up = Some(SaveUp {
+            since: d(2026, 11, 10),
+            saved_cents: Some(500_000),
+        });
+        put_item(&mut s, car);
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 3, 3));
+        assert_eq!(found[0].on(d(2026, 11, 10)), 120_000);
+        assert_eq!(found[0].on(d(2027, 2, 10)), 120_000);
+        // Due within the month: its one day has it all
+        let mut soon = saved(
+            "soon",
+            d(2026, 11, 25),
+            Repeat::Once,
+            50_000,
+            d(2026, 11, 10),
+        );
+        soon.save_up = Some(SaveUp {
+            since: d(2026, 11, 10),
+            saved_cents: Some(10_000),
+        });
+        put_item(&mut s, soon);
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 11, 25));
+        let soon = found
+            .iter()
+            .find(|saving| saving.item_id == "soon")
+            .unwrap();
+        assert_eq!(soon.parts, vec![(d(2026, 11, 10), 50_000)]);
     }
 
     #[test]

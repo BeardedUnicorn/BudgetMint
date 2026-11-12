@@ -132,6 +132,10 @@ describe('the data documents', () => {
   it('can’t go back to an older schema', async () => {
     await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 2 })));
     await assertFails(setDoc(doc(bea(), ITEM), budget({ schema: 1 })));
+    // A goal with an amount set aside already is schema 3: a BudgetMint before it can't write it back as 2
+    await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 3 })));
+    await assertFails(setDoc(doc(bea(), ITEM), budget({ schema: 2 })));
+    await assertSucceeds(setDoc(doc(bea(), ITEM), budget({ schema: 3 })));
   });
 });
 

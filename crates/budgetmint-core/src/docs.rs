@@ -16,11 +16,42 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The documents' schema: one written by a newer BudgetMint (a higher
-/// number) is held, not read. 2: schedules twice a month or on a weekday of
-/// the month, weekends moved, varying amounts, money set aside, everyday
-/// spending and balance checks (fields an older BudgetMint would drop).
-pub const BUDGET_SCHEMA: u32 = 2;
+/// The newest documents' schema this BudgetMint reads: one written by a
+/// newer BudgetMint (a higher number) is held, not read. 2: schedules twice
+/// a month or on a weekday of the month, weekends moved, varying amounts,
+/// money set aside, everyday spending and balance checks (fields an older
+/// BudgetMint would drop). 3: an amount already set aside for a bill.
+pub const BUDGET_SCHEMA: u32 = 3;
+
+/// The schema a document is written with when it has nothing a newer one added.
+pub const BASE_SCHEMA: u32 = 2;
+
+/// The schema a document needs: a field an older BudgetMint would drop
+/// (writing back what it read without it) makes it that field's schema,
+/// so older ones hold it instead. Only what needs it is newer: the rest of
+/// the account stays readable, and changeable, everywhere.
+pub trait Versioned {
+    fn schema(&self) -> u32 {
+        BASE_SCHEMA
+    }
+}
+
+impl Versioned for Settings {}
+
+impl Versioned for Override {}
+
+impl Versioned for Item {
+    fn schema(&self) -> u32 {
+        if self
+            .save_up
+            .is_some_and(|save_up| save_up.saved_cents.is_some())
+        {
+            3
+        } else {
+            BASE_SCHEMA
+        }
+    }
+}
 
 /// The longest id an item may have (the rules' too).
 pub const MAX_ID_LEN: usize = 64;
@@ -122,6 +153,9 @@ pub struct Snapshot {
     pub overrides: BTreeMap<(String, NaiveDate), Override>,
     /// Each document's JSON as read, to tell a change from none.
     json: BTreeMap<String, String>,
+    /// Each document's schema as read: a write never lowers it (the rules
+    /// refuse that), so a document once newer stays so.
+    schemas: BTreeMap<String, u32>,
     held: BTreeSet<String>,
     unreadable: BTreeSet<String>,
 }
@@ -178,8 +212,14 @@ impl Snapshot {
         };
         if read {
             match doc.json {
-                Some(json) => self.json.insert(doc.doc_id, json),
-                None => self.json.remove(&doc.doc_id),
+                Some(json) => {
+                    self.schemas.insert(doc.doc_id.clone(), doc.schema);
+                    self.json.insert(doc.doc_id, json)
+                }
+                None => {
+                    self.schemas.remove(&doc.doc_id);
+                    self.json.remove(&doc.doc_id)
+                }
             };
         } else {
             self.unreadable.insert(doc.doc_id);
@@ -225,8 +265,10 @@ impl Snapshot {
     }
 
     /// Writes `value` as `key`'s document (None deletes it): taken here at
-    /// once, with the write that undoes it. None when nothing changes.
-    pub fn write<T: Serialize>(
+    /// once, with the write that undoes it. None when nothing changes. Both
+    /// carry the schema `value` needs, or the document's as read when that's
+    /// newer: the undo too, since it follows the write it undoes.
+    pub fn write<T: Serialize + Versioned>(
         &mut self,
         key: DocKey,
         value: Option<&T>,
@@ -238,17 +280,20 @@ impl Snapshot {
         if json == before {
             return None;
         }
+        let schema = value
+            .map_or(BASE_SCHEMA, Versioned::schema)
+            .max(self.schemas.get(&doc_id).copied().unwrap_or(BASE_SCHEMA));
         let write = |json: Option<String>| DocWrite {
             doc_id: doc_id.clone(),
             kind: key.kind().to_string(),
             json,
-            schema: BUDGET_SCHEMA,
+            schema,
         };
         let (done, undo) = (write(json.clone()), write(before));
         self.apply_one(IncomingDoc {
             doc_id: doc_id.clone(),
             json,
-            schema: BUDGET_SCHEMA,
+            schema,
         });
         Some((done, undo))
     }
@@ -486,7 +531,8 @@ mod tests {
             .unwrap();
         assert_eq!(write.doc_id, "item~rent");
         assert_eq!(write.kind, "item");
-        assert_eq!(write.schema, BUDGET_SCHEMA);
+        // Nothing a newer schema added: the base one, which every BudgetMint since 1.5 reads
+        assert_eq!(write.schema, BASE_SCHEMA);
         assert!(write.json.is_some());
         assert_eq!(undo.json, None);
         assert!(snapshot.items.contains_key("rent"));
@@ -502,5 +548,68 @@ mod tests {
         assert_eq!(delete.json, None);
         assert_eq!(undo.json, write.json);
         assert!(snapshot.items.is_empty());
+    }
+
+    #[test]
+    fn writes_only_what_needs_it_newer_and_never_lowers_a_documents_schema() {
+        use crate::model::SaveUp;
+        let mut snapshot = Snapshot::default();
+        let mut goal = rent();
+        goal.save_up = Some(SaveUp {
+            since: d(2026, 11, 10),
+            saved_cents: Some(30_000),
+        });
+        // An amount set aside already: what older BudgetMints would drop, so they hold it
+        let (write, undo) = snapshot
+            .write(DocKey::Item("rent".into()), Some(&goal))
+            .unwrap();
+        assert_eq!((write.schema, undo.schema), (3, 3));
+        // Without it again, still 3: the rules refuse a lower one, and the undo follows the write
+        goal.save_up = None;
+        let (write, undo) = snapshot
+            .write(DocKey::Item("rent".into()), Some(&goal))
+            .unwrap();
+        assert_eq!((write.schema, undo.schema), (3, 3));
+        // The rest stays the base schema, readable everywhere
+        let (settings, _) = snapshot
+            .write(DocKey::Settings, Some(&Settings::default()))
+            .unwrap();
+        assert_eq!(settings.schema, BASE_SCHEMA);
+        // One read as written by 1.4 is written as the base one
+        snapshot.apply(vec![IncomingDoc {
+            doc_id: "item~old".into(),
+            json: Some(
+                serde_json::to_string(&Item {
+                    id: "old".into(),
+                    ..rent()
+                })
+                .unwrap(),
+            ),
+            schema: 1,
+        }]);
+        let renamed = Item {
+            id: "old".into(),
+            name: "Old rent".into(),
+            ..rent()
+        };
+        let (write, _) = snapshot
+            .write(DocKey::Item("old".into()), Some(&renamed))
+            .unwrap();
+        assert_eq!(write.schema, BASE_SCHEMA);
+        // One written as 3 is read here; one newer still is held
+        let applied = snapshot.apply(vec![
+            IncomingDoc {
+                doc_id: "item~old".into(),
+                json: write.json.clone(),
+                schema: 3,
+            },
+            IncomingDoc {
+                doc_id: "item~later".into(),
+                json: Some("{}".into()),
+                schema: BUDGET_SCHEMA + 1,
+            },
+        ]);
+        assert_eq!(applied.held, vec!["item~later".to_string()]);
+        assert_eq!(snapshot.items["old"].name, "Old rent");
     }
 }

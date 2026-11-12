@@ -128,13 +128,20 @@ pub struct Item {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Setting money aside for a bill: from when.
+/// Setting money aside for a bill: from when, and what was set aside for
+/// it already then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SaveUp {
-    /// The day it was turned on: nothing is set aside before it.
+    /// The day it was turned on (or set aside from again): nothing is set aside before it.
     pub since: NaiveDate,
+    /// Set aside for it already on `since` (the rest is spread over the
+    /// months left). Written only when there is some: an item with it is a
+    /// newer document (crate::docs::Versioned), which older BudgetMints hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub saved_cents: Option<Cents>,
 }
 
 /// What happened to one occurrence.
