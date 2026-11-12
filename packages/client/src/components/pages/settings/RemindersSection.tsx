@@ -1,6 +1,7 @@
 /**
  * Reminders: whether this device shows them, when in the day they come,
- * how far ahead a new bill reminds, and the low-balance warning. On the
+ * how far ahead a new bill reminds, and the low-balance warning. In a
+ * browser that hasn't allowed notifications, a line says so and asks. On the
  * desktop, also whether BudgetMint opens at login, so they come without
  * opening it.
  */
@@ -10,7 +11,7 @@ import { Alert, Button, FormControlLabel, MenuItem, Stack, Switch, TextField, Ty
 import { NotificationsActive as RemindersIcon } from '@mui/icons-material';
 import { useSettings } from '../../../hooks/useSettingsChange';
 import { useLocalStorage } from '../../../hooks/useLocalStorage';
-import { REMINDERS_ON_KEY } from '../../../hooks/useReminders';
+import { askFailed, REMINDERS_ON_KEY } from '../../../hooks/useReminders';
 import { getShell } from '../../../shell';
 import type { Platform } from '../../../shell/types';
 import { formattingLocale } from '../../../utils/locale';
@@ -67,6 +68,17 @@ export function RemindersSection() {
   const [denied, setDenied] = useState(false);
   const { notifications, autostart, tray } = getShell().platform;
   const reminders = settings.reminders;
+  /** Whether the browser has allowed notifications (not known yet, or not a browser: null). */
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  useEffect(() => {
+    notifications.granted?.().then(setAllowed, askFailed);
+  }, [notifications]);
+  const allow = async () => {
+    setDenied(false);
+    const granted = await notifications.request();
+    setAllowed(granted);
+    setDenied(!granted);
+  };
   const setReminders = (patch: Partial<typeof reminders>) =>
     save(current => ({ ...current, reminders: { ...current.reminders, ...patch } }));
 
@@ -84,6 +96,8 @@ export function RemindersSection() {
       setDenied(true);
       return;
     }
+    // Asked and allowed just now: the line below has nothing left to ask
+    if (next) setAllowed(true);
     setOn(next);
   };
 
@@ -98,6 +112,16 @@ export function RemindersSection() {
           <Alert severity="warning">
             Notifications are turned off for BudgetMint. Allow them in the system’s settings.
           </Alert>
+        )}
+        {on && allowed === false && (
+          <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              This browser hasn’t allowed BudgetMint’s notifications.
+            </Typography>
+            <Button variant="outlined" size="small" onClick={() => void allow()}>
+              Allow
+            </Button>
+          </Stack>
         )}
         <Typography variant="body2" color="text.secondary">
           {notifications.firesWhenClosed

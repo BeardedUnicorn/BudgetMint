@@ -118,8 +118,8 @@ describe('the app', () => {
     expect(screen.getByText('Enter a week’s worth, or skip it')).toBeInTheDocument();
     await user.type(screen.getByLabelText('A week'), '150');
     await user.click(screen.getByRole('button', { name: 'Back' }));
-    // Pay is saved already: its amount is empty, not added twice
-    expect(screen.getByLabelText('Each pays')).toHaveValue('');
+    // Pay is saved already: there as it was saved, and not added twice
+    expect(screen.getByLabelText('Each pays')).toHaveValue('1820');
     await user.click(screen.getByRole('button', { name: 'Skip' }));
     expect(screen.getByLabelText('A week')).toHaveValue('150');
     await user.click(screen.getByRole('button', { name: 'Next' }));
@@ -129,12 +129,13 @@ describe('the app', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Rent or mortgage' }));
     await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(screen.getByText('Enter the amount')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Rent or mortgage: amount'), '1450');
-    await user.click(screen.getAllByLabelText('Due on')[0]);
-    await user.click(screen.getByRole('option', { name: 'The 1st' }));
+    const rent = screen.getByRole('group', { name: 'Rent or mortgage' });
+    await user.type(within(rent).getByLabelText('Amount'), '1450');
+    await user.click(within(rent).getByLabelText('Due on'));
+    await user.click(screen.getByRole('option', { name: 'The 2nd' }));
     await user.click(screen.getByRole('checkbox', { name: 'Electric' }));
     expect(screen.getByText('About: it learns from what you pay')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Electric: amount'), '135');
+    await user.type(within(screen.getByRole('group', { name: 'Electric' })).getByLabelText('Amount'), '135');
     await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     const saved = JSON.parse(store.docs.get('settings~account')!.json);
@@ -152,7 +153,7 @@ describe('the app', () => {
     });
     expect(items.find(doc => doc.name === 'Rent or mortgage')).toMatchObject({
       category: 'Housing',
-      schedule: [{ repeat: { every: 'months', n: 1, day: 1 }, amountCents: 145_000 }],
+      schedule: [{ repeat: { every: 'months', n: 1, day: 2 }, amountCents: 145_000 }],
     });
     expect(items.find(doc => doc.name === 'Electric')).toMatchObject({ varies: true, category: 'Utilities' });
   });

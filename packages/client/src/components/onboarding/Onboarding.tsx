@@ -2,10 +2,11 @@
  * The first time, a few steps so the Overview's numbers mean something from
  * the start: the bank balance (and, with TaskMint signed in alongside, how
  * its withdrawals count), the pay that comes in, what everyday spending
- * takes a week, and the bills most people have. Each but the first can be
- * skipped. Pay and bills are saved as their step ends; the balance and the
- * settings at the last, since saving the settings is what ends onboarding
- * (it comes once per account).
+ * takes a week, and the bills most people have. Each can be skipped. Pay is
+ * saved as its step ends (and saved over when the step is come back to);
+ * the balance, the settings (the currency among them) and the bills at the
+ * last, since saving the settings is what ends onboarding (it comes once
+ * per account).
  */
 
 import { useRef, useState } from 'react';
@@ -24,16 +25,17 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { ItemInput } from '@budgetmint/contracts';
+import type { ItemInput, Repeat } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useTaskMint } from '../../hooks/useTaskMint';
 import { formatDay, formatWeekday } from '../../utils/dates';
 import { ordinal } from '../../utils/describe';
-import { currencySymbol, formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
+import { currencySymbol, formatCents, formatMaybeCents, parseDollars, setCurrency } from '../../utils/money';
 import { partsOf, repeatOf } from '../budget/ItemDialog';
 import { type Every, RepeatField } from '../budget/RepeatField';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
 import { Wordmark } from '../ui/display/Wordmark';
+import { CurrencyField, currencyPlural } from '../pages/settings/RegionSettings';
 import { DELAYS, delayLabel } from '../pages/settings/TaskMintSection';
 
 type Step = 'balance' | 'pay' | 'spending' | 'bills';
@@ -66,7 +68,7 @@ interface BillRow {
 }
 
 export function Onboarding() {
-  const { session, view } = useBudget();
+  const { session, view, core } = useBudget();
   const { settings } = useCoreQuery('get_settings');
   const overview = useCoreQuery('get_overview');
   const { today } = overview;
@@ -83,8 +85,15 @@ export function Onboarding() {
   const [asOf, setAsOf] = useState(today);
   const [counted, setCounted] = useState(true);
   const [delay, setDelay] = useState(settings.taskmint.arrivalDelayHours);
+  // The currency: kept with the settings at the end, and written in from here on
+  const [currency, setCurrencyCode] = useState(settings.currency);
+  const [pickingCurrency, setPickingCurrency] = useState(false);
+  // (the budget's own is set again whenever it's read: this comes after)
+  setCurrency(currency);
   // Pay
   const [payName, setPayName] = useState('Paycheck');
+  /** The pay once saved: coming back to the step changes that one. */
+  const [payId, setPayId] = useState<string | null>(null);
   const [pay, setPay] = useState('');
   const [payEvery, setPayEvery] = useState<Every>('weeks');
   const [payN, setPayN] = useState('2');
@@ -93,9 +102,7 @@ export function Onboarding() {
   // Everyday spending, a week
   const [spending, setSpending] = useState('');
   // The common bills
-  const [bills, setBills] = useState<BillRow[]>(() =>
-    COMMON_BILLS.map(() => ({ ticked: false, amount: '', day: Number(today.slice(8, 10)) }))
-  );
+  const [bills, setBills] = useState<BillRow[]>(() => COMMON_BILLS.map(() => ({ ticked: false, amount: '', day: 1 })));
 
   const connected = view.taskmint.state === 'ready';
   const next = overview.nextWithdrawal;
@@ -123,6 +130,23 @@ export function Onboarding() {
   };
 
   const save = (item: ItemInput) => change('save_item', { item, edit: false });
+
+  /**
+   * The schedule's first date from `from`, when BudgetMint takes it as in
+   * the balance already: on the balance's day or before. Core says which
+   * date that is (none while what's typed makes no schedule).
+   */
+  const inBalance = (from: string, repeat: Repeat): string | null => {
+    if (balanceCents === null) return null;
+    try {
+      const [first] = core.call('get_schedule_dates', { from, repeat, weekends: 'keep', count: 1 });
+      return first.due <= asOf ? first.due : null;
+    } catch {
+      return null;
+    }
+  };
+  const payRepeat = repeatOf(payEvery, { ...partsOf(undefined, payday), n: Number(payN) });
+  const payInBalance = step === 'pay' && inBalance(payday, payRepeat) !== null;
 
   /** The bills ticked, saved (once onboarding has ended, so a refusal can't save them twice). */
   const saveBills = () => {
@@ -162,6 +186,7 @@ export function Onboarding() {
         settings: {
           ...settings,
           spendingWeeklyCents: parseDollars(spending) ?? settings.spendingWeeklyCents,
+          currency,
           taskmint: { ...settings.taskmint, useForecast: counted, arrivalDelayHours: delay },
         },
       });
@@ -185,9 +210,10 @@ export function Onboarding() {
       if (step === 'pay') {
         const cents = parseDollars(pay);
         if (cents === null) return refuse('pay', 'Enter what each pays, or skip it');
-        const parts = partsOf(undefined, payday);
+        // Saved before, and here again: the same one, with what's here now
+        const id = payId ?? crypto.randomUUID();
         save({
-          id: crypto.randomUUID(),
+          id,
           kind: 'income',
           name: payName,
           category: 'Pay',
@@ -195,7 +221,7 @@ export function Onboarding() {
             {
               from: payday,
               until: null,
-              repeat: repeatOf(payEvery, { ...parts, n: Number(payN) }),
+              repeat: payRepeat,
               amountCents: cents,
               weekends: 'keep',
             },
@@ -207,8 +233,7 @@ export function Onboarding() {
           varies: false,
           saveUp: false,
         });
-        // Saved: going back here doesn't add it twice
-        setPay('');
+        setPayId(id);
       }
       if (step === 'spending' && parseDollars(spending) === null) {
         return refuse('spending', 'Enter a week’s worth, or skip it');
@@ -300,6 +325,13 @@ export function Onboarding() {
                     slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: today } }}
                   />
                 </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  Amounts are in {currencyPlural(currency)}.{' '}
+                  <Link component="button" type="button" variant="body2" onClick={() => setPickingCurrency(true)}>
+                    Change
+                  </Link>
+                </Typography>
+                {pickingCurrency && <CurrencyField value={currency} onChange={setCurrencyCode} defaultOpen />}
                 {balanceCents !== null && (
                   <Typography variant="caption" color="text.secondary">
                     Starting from {formatCents(balanceCents)}
@@ -367,7 +399,7 @@ export function Onboarding() {
                   value={pay}
                   onChange={setPay}
                   error={wrong?.field === 'pay'}
-                  helperText={wrongAt('pay')}
+                  helperText={wrongAt('pay') ?? (payId ? 'Saved. A change here changes it.' : undefined)}
                   inputRef={wrong?.field === 'pay' ? focused : undefined}
                   autoFocus
                 />
@@ -386,7 +418,13 @@ export function Onboarding() {
                   type="date"
                   value={payday}
                   onChange={event => setPayday(event.target.value)}
-                  helperText={payday ? `Starting ${formatWeekday(payday)}` : undefined}
+                  helperText={
+                    !payday
+                      ? undefined
+                      : payInBalance
+                        ? `Starting ${formatWeekday(payday)}. That’s on or before your balance’s day, so BudgetMint takes this one as already in your balance.`
+                        : `Starting ${formatWeekday(payday)}`
+                  }
                   slotProps={{ inputLabel: { shrink: true } }}
                 />
               </Stack>
@@ -420,43 +458,65 @@ export function Onboarding() {
                   const row = bills[at];
                   const set = (patch: Partial<BillRow>) =>
                     setBills(rows => rows.map((one, which) => (which === at ? { ...one, ...patch } : one)));
+                  // (said of an unticked one too, so its room is kept like the fields')
+                  const first = inBalance(today, { every: 'months', n: 1, day: row.day });
                   return (
-                    <Stack key={bill.name} spacing={1}>
+                    // The fields are there from the start, beside the name (under it on a phone)
+                    // and hidden until it's ticked: ticking one moves no row under the pointer.
+                    // Beside the name they're narrow, so the group carries the bill's name
+                    <Box
+                      key={bill.name}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) 300px' },
+                        columnGap: 2,
+                        rowGap: 1,
+                        alignItems: 'start',
+                      }}
+                    >
                       <FormControlLabel
                         control={
                           <Checkbox checked={row.ticked} onChange={event => set({ ticked: event.target.checked })} />
                         }
                         label={bill.name}
+                        sx={{ minHeight: { sm: 56 } }}
                       />
-                      {row.ticked && (
-                        <Stack direction="row" spacing={2} sx={{ pl: 4 }}>
-                          <CurrencyInput
-                            label={`${bill.name}: amount`}
-                            value={row.amount}
-                            onChange={value => set({ amount: value })}
-                            error={wrong?.field === `bill-${at}`}
-                            helperText={
-                              wrongAt(`bill-${at}`) ?? (bill.varies ? 'About: it learns from what you pay' : undefined)
-                            }
-                            inputRef={wrong?.field === `bill-${at}` ? focused : undefined}
-                            sx={{ flex: 1 }}
-                          />
-                          <TextField
-                            select
-                            label="Due on"
-                            value={row.day}
-                            onChange={event => set({ day: Number(event.target.value) })}
-                            sx={{ flex: 1 }}
-                          >
-                            {Array.from({ length: 31 }, (_, day) => day + 1).map(day => (
-                              <MenuItem key={day} value={day}>
-                                {dayLabel(day)}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                        </Stack>
-                      )}
-                    </Stack>
+                      <Stack
+                        role="group"
+                        aria-label={bill.name}
+                        direction="row"
+                        spacing={2}
+                        sx={{ pl: { xs: 4, sm: 0 }, visibility: row.ticked ? 'visible' : 'hidden' }}
+                      >
+                        <CurrencyInput
+                          label="Amount"
+                          value={row.amount}
+                          onChange={value => set({ amount: value })}
+                          error={wrong?.field === `bill-${at}`}
+                          helperText={
+                            wrongAt(`bill-${at}`) ?? (bill.varies ? 'About: it learns from what you pay' : undefined)
+                          }
+                          inputRef={wrong?.field === `bill-${at}` ? focused : undefined}
+                          sx={{ flex: 1 }}
+                        />
+                        <TextField
+                          select
+                          label="Due on"
+                          value={row.day}
+                          onChange={event => set({ day: Number(event.target.value) })}
+                          helperText={
+                            first ? `Its first, ${formatDay(first)}, is taken as already in your balance` : undefined
+                          }
+                          sx={{ flex: 1 }}
+                        >
+                          {Array.from({ length: 31 }, (_, day) => day + 1).map(day => (
+                            <MenuItem key={day} value={day}>
+                              {dayLabel(day)}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      </Stack>
+                    </Box>
                   );
                 })}
               </Stack>

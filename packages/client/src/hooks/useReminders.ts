@@ -5,6 +5,9 @@
  * the app runs). Asked again whenever the budget changes, so a bill paid
  * early stops reminding. Off on a device where the user turned them off.
  *
+ * A browser that hasn't allowed notifications is said so in a toast once
+ * per account on the device; Settings → Reminders keeps saying it after.
+ *
  * Where reminders come only while the app runs, the device keeps when it
  * last ran, and at launch also asks core for the ones it missed since
  * (the last day's at most): the shell shows those at once.
@@ -13,7 +16,7 @@
 import { useEffect, useState } from 'react';
 import type { Reminder } from '@budgetmint/contracts';
 import { useNotification } from '../contexts/NotificationContext';
-import { useCoreQuery } from '../data/BudgetContext';
+import { useBudget, useCoreQuery } from '../data/BudgetContext';
 import { getShell } from '../shell';
 import type { ScheduledNotification } from '../shell/types';
 import { formatWeekday } from '../utils/dates';
@@ -28,6 +31,11 @@ export const MAX_SCHEDULED = 60;
 /** When this device last ran (ms), kept every LAST_RAN_INTERVAL_MS while it does. */
 export const LAST_RAN_KEY = 'remindersLastRan';
 export const LAST_RAN_INTERVAL_MS = 30_000;
+/** Whether this device has told the account that its browser hasn't allowed notifications. */
+export const notificationsNoticedKey = (uid: string) => `notificationsNoticed.${uid}`;
+
+/** What's logged when the shell can't say (or ask) whether notifications are allowed. */
+export const askFailed = (error: unknown) => console.warn('Failed to ask about notifications:', error);
 
 const when = (days: number) => (days === 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`);
 const since = (days: number) => (days === -1 ? 'yesterday' : `${-days} days ago`);
@@ -78,29 +86,31 @@ export function useReminders(): void {
     return () => window.clearInterval(timer);
   }, []);
   // On, but never allowed: the system asks where it can on its own (Android);
-  // a browser asks only at a click, so a toast offers one. Not before
-  // there's anything to remind of: a bill (or income) with a reminder
+  // a browser asks only at a click, so a toast offers one, once (Settings
+  // offers it from then on). Not before there's anything to remind of: a
+  // bill (or income) with a reminder
   const { showWarning } = useNotification();
+  const noticedKey = notificationsNoticedKey(useBudget().view.user!.uid);
   const items = useCoreQuery('get_items');
   const wanted = on && items.some(view => !view.item.archived && view.item.reminder !== null);
   useEffect(() => {
     if (!wanted) return;
     const { notifications } = getShell().platform;
-    const failed = (error: unknown) => console.warn('Failed to ask about notifications:', error);
     if (!notifications.granted) {
-      if (notifications.firesWhenClosed) notifications.request().catch(failed);
+      if (notifications.firesWhenClosed) notifications.request().catch(askFailed);
       return;
     }
     notifications
       .granted()
       .then(granted => {
-        if (granted) return;
+        if (granted || readLocal(noticedKey, false)) return;
+        writeLocal(noticedKey, true, false);
         showWarning('Reminders are on, but this browser hasn’t allowed BudgetMint’s notifications.', {
-          actions: [{ label: 'Allow', onClick: () => notifications.request().catch(failed) }],
+          actions: [{ label: 'Allow', onClick: () => notifications.request().catch(askFailed) }],
         });
       })
-      .catch(failed);
-  }, [wanted, showWarning]);
+      .catch(askFailed);
+  }, [wanted, showWarning, noticedKey]);
   const reminders = useCoreQuery('get_reminders', {
     windowDays: REMINDER_WINDOW_DAYS,
     max: MAX_SCHEDULED,
