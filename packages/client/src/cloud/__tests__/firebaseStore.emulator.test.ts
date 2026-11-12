@@ -165,13 +165,24 @@ describe("BudgetMint's store, in its own project and TaskMint's", () => {
     }).writes;
     await store.write(uid, paid, { deviceId: 'emulator', epoch: 1 });
     // A bank account, and money moved to it: the newest documents
-    const savings = core.call('save_account', { account: { id: 'savings', name: 'Savings' } }).writes;
+    const savings = core.call('save_account', {
+      account: { id: 'savings', name: 'Savings', lowBalanceCents: 0 },
+    }).writes;
     const transfer = core.call('save_item', {
       item: {
         id: 'to-savings',
         kind: 'transfer',
         name: 'To savings',
-        schedule: [{ from: '2026-11-15', repeat: { every: 'once' }, amountCents: 5_000 }],
+        schedule: [
+          { from: '2026-11-15', until: null, repeat: { every: 'once' }, amountCents: 5_000, weekends: 'keep' },
+        ],
+        category: null,
+        autopay: false,
+        reminder: null,
+        archived: false,
+        varies: false,
+        saveUp: false,
+        note: null,
         toAccountId: 'savings',
       },
     }).writes;
