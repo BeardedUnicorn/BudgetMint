@@ -301,6 +301,7 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   // With TaskMint connected, its withdrawals are income too, but not listed here
   const subtitle =
     kind === 'income' && taskmintShown ? 'Money coming in besides TaskMint’s withdrawals.' : words.subtitle;
+  const [showFinished, setShowFinished] = useState(false);
   const views = all.filter(view => view.item.kind === kind);
   const unarchived = views.filter(view => !view.item.archived);
   const monthly = unarchived.reduce((sum, view) => sum + view.monthlyCents, 0);
@@ -308,7 +309,9 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   // A category no longer used by any (renamed, deleted) filters nothing out
   const asked = categories.includes(query.category) ? query : { ...query, category: '' };
   const found = findItems(views, asked);
-  const active = found.filter(view => !view.item.archived);
+  // Finished (a one-off done, a schedule ended) leaves the list, and stays a click away
+  const active = found.filter(view => !view.item.archived && !view.finished);
+  const finished = found.filter(view => !view.item.archived && view.finished);
   const archived = found.filter(view => view.item.archived);
   const narrowed = found.length < views.length;
   const Icon = kind === 'bill' ? BillsIcon : IncomeIcon;
@@ -354,10 +357,31 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
               </>
             ) : (
               <Typography variant="body2" color="text.secondary">
-                {narrowed ? `No ${words.title.toLowerCase()} match.` : 'All archived.'}
+                {narrowed
+                  ? `No ${words.title.toLowerCase()} match.`
+                  : finished.length > 0
+                    ? 'Nothing more to come.'
+                    : 'All archived.'}
               </Typography>
             )}
           </Paper>
+          {finished.length > 0 && (
+            <Paper component="section" aria-labelledby="finished-title" sx={SECTION}>
+              <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography id="finished-title" variant="h6" component="h2">
+                  Finished ({finished.length})
+                </Typography>
+                <Button onClick={() => setShowFinished(shown => !shown)} aria-expanded={showFinished}>
+                  {showFinished ? 'Hide' : 'Show'}
+                </Button>
+              </Stack>
+              {showFinished && (
+                <Box sx={{ mt: 2 }}>
+                  <ItemsTable views={finished} today={today} onOpen={setDialog} />
+                </Box>
+              )}
+            </Paper>
+          )}
           {archived.length > 0 && (
             <Paper component="section" aria-labelledby="archived-title" sx={SECTION}>
               <Typography id="archived-title" variant="h6" component="h2" sx={{ mb: 2 }}>

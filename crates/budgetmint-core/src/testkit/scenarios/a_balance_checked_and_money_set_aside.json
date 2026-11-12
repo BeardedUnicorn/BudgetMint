@@ -129,6 +129,26 @@
       "call": "get_schedule_dates",
       "args": { "from": "2026-11-11", "repeat": { "every": "once" }, "count": 0 },
       "error": "Ask for one date or more"
+    },
+    {
+      "call": "record",
+      "args": { "record": { "id": "repair", "kind": "bill", "name": "Car repair", "amountCents": 60000, "on": "2026-11-09", "category": "Car" } },
+      "expect": { "writes": [{ "docId": "item~repair" }, { "docId": "occ~2026-11-09~repair" }] }
+    },
+    {
+      "call": "record",
+      "args": { "record": { "id": "gift", "kind": "bill", "name": "Birthday gift", "amountCents": 5000, "on": "2026-11-20" } },
+      "expect": { "writes": [{ "docId": "item~gift" }] }
+    },
+    {
+      "call": "record",
+      "args": { "record": { "id": "gift", "kind": "income", "name": "Again", "amountCents": 100, "on": "2026-11-20" } },
+      "error": "That's recorded already"
+    },
+    {
+      "call": "record",
+      "args": { "record": { "id": "zero", "kind": "income", "name": "Nothing", "amountCents": 0, "on": "2026-11-20" } },
+      "error": "Enter the amount"
     }
   ]
 }

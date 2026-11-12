@@ -814,7 +814,7 @@ describe('without TaskMint', () => {
   it('leaves TaskMint out of onboarding', async () => {
     await startBudget({ taskmint: false, settings: null });
     expect(
-      await screen.findByText('Start with what your bank account holds: your bills and income come next.')
+      await screen.findByText('A few things, and you’re set: what your bank account holds, your pay, and your bills.')
     ).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Count TaskMint’s withdrawals' })).not.toBeInTheDocument();
   });

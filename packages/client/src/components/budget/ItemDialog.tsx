@@ -80,7 +80,7 @@ export function repeatOf(every: Every, { n, day, second, week, weekday }: Repeat
 }
 
 /** A repeat's parts, to edit (the day, week and weekday of `today` for those it hasn't). */
-function partsOf(repeat: Repeat | undefined, today: string): RepeatParts {
+export function partsOf(repeat: Repeat | undefined, today: string): RepeatParts {
   const day = Number(today.slice(8, 10));
   // Today's weekday, Monday 0 as core counts (Date's Sunday is 0)
   const weekday = (parseDay(today).getDay() + 6) % 7;

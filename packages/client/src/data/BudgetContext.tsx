@@ -78,7 +78,8 @@ export type ChangeCommand =
   | 'set_balance'
   | 'save_settings'
   | 'restore_budget'
-  | 'settle';
+  | 'settle'
+  | 'record';
 
 /**
  * Makes a change: core checks and plans it (a refusal throws, with the

@@ -20,6 +20,9 @@ function unstarted(store = createFakeStore(), extensions: AppExtensions = {}) {
   return { store, session, shell };
 }
 
+/** A bill with a reminder: something for notifications to say. */
+const reminded = monthly('rent', 'Rent', 12, 50_000, { reminder: { leadDays: [3] } });
+
 describe('the app', () => {
   it('waits for Firebase, then asks to sign in, and opens once signed in', async () => {
     const { store, session, shell } = unstarted();
@@ -73,24 +76,83 @@ describe('the app', () => {
     // TaskMint's account isn't this one: where to sign in to it
     act(() => store.setTaskMintUser(null));
     expect(screen.getByText(/Not signed in to TaskMint/)).toHaveTextContent('Settings → TaskMint');
-    await user.click(screen.getByRole('button', { name: 'Start' }));
-    expect(screen.getByText('Enter your balance, or start without one')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Enter your balance, or skip it')).toBeInTheDocument();
     expect(screen.getByLabelText('Balance')).toBeInvalid();
-    expect(screen.getByLabelText('Balance')).toHaveFocus();
+    await waitFor(() => expect(screen.getByLabelText('Balance')).toHaveFocus());
     await user.type(screen.getByLabelText('Balance'), '2,500');
     expect(screen.getByText('Starting from $2,500.00')).toBeInTheDocument();
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     await user.click(screen.getByLabelText('They reach the bank'));
     await user.click(screen.getByRole('option', { name: '2 days later' }));
-    // Enter in the balance starts it, as Start does
+    // Enter in the balance goes on, as Next does
     await user.type(screen.getByLabelText('Balance'), '{Enter}');
+
+    // Pay: every 2 weeks unless said otherwise; a name it can't do without
+    expect(screen.getByRole('heading', { name: 'Your pay' })).toBeInTheDocument();
+    expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Enter what each pays, or skip it')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Each pays'), '1820');
+    await user.clear(screen.getByLabelText('Name'));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Give it a name')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Name'), 'Acme pay');
+    await user.click(screen.getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Every week' }));
+    await user.click(screen.getByLabelText('Repeats'));
+    await user.click(screen.getByRole('option', { name: 'Something else…' }));
+    fireEvent.change(screen.getByLabelText('Every how many weeks'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Next payday'), { target: { value: '' } });
+    expect(screen.queryByText(/^Starting/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Next payday'), { target: { value: '2026-11-13' } });
+    expect(screen.getByText('Starting Fri, Nov 13')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // Everyday spending: asked for, or skipped; Back and on again keeps it
+    expect(screen.getByRole('heading', { name: 'Everyday spending' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Enter a week’s worth, or skip it')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('A week'), '150');
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    // Pay is saved already: its amount is empty, not added twice
+    expect(screen.getByLabelText('Each pays')).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: 'Skip' }));
+    expect(screen.getByLabelText('A week')).toHaveValue('150');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // The bills most have: ticked ones need an amount
+    expect(screen.getByRole('heading', { name: 'Your regular bills' })).toBeInTheDocument();
+    await user.click(screen.getByRole('checkbox', { name: 'Rent or mortgage' }));
+    await user.click(screen.getByRole('button', { name: 'Start' }));
+    expect(screen.getByText('Enter the amount')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Rent or mortgage: amount'), '1450');
+    await user.click(screen.getAllByLabelText('Due on')[0]);
+    await user.click(screen.getByRole('option', { name: 'The 1st' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Electric' }));
+    expect(screen.getByText('About: it learns from what you pay')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Electric: amount'), '135');
+    await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     const saved = JSON.parse(store.docs.get('settings~account')!.json);
     expect(saved).toMatchObject({
       balance: { cents: 250_000, asOf: '2026-11-10' },
+      spendingWeeklyCents: 15_000,
       taskmint: { arrivalDelayHours: 48 },
     });
+    const items = [...store.docs.values()].map(doc => JSON.parse(doc.json)).filter(doc => doc.schedule);
+    expect(items).toHaveLength(3);
+    expect(items.find(doc => doc.name === 'Acme pay')).toMatchObject({
+      kind: 'income',
+      autopay: true,
+      schedule: [{ from: '2026-11-13', repeat: { every: 'weeks', n: 2 } }],
+    });
+    expect(items.find(doc => doc.name === 'Rent or mortgage')).toMatchObject({
+      category: 'Housing',
+      schedule: [{ repeat: { every: 'months', n: 1, day: 1 }, amountCents: 145_000 }],
+    });
+    expect(items.find(doc => doc.name === 'Electric')).toMatchObject({ varies: true, category: 'Utilities' });
   });
 
   it('lets the wrong account sign out of onboarding, and says when a newer BudgetMint has the settings', async () => {
@@ -99,7 +161,9 @@ describe('the app', () => {
     // The settings exist, written by a newer BudgetMint: said, and not started over
     store.putDoc('settings~account', '{}', 9);
     expect(await screen.findByText(/Some of your data is from a newer BudgetMint/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Start without a balance' }));
+    // Started with nothing but the steps: it ends with the settings, which are refused
+    for (const _ of [1, 2, 3]) await user.click(screen.getByRole('button', { name: 'Skip' }));
+    await user.click(screen.getByRole('button', { name: 'Start' }));
     expect(await screen.findByText(/A newer BudgetMint changed this/)).toBeInTheDocument();
     expect(store.docs.get('settings~account')).toMatchObject({ json: '{}', schema: 9 });
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
@@ -115,9 +179,10 @@ describe('the app', () => {
   it('onboards without a balance, saying when the date or amount is refused', async () => {
     const { user } = await startBudget({ settings: null });
     await user.type(screen.getByLabelText('Balance'), '10');
-    fireEvent.change(screen.getByLabelText('At the end of'), { target: { value: '2030-01-01' } });
-    await user.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(screen.getByLabelText('As of'), { target: { value: '2030-01-01' } });
+    await user.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByText('Set the balance as of today or a day before')).toBeInTheDocument();
+    expect(screen.getByLabelText('As of')).toBeInvalid();
     await user.click(screen.getByRole('switch', { name: 'Count TaskMint’s withdrawals' }));
     expect(screen.queryByLabelText('They reach the bank')).not.toBeInTheDocument();
   });
@@ -198,7 +263,7 @@ describe('the app', () => {
     const shell = createFakeShell({ runtime: 'web', without: ['tray', 'autostart'] });
     const granted = vi.fn(async () => false);
     shell.platform.notifications.granted = granted;
-    const { user } = await startBudget({ shell });
+    const { user } = await startBudget({ shell, items: [reminded] });
     expect(
       await screen.findByText('Reminders are on, but this browser hasn’t allowed BudgetMint’s notifications.')
     ).toBeInTheDocument();
@@ -223,26 +288,29 @@ describe('the app', () => {
     const shell = createFakeShell({ runtime: 'web' });
     const granted = vi.fn(async () => true);
     shell.platform.notifications.granted = granted;
-    const first = await startBudget({ shell });
+    const first = await startBudget({ shell, items: [reminded] });
     await waitFor(() => expect(granted).toHaveBeenCalled());
     expect(screen.queryByText(/hasn’t allowed/)).not.toBeInTheDocument();
     first.unmount();
 
     granted.mockRejectedValueOnce(new Error('no answer'));
-    const second = await startBudget({ shell });
+    const second = await startBudget({ shell, items: [reminded] });
     await waitFor(() => expect(warn).toHaveBeenCalledWith('Failed to ask about notifications:', expect.any(Error)));
     second.unmount();
 
     granted.mockClear();
     writeLocal(REMINDERS_ON_KEY, false, true);
-    await startBudget({ shell });
+    await startBudget({ shell, items: [reminded] });
     expect(granted).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
   it('has the phone’s system ask at launch, where reminders come while the app is closed', async () => {
     const shell = createFakeShell({ runtime: 'mobile', firesWhenClosed: true });
-    await startBudget({ shell });
+    const { store } = await startBudget({ shell });
+    // Not before there's something to remind of
+    expect(shell.platform.notifications.request).not.toHaveBeenCalled();
+    act(() => store.putDoc('item~rent', JSON.stringify(reminded)));
     await waitFor(() => expect(shell.platform.notifications.request).toHaveBeenCalledTimes(1));
     // The desktop needs no asking
     const desk = createFakeShell();

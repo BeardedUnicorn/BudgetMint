@@ -4,7 +4,7 @@
 //! writes; their echo from Firestore changes nothing more.
 
 use crate::docs::{valid_id, DocKey, DocWrite, Snapshot};
-use crate::error::{invalid, CoreError, FormField};
+use crate::error::{invalid, invalid_at, CoreError, FormField};
 use crate::model::{
     Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, OccStatus, Override, Repeat,
     SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAX_CENTS, MAX_HORIZON_DAYS,
@@ -380,6 +380,84 @@ pub fn save_item_from(
     Ok(write_item(snapshot, &saved))
 }
 
+/// Something that happens once, recorded as it happens (or will): what
+/// was spent or came in, on a day.
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RecordInput {
+    /// Made by the client, for the item it becomes.
+    pub id: String,
+    pub kind: ItemKind,
+    pub name: String,
+    pub amount_cents: Cents,
+    pub on: NaiveDate,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A one-off item, already paid (or received) when it's dated today or
+/// before, and still to come when later: one change, with one undo.
+pub fn record(
+    snapshot: &mut Snapshot,
+    input: RecordInput,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    if input.amount_cents <= 0 {
+        return Err(invalid_at(FormField::Amount, "Enter the amount"));
+    }
+    if snapshot.items.contains_key(&input.id) {
+        return Err(invalid("That's recorded already"));
+    }
+    let mut planned = save_item(
+        snapshot,
+        ItemInput {
+            id: input.id.clone(),
+            kind: input.kind,
+            name: input.name,
+            category: input.category,
+            schedule: vec![Segment {
+                from: input.on,
+                until: None,
+                repeat: Repeat::Once,
+                amount_cents: input.amount_cents,
+                weekends: Weekends::Keep,
+            }],
+            autopay: false,
+            reminder: None,
+            archived: false,
+            note: input.note,
+            varies: false,
+            save_up: false,
+        },
+        ctx,
+    )?;
+    if input.on <= ctx.today() {
+        planned.then(
+            set_occurrence(
+                snapshot,
+                OccurrenceInput {
+                    item_id: input.id,
+                    date: input.on,
+                    status: OccStatus::Done {
+                        on: input.on,
+                        amount_cents: input.amount_cents,
+                    },
+                    amount_cents: None,
+                    moved_to: None,
+                    note: None,
+                },
+                ctx,
+            )
+            // The item was just saved, on that day, for that amount: nothing to refuse
+            .expect("a one-off just saved takes its payment"),
+        );
+    }
+    Ok(planned)
+}
+
 /// Changes the schedule from `from` on: what comes before stays as it was.
 pub fn change_schedule(
     snapshot: &mut Snapshot,
@@ -704,6 +782,56 @@ mod tests {
             varies: false,
             save_up: false,
         }
+    }
+
+    #[test]
+    fn records_a_one_off_paid_when_its_day_has_come_with_one_undo() {
+        let mut s = Snapshot::default();
+        let one = |id: &str, on: NaiveDate| RecordInput {
+            id: id.into(),
+            kind: ItemKind::Bill,
+            name: "Repair".into(),
+            amount_cents: 60_000,
+            on,
+            category: None,
+            note: Some("Brakes".into()),
+        };
+        let planned = record(&mut s, one("repair", d(2026, 11, 9)), &ctx()).unwrap();
+        assert_eq!(planned.writes.len(), 2);
+        let repair = &s.items["repair"];
+        assert_eq!(repair.schedule[0].repeat, Repeat::Once);
+        assert!(repair.reminder.is_none());
+        assert_eq!(repair.note.as_deref(), Some("Brakes"));
+        assert_eq!(
+            s.overrides[&("repair".to_string(), d(2026, 11, 9))].status,
+            OccStatus::Done {
+                on: d(2026, 11, 9),
+                amount_cents: 60_000
+            }
+        );
+        // Undone together: the payment first, then the item
+        assert_eq!(planned.undo.len(), 2);
+        assert!(planned.undo[0].doc_id.starts_with("occ~"));
+        // Later: still to come
+        let later = record(&mut s, one("later", d(2026, 12, 1)), &ctx()).unwrap();
+        assert_eq!(later.writes.len(), 1);
+        assert!(s.overrides.keys().all(|(id, _)| id != "later"));
+        assert_eq!(
+            message(record(&mut s, one("repair", d(2026, 11, 9)), &ctx())),
+            "That's recorded already"
+        );
+        let mut unnamed = one("unnamed", d(2026, 11, 9));
+        unnamed.name = " ".into();
+        assert_eq!(
+            record(&mut s, unnamed, &ctx()).unwrap_err().field(),
+            Some(FormField::Name)
+        );
+        let mut nothing = one("nothing", d(2026, 11, 9));
+        nothing.amount_cents = 0;
+        assert_eq!(
+            record(&mut s, nothing, &ctx()).unwrap_err().field(),
+            Some(FormField::Amount)
+        );
     }
 
     #[test]

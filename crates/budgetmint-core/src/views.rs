@@ -8,7 +8,9 @@ use crate::earn::{earn_to_cover, EarnToCover};
 use crate::forecast::contract::PayoutForecast;
 use crate::forecast::series::ProjectedWithdrawal;
 use crate::forecast::ForecastStatus;
-use crate::model::{Balance, Cents, Item, ItemKind, OccStatus, Segment, Settings, TaskMintPlan};
+use crate::model::{
+    Balance, Cents, Item, ItemKind, OccStatus, Repeat, Segment, Settings, TaskMintPlan,
+};
 use crate::occur::{estimate, item_occurrences, occurrences, Estimate, Occurrence};
 use crate::project::{
     project, recorded_arrivals, settled_through, DayRow, FlowKind, FlowStatus, Projection,
@@ -554,6 +556,8 @@ pub struct ItemView {
     pub current: Segment,
     /// Its schedule has begun: a change to it applies from a date, and what's before stays.
     pub started: bool,
+    /// Nothing more to come or to pay: a one-off that's done, a schedule that's ended.
+    pub finished: bool,
 }
 
 /// The part of `item`'s schedule in force on `today`: the latest that has
@@ -619,6 +623,13 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                 .max_by_key(|(on, _)| *on)
                 .map(|(_, o)| occurrence_view(o, today, settled));
             let estimate = estimate(snapshot, item);
+            // Its schedule may go on past what's read here (a one-off years ahead)
+            let goes_on = item.schedule.iter().any(|segment| {
+                segment.from > today
+                    || (segment.repeat != Repeat::Once
+                        && segment.until.is_none_or(|until| until > today))
+            });
+            let finished = next.is_none() && !goes_on && all.iter().all(|o| o.due <= today);
             Some(ItemView {
                 item: item.clone(),
                 next,
@@ -626,6 +637,7 @@ pub fn items(snapshot: &Snapshot, ctx: &Ctx) -> Vec<ItemView> {
                 monthly_cents: monthly_cents(item, today, estimate.map(|e| e.cents)),
                 estimate,
                 started: item.schedule[0].from <= today,
+                finished,
                 current,
             })
         })
@@ -938,6 +950,73 @@ mod tests {
         // A window past the calendar's ends is taken to them
         let all = history(&s, "rent", NaiveDate::MIN, NaiveDate::MAX, &ctx()).unwrap();
         assert!(all.len() >= rent.len());
+    }
+
+    #[test]
+    fn says_which_items_are_finished() {
+        let mut s = Snapshot::default();
+        // A one-off paid, one still to pay, one due ahead; a loan ended; rent going on
+        put_item(
+            &mut s,
+            item("paid", ItemKind::Bill, d(2026, 11, 2), Repeat::Once, 100),
+        );
+        put_over(
+            &mut s,
+            over(
+                "paid",
+                d(2026, 11, 2),
+                OccStatus::Done {
+                    on: d(2026, 11, 2),
+                    amount_cents: 100,
+                },
+            ),
+        );
+        put_item(
+            &mut s,
+            item("owed", ItemKind::Bill, d(2026, 11, 2), Repeat::Once, 100),
+        );
+        put_item(
+            &mut s,
+            item("ahead", ItemKind::Bill, d(2026, 12, 2), Repeat::Once, 100),
+        );
+        put_item(
+            &mut s,
+            item("far", ItemKind::Bill, d(2030, 1, 1), Repeat::Once, 100),
+        );
+        let mut loan = item(
+            "loan",
+            ItemKind::Bill,
+            d(2026, 1, 15),
+            Repeat::Months { n: 1, day: 15 },
+            100,
+        );
+        loan.autopay = true;
+        loan.schedule[0].until = Some(d(2026, 10, 15));
+        put_item(&mut s, loan);
+        put_item(
+            &mut s,
+            item(
+                "rent",
+                ItemKind::Bill,
+                d(2026, 1, 1),
+                Repeat::Months { n: 1, day: 1 },
+                100,
+            ),
+        );
+        let finished: Vec<(String, bool)> = items(&s, &ctx())
+            .into_iter()
+            .map(|view| (view.item.id, view.finished))
+            .collect();
+        for (id, done) in [
+            ("paid", true),
+            ("owed", false),
+            ("ahead", false),
+            ("far", false),
+            ("loan", true),
+            ("rent", false),
+        ] {
+            assert!(finished.contains(&(id.to_string(), done)), "{}", id);
+        }
     }
 
     #[test]
