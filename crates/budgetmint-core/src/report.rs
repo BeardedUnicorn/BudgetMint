@@ -9,7 +9,7 @@ use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
 use crate::model::{Cents, ItemKind, OccStatus};
 use crate::occur::{occurrences, Occurrence};
-use crate::project::{recorded_arrivals, settled_through};
+use crate::project::{recorded_arrivals, settled_through, spending_between};
 use crate::recur::days_in_month;
 use crate::time::{in_calendar, Ctx};
 use chrono::{Datelike, Duration, Months, NaiveDate};
@@ -107,12 +107,15 @@ pub struct ReportView {
     /// Bills paid after they were due, soonest due first.
     pub paid_late: Vec<PaidLate>,
     pub outside: Option<OutsideSpending>,
+    /// The everyday spending the forecast assumes for the month's days so
+    /// far: what "left over" is before.
+    pub spending_assumed_cents: Cents,
     /// The months up to this one, oldest first.
     pub months: Vec<MonthTotals>,
 }
 
 /// The first and last days of `month` (YYYY-MM), when it's one in the calendar.
-fn month_days(month: &str) -> Option<(NaiveDate, NaiveDate)> {
+pub(crate) fn month_days(month: &str) -> Option<(NaiveDate, NaiveDate)> {
     let first = NaiveDate::parse_from_str(&format!("{}-01", month), "%Y-%m-%d")
         .ok()
         .filter(|first| in_calendar(*first))?;
@@ -295,6 +298,11 @@ pub fn report(
         partial: first < today - Duration::days(KEPT_DAYS),
         unfinished: last >= today,
         net_cents: income.done_cents + withdrawals_cents - bills.done_cents,
+        spending_assumed_cents: spending_between(
+            snapshot.settings().spending_weekly_cents,
+            first - Duration::days(1),
+            last.min(today),
+        ),
         bills,
         income,
         withdrawals_cents,
@@ -436,6 +444,24 @@ mod tests {
             recent_days: vec![],
             zone: "America/Chicago".into(),
         }
+    }
+
+    #[test]
+    fn says_what_everyday_spending_the_month_assumes_so_far() {
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            spending_weekly_cents: 7_000,
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        // Ten days of November so far, all of October
+        let spent = |month: &str| {
+            report(&s, None, month, &ctx())
+                .unwrap()
+                .spending_assumed_cents
+        };
+        assert_eq!(spent("2026-11"), 10_000);
+        assert_eq!(spent("2026-10"), 31_000);
     }
 
     #[test]

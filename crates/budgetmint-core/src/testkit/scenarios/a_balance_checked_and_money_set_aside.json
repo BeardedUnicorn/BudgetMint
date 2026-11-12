@@ -149,6 +149,8 @@
       "call": "record",
       "args": { "record": { "id": "zero", "kind": "income", "name": "Nothing", "amountCents": 0, "on": "2026-11-20" } },
       "error": "Enter the amount"
-    }
+    },
+    { "call": "export_month", "args": { "month": "2026-11" }, "expect": { "fileStem": "budgetmint-2026-11" } },
+    { "call": "export_month", "args": { "month": "13" }, "error": "Not a month: 13" }
   ]
 }

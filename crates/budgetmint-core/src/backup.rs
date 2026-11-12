@@ -12,7 +12,7 @@ use crate::error::{invalid, CoreError};
 use crate::model::{Item, ItemKind, OccStatus, Override, Settings};
 use crate::occur::occurrences;
 use crate::time::Ctx;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -150,9 +150,33 @@ fn cell(text: &str) -> String {
 fn csv(snapshot: &Snapshot, ctx: &Ctx) -> String {
     let today = ctx.today();
     let to = today + Duration::days(i64::from(snapshot.settings().horizon_days));
+    csv_between(snapshot, today - Duration::days(CSV_DAYS_BACK), to)
+}
+
+/// A month's bills and income, as a spreadsheet: what Reports looks back on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct MonthExport {
+    pub csv: String,
+    /// What to call the file: "budgetmint-2026-11".
+    pub file_stem: String,
+}
+
+/// `month`'s (YYYY-MM) occurrences as a CSV; None when it isn't a month.
+pub fn month_csv(snapshot: &Snapshot, month: &str) -> Option<MonthExport> {
+    let (first, last) = crate::report::month_days(month)?;
+    Some(MonthExport {
+        csv: csv_between(snapshot, first, last),
+        file_stem: format!("budgetmint-{}", month),
+    })
+}
+
+/// The occurrences due in [from, to], archived items' too, a row each.
+fn csv_between(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> String {
     let mut lines =
         vec!["Due,Name,Kind,Category,Expected,Status,Done on,Amount done,Note".to_string()];
-    for occurrence in occurrences(snapshot, today - Duration::days(CSV_DAYS_BACK), to, true) {
+    for occurrence in occurrences(snapshot, from, to, true) {
         let item = occurrence.item;
         let bill = item.kind == ItemKind::Bill;
         let (status, on, done) = match &occurrence.status {
@@ -255,6 +279,28 @@ mod tests {
             },
         ]);
         s
+    }
+
+    #[test]
+    fn writes_a_months_bills_and_income_as_a_spreadsheet() {
+        let mut s = Snapshot::default();
+        put_item(
+            &mut s,
+            item(
+                "rent",
+                ItemKind::Bill,
+                d(2026, 10, 1),
+                Repeat::Months { n: 1, day: 1 },
+                120_000,
+            ),
+        );
+        let november = month_csv(&s, "2026-11").unwrap();
+        assert_eq!(november.file_stem, "budgetmint-2026-11");
+        let lines: Vec<&str> = november.csv.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].starts_with("2026-11-01,RENT,Bill,"));
+        assert!(month_csv(&s, "13").is_none());
+        assert!(month_csv(&s, "9999-01").is_none());
     }
 
     #[test]

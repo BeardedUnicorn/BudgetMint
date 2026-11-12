@@ -41,6 +41,7 @@ export type { ItemReminder } from "./ItemReminder";
 export type { ItemView } from "./ItemView";
 export type { Money } from "./Money";
 export type { MonthArgs } from "./MonthArgs";
+export type { MonthExport } from "./MonthExport";
 export type { MonthTotals } from "./MonthTotals";
 export type { MonthView } from "./MonthView";
 export type { OccRef } from "./OccRef";

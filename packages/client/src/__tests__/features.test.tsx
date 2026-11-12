@@ -591,7 +591,7 @@ describe('reports', () => {
     expect(screen.getByRole('button', { name: 'The month after' })).toBeDisabled();
     // Rent's in the balance (Nov 9): paid; water's still to come
     expect(screen.getByText('Of $1,040.00 expected, $40.00 still to pay')).toBeInTheDocument();
-    expect(screen.getByText('So far this month')).toBeInTheDocument();
+    expect(screen.getByText('So far: money in, less the bills paid')).toBeInTheDocument();
     expect(screen.getByText('No bill was paid after it was due.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'The month before' }));
@@ -631,6 +631,32 @@ describe('reports', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Reports' }));
     expect(screen.getByText('Left over').parentElement).toHaveTextContent('-$1,000.00');
+  });
+});
+
+describe('reports, besides', () => {
+  it('say what left over is before, chart six months, and download a month', async () => {
+    const shell = (await import('../testing')).createFakeShell();
+    const { user } = await startBudget({
+      shell,
+      items: [monthly('rent', 'Rent', 1, 100_000)],
+      settings: { balance: { cents: 100_000, asOf: '2026-11-09' }, spendingWeeklyCents: 7_000 },
+    });
+    await user.click(screen.getByRole('button', { name: 'Reports' }));
+    expect(
+      screen.getByText('So far: money in, less the bills paid, before about $100.00 of everyday spending')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download this month' }));
+    await waitFor(() =>
+      expect(shell.platform.saveFile).toHaveBeenCalledWith(
+        'budgetmint-2026-11.csv',
+        expect.stringContaining('2026-11-01,Rent,Bill'),
+        'text/csv'
+      )
+    );
+    vi.mocked(shell.platform.saveFile!).mockRejectedValueOnce(new Error('the disk is full'));
+    await user.click(screen.getByRole('button', { name: 'Download this month' }));
+    expect(await screen.findByText('It wasn’t saved: the disk is full')).toBeInTheDocument();
   });
 });
 
