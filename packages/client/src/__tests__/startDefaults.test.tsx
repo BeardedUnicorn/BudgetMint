@@ -24,6 +24,14 @@ describe('starting the app as the shells do', () => {
         messagingSenderId: 'm',
         appId: 'a',
       },
+      taskmint: {
+        apiKey: 'k',
+        authDomain: 't',
+        projectId: 't',
+        storageBucket: 's',
+        messagingSenderId: 'm',
+        appId: 't',
+      },
       cache: 'single' as const,
       popupSignIn: false,
     };

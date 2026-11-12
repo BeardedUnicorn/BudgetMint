@@ -8,6 +8,7 @@ import { readLocal } from '../utils/localStore';
 
 const CLOUD: CloudConfig = {
   firebase: { apiKey: 'k', authDomain: 'd', projectId: 'p', storageBucket: 's', messagingSenderId: 'm', appId: 'a' },
+  taskmint: { apiKey: 'k', authDomain: 't', projectId: 't', storageBucket: 's', messagingSenderId: 'm', appId: 't' },
   cache: 'memory',
   popupSignIn: false,
 };

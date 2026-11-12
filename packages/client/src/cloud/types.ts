@@ -3,26 +3,34 @@
  * session (session.ts) uses only this, so it runs the same over the real
  * SDK (firebaseStore.ts) and over the fake the tests use.
  *
- * The data is laid out in crates/budgetmint-core/src/docs.rs and guarded by
- * TaskMint's rules (firebase/firestore.rules, pinned here): `budgetmint/{uid}`
- * holds the epoch, `budgetmint/{uid}/data/{docId}` one document each. It
- * reads TaskMint's `users/{uid}/published/payoutForecast` and writes nothing
- * under `users/`.
+ * Two projects: BudgetMint's own (its accounts and data) and TaskMint's,
+ * signed in to alongside with the same email and password or Google account,
+ * for TaskMint's forecast only. BudgetMint's data is laid out in
+ * crates/budgetmint-core/src/docs.rs and guarded by its rules
+ * (rules/firestore.rules): `budgetmint/{uid}` holds the epoch,
+ * `budgetmint/{uid}/data/{docId}` one document each. In TaskMint's project
+ * it reads `users/{uid}/published/payoutForecast` and writes nothing.
  */
 
 import type { DocWrite, ForecastDoc, IncomingDoc } from '@budgetmint/contracts';
 
-/** What a shell's build passes in (its Firebase web app). */
+/** A Firebase web app's config, as the console gives it. */
+export interface FirebaseWebApp {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId?: string;
+}
+
+/** What a shell's build passes in (its Firebase web apps). */
 export interface CloudConfig {
-  firebase: {
-    apiKey: string;
-    authDomain: string;
-    projectId: string;
-    storageBucket: string;
-    messagingSenderId: string;
-    appId: string;
-    measurementId?: string;
-  };
+  /** BudgetMint's own: its accounts and data. */
+  firebase: FirebaseWebApp;
+  /** TaskMint's, for its forecast. */
+  taskmint: FirebaseWebApp;
   /**
    * Firestore's cache across launches: shared by a browser's tabs, or one
    * app's own. The data is the cloud's, so the cache is what's there offline.
@@ -66,16 +74,42 @@ export type Unsubscribe = () => void;
 export interface BudgetStore {
   /** The signed-in user, now and whenever it changes. */
   onUser(listener: (user: CloudUser | null) => void): Unsubscribe;
+  /**
+   * Signs in to BudgetMint, and to TaskMint with the same email and password
+   * where TaskMint has that account (not having it is no error).
+   */
   signIn(email: string, password: string): Promise<void>;
+  /** Makes a BudgetMint account (never a TaskMint one), and signs in to TaskMint as `signIn` does. */
   signUp(email: string, password: string): Promise<void>;
+  /** BudgetMint's password: TaskMint's is TaskMint's to reset. */
   resetPassword(email: string): Promise<void>;
-  /** With a Google ID token the shell got itself, or (null) in a popup. */
+  /**
+   * With a Google ID token the shell got itself, or (null) in a popup; and
+   * to TaskMint with the same Google account where TaskMint has it.
+   */
   signInWithGoogle(idToken: string | null): Promise<void>;
+  /** Signs out of both. */
   signOut(): Promise<void>;
-  /** Deletes the signed-in user's account (Firebase may ask them to sign in again first). */
+  /**
+   * Deletes the signed-in user's BudgetMint account (Firebase may ask them
+   * to sign in again first), and signs out of TaskMint: TaskMint's account
+   * is left alone.
+   */
   deleteUser(): Promise<void>;
   /** Whether they signed in recently enough for Firebase to delete the account. */
   signedInRecently(): Promise<boolean>;
+
+  /** Who's signed in to TaskMint (null: nobody), now and whenever it changes. */
+  onTaskMint(listener: (user: CloudUser | null) => void): Unsubscribe;
+  /** Signs in to TaskMint alone: when its password isn't BudgetMint's. */
+  signInToTaskMint(email: string, password: string): Promise<void>;
+  /**
+   * Signs in to TaskMint alone with Google (an ID token, or null: a popup).
+   * Refuses (errors.ts's NO_TASKMINT_ACCOUNT) a Google account TaskMint
+   * doesn't have, making none.
+   */
+  signInToTaskMintWithGoogle(idToken: string | null): Promise<void>;
+  signOutOfTaskMint(): Promise<void>;
   /** BudgetMint's epoch for the account; null when it has none yet. */
   account(uid: string): Promise<number | null>;
   /** Starts BudgetMint's data for the account on its first epoch. */
@@ -94,7 +128,7 @@ export interface BudgetStore {
     onDocs: (snapshot: DocsSnapshot) => void,
     onError: (error: unknown) => void
   ): Unsubscribe;
-  /** TaskMint's payout forecast, as it changes (null: there's none). */
+  /** TaskMint's payout forecast for TaskMint's user `uid`, as it changes (null: there's none). */
   watchForecast(
     uid: string,
     listener: (doc: ForecastDoc | null) => void,
@@ -104,6 +138,4 @@ export interface BudgetStore {
   write(uid: string, writes: DocWrite[], meta: WriteMeta): Promise<void>;
   /** Moves BudgetMint's data to the next epoch and deletes it; the new epoch. */
   deleteAll(uid: string, epoch: number): Promise<number>;
-  /** Whether the account has TaskMint data (then it's TaskMint's to delete). */
-  hasTaskMintData(uid: string): Promise<boolean>;
 }

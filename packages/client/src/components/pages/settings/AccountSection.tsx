@@ -1,7 +1,7 @@
 /**
- * The account: who's signed in, signing out, and deleting BudgetMint's data
- * or the account (when it's BudgetMint's alone: one TaskMint uses too is
- * TaskMint's to delete).
+ * The BudgetMint account: who's signed in, signing out (of TaskMint too),
+ * and deleting BudgetMint's data or the account. TaskMint's account is
+ * TaskMint's: deleting this one only signs out of it.
  */
 
 import { useState } from 'react';
@@ -29,7 +29,7 @@ export function AccountSection() {
     <SettingsSection title="Account" icon={<AccountIcon />}>
       <Typography variant="body2" sx={{ mb: 2 }}>
         Signed in as <strong>{view.user?.email ?? 'you'}</strong>
-        {view.user?.providers.includes('google.com') ? ' with Google' : ''}. It’s the same account as TaskMint’s.
+        {view.user?.providers.includes('google.com') ? ' with Google' : ''}.
       </Typography>
       {problem && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -73,7 +73,7 @@ export function AccountSection() {
         onClose={() => setConfirming(null)}
         onConfirm={attempt(() => session.deleteAccount())}
         title="Delete your account?"
-        message="Your account and your BudgetMint data are deleted. If you use TaskMint with it, delete it from TaskMint instead. This can't be undone."
+        message="Your BudgetMint account and its data are deleted, on every device. Your TaskMint account isn't touched. This can't be undone."
         confirmLabel="Delete account"
         severity="error"
       />

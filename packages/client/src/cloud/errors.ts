@@ -4,7 +4,11 @@
  * ("Firebase: Error (auth/invalid-credential).") name a code, not a fix.
  */
 
+/** What a Google sign-in to TaskMint refuses with when TaskMint has no such account (it makes none). */
+export const NO_TASKMINT_ACCOUNT = 'budgetmint/no-taskmint-account';
+
 const MESSAGES: Record<string, string> = {
+  [NO_TASKMINT_ACCOUNT]: 'TaskMint has no account for that Google account. Sign in to TaskMint the way you do there.',
   'auth/invalid-credential': 'That email and password don’t match an account.',
   'auth/invalid-email': 'That isn’t an email address.',
   'auth/user-disabled': 'This account has been turned off.',
@@ -20,7 +24,7 @@ const MESSAGES: Record<string, string> = {
   'auth/requires-recent-login': 'Sign in again first, then try once more.',
   'permission-denied': 'The cloud refused that change. Sign out and in again.',
   unavailable: 'Can’t reach the cloud. Changes are saved here and go once it’s back.',
-  // The Firebase project is on a free plan, shared with TaskMint
+  // The Firebase project is on a free plan
   'resource-exhausted': 'The cloud’s limit for today is used up. Try again later: it resets each day.',
   unauthenticated: 'Your sign-in has run out. Sign out and in again.',
   'deadline-exceeded': 'The cloud took too long to answer. Check the connection and try again.',

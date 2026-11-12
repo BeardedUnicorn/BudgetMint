@@ -1,37 +1,50 @@
 /**
- * BudgetMint's real Firestore store against TaskMint's rules (the pinned
- * copy in firebase/), on the emulator: scripts/test-emulator.sh runs it in
- * a fresh emulator. Every kind of document BudgetMint writes must pass the
- * rules, a write from an old epoch must not, and BudgetMint must leave
- * nothing outside `budgetmint/`.
+ * BudgetMint's real Firestore store on the emulator, in two projects as in
+ * production: its own under its rules (rules/firestore.rules, which the
+ * emulator loads), and TaskMint's under TaskMint's (the pinned copy in
+ * firebase/, loaded here). scripts/test-emulator.sh runs it in a fresh
+ * emulator. Every kind of document BudgetMint writes must pass its rules, a
+ * write from an old epoch must not, TaskMint's forecast must read under
+ * TaskMint's, and BudgetMint must write nothing at all in TaskMint's project.
+ *
+ * The Auth emulator keeps one set of accounts for every project, so signing
+ * up to BudgetMint signs in to TaskMint alongside as the same user, as when
+ * the two accounts match.
  */
 
-import { describe, expect, it, vi } from 'vitest';
-import type { DocWrite } from '@budgetmint/contracts';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import type { DocWrite, ForecastDoc } from '@budgetmint/contracts';
 import { createFirebaseStore } from '../firebaseStore';
-import type { CloudUser, DocsSnapshot } from '../types';
+import type { CloudUser, DocsSnapshot, FirebaseWebApp } from '../types';
 import { testCore } from '../../testing';
 
 const PROJECT = 'demo-budgetmint';
+const TASKMINT = 'demo-taskmint';
 const HOST = '127.0.0.1';
 
+const webApp = (projectId: string): FirebaseWebApp => ({
+  apiKey: 'demo',
+  authDomain: `${projectId}.firebaseapp.com`,
+  projectId,
+  storageBucket: '',
+  messagingSenderId: '',
+  appId: projectId,
+});
+
 const store = await createFirebaseStore({
-  firebase: {
-    apiKey: 'demo',
-    authDomain: `${PROJECT}.firebaseapp.com`,
-    projectId: PROJECT,
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: 'demo',
-  },
+  firebase: webApp(PROJECT),
+  taskmint: webApp(TASKMINT),
   cache: 'memory',
   popupSignIn: false,
   emulatorHost: HOST,
 });
 
-const signedIn = () =>
+/** The first user `on` reports. */
+const firstUser = (on: (listener: (user: CloudUser | null) => void) => () => void) =>
   new Promise<CloudUser>(resolve => {
-    const stop = store.onUser(user => {
+    const stop = on(user => {
       if (user) {
         stop();
         resolve(user);
@@ -39,12 +52,26 @@ const signedIn = () =>
     });
   });
 
-/** The emulator's REST API, as its owner (past the rules). */
-const owner = (path: string, init: RequestInit = {}) =>
-  fetch(`http://${HOST}:8085/v1/projects/${PROJECT}/databases/(default)/documents${path}`, {
-    ...init,
-    headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+/** A project's documents in the emulator's REST API, as its owner (past the rules). */
+const ownerOf =
+  (project: string) =>
+  (path: string, init: RequestInit = {}) =>
+    fetch(`http://${HOST}:8085/v1/projects/${project}/databases/(default)/documents${path}`, {
+      ...init,
+      headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' },
+    });
+const owner = ownerOf(PROJECT);
+const taskmintOwner = ownerOf(TASKMINT);
+
+beforeAll(async () => {
+  // TaskMint's rules, for TaskMint's project (the tests run in packages/client)
+  const rules = readFileSync(join(process.cwd(), '../../firebase/firestore.rules'), 'utf8');
+  const loaded = await fetch(`http://${HOST}:8085/emulator/v1/projects/${TASKMINT}:securityRules`, {
+    method: 'PUT',
+    body: JSON.stringify({ rules: { files: [{ content: rules }] } }),
   });
+  expect(loaded.ok).toBe(true);
+});
 
 /** Every snapshot `listen` gives until each source has answered. */
 const firstSnapshots = (uid: string, epoch: number) =>
@@ -65,21 +92,35 @@ const firstSnapshots = (uid: string, epoch: number) =>
     );
   });
 
-/** The top-level collections in the emulator, as its owner sees them. */
-async function topLevelCollections(): Promise<string[]> {
-  const reply = await fetch(
-    `http://${HOST}:8085/v1/projects/${PROJECT}/databases/(default)/documents:listCollectionIds`,
-    { method: 'POST', headers: { Authorization: 'Bearer owner', 'Content-Type': 'application/json' }, body: '{}' }
-  );
+/** The collections under `path` in a project, as its owner sees them. */
+async function collections(project: string, path = ''): Promise<string[]> {
+  const reply = await ownerOf(project)(`${path}:listCollectionIds`, { method: 'POST', body: '{}' });
   return ((await reply.json()) as { collectionIds?: string[] }).collectionIds ?? [];
 }
 
-describe("BudgetMint's store on TaskMint's rules", () => {
-  it('writes, reads and deletes only its own documents', async () => {
+/** The forecast `watchForecast` gives once it has one. */
+const forecastOf = (uid: string) =>
+  new Promise<ForecastDoc>((resolve, reject) => {
+    const stop = store.watchForecast(
+      uid,
+      doc => {
+        if (doc) {
+          stop();
+          resolve(doc);
+        }
+      },
+      reject
+    );
+  });
+
+describe("BudgetMint's store, in its own project and TaskMint's", () => {
+  it('writes, reads and deletes only its own documents, and only reads TaskMint’s forecast', async () => {
     const core = testCore();
-    const user = signedIn();
+    const user = firstUser(store.onUser);
+    const taskmintUser = firstUser(store.onTaskMint);
     await store.signUp(`emulator-${Date.now()}@example.com`, 'a long enough password');
     const { uid } = await user;
+    const taskmint = await taskmintUser;
     expect(await store.account(uid)).toBeNull();
     expect(await store.createAccount(uid)).toBe(1);
 
@@ -125,23 +166,34 @@ describe("BudgetMint's store on TaskMint's rules", () => {
     await store.write(uid, paid, { deviceId: 'emulator', epoch: 1 });
     expect(new Set([...writes, ...paid].map(w => w.kind))).toEqual(new Set(['settings', 'item', 'occ']));
 
-    // They read back, and TaskMint's forecast reads as none, not a refusal
+    // They read back
     const seen = await firstSnapshots(uid, 1);
     expect(seen.flatMap(s => s.docs).map(d => d.docId)).toEqual(
       expect.arrayContaining(['settings~account', 'item~rent', 'occ~2026-11-01~rent'])
     );
-    const forecast = await new Promise((resolve, reject) => {
-      const stop = store.watchForecast(
-        uid,
-        doc => {
-          stop();
-          resolve(doc);
+
+    // TaskMint's forecast, as TaskMint publishes it, reads under TaskMint's rules
+    const published = await taskmintOwner(`/users/${taskmint.uid}/published/payoutForecast`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        fields: {
+          schema: { integerValue: '1' },
+          json: { stringValue: '{"forecast":true}' },
+          hash: { stringValue: 'h' },
+          deviceId: { stringValue: 'taskmint-desk' },
+          appVersion: { stringValue: '4.2.0' },
+          epoch: { integerValue: '1' },
+          updatedAt: { timestampValue: '2026-11-10T12:00:00Z' },
         },
-        reject
-      );
+      }),
     });
-    expect(forecast).toBeNull();
-    expect(await store.hasTaskMintData(uid)).toBe(false);
+    expect(published.ok).toBe(true);
+    expect(await forecastOf(taskmint.uid)).toEqual({
+      json: '{"forecast":true}',
+      schema: 1,
+      appVersion: '4.2.0',
+      updatedAtMs: Date.parse('2026-11-10T12:00:00Z'),
+    });
 
     // Deleting moves the data to the next epoch; a write from the old one is refused
     expect(await store.deleteAll(uid, 1)).toBe(2);
@@ -164,8 +216,15 @@ describe("BudgetMint's store on TaskMint's rules", () => {
       expect(listed.documents ?? []).toHaveLength(0);
     });
 
-    // Nothing outside budgetmint/
-    expect(await topLevelCollections()).toEqual(['budgetmint']);
+    // Nothing outside budgetmint/, and nothing at all in TaskMint's project but its forecast
+    expect(await collections(PROJECT)).toEqual(['budgetmint']);
+    expect(await collections(TASKMINT)).toEqual(['users']);
+    expect(await collections(TASKMINT, `/users/${taskmint.uid}`)).toEqual(['published']);
+    const taskmintDocs = (await (await taskmintOwner(`/users/${taskmint.uid}/published`)).json()) as {
+      documents: { name: string; updateTime: string }[];
+    };
+    expect(taskmintDocs.documents.map(doc => doc.name.split('/').at(-1))).toEqual(['payoutForecast']);
+    expect(taskmintDocs.documents[0].updateTime).toBe(((await published.json()) as { updateTime: string }).updateTime);
     await store.signOut();
   });
 });

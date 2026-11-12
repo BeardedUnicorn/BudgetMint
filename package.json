@@ -32,9 +32,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
+    "@firebase/rules-unit-testing": "6.0.0",
     "@resvg/resvg-js": "catalog:",
-    "firebase": "catalog:",
     "@types/node": "catalog:",
+    "firebase": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
