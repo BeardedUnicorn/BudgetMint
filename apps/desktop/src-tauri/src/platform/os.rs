@@ -8,12 +8,16 @@
 //! login exist only on a desktop. On Android and iOS `mobile::DesktopParts`
 //! stands in for them and reports each one missing (the webview leaves out
 //! what needs them: apps/desktop/src/tauriShell.ts).
+//!
+//! The save dialog picks a path on a desktop, and on Android a document (a
+//! content:// address) that the fs plugin opens for the app.
 
 use super::{AvailableUpdate, DownloadEvent, Platform, SaveFile, ScheduledNotification};
 use crate::tray::TrayMenu;
 use crate::window::MAIN;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_dialog::{DialogExt, FilePath};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 use tauri_plugin_opener::OpenerExt;
 
@@ -126,13 +130,32 @@ fn cancel_all_os_notifications(_app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray, the menus, the window's saved place, the updater, opening at
-/// login and the save dialog.
+/// Writes `contents` where a desktop's save dialog said: always a path.
+#[cfg(desktop)]
+fn write_picked(_app: &AppHandle, picked: FilePath, contents: &str) -> Result<(), String> {
+    let path = picked.into_path().map_err(text)?;
+    std::fs::write(path, contents).map_err(text)
+}
+
+/// Writes `contents` where a phone's save dialog said: on Android a document
+/// (a content:// address), which only the system can open, so the fs plugin
+/// asks it for the document's file (as TaskMint's open_picked_file, 08fae9f).
+#[cfg(mobile)]
+fn write_picked(app: &AppHandle, picked: FilePath, contents: &str) -> Result<(), String> {
+    use std::io::Write;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+    let mut options = OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    let mut file = app.fs().open(picked, options).map_err(text)?;
+    file.write_all(contents.as_bytes()).map_err(text)
+}
+
+/// The tray, the menus, the window's saved place, the updater and opening at
+/// login.
 #[cfg(desktop)]
 mod desktop {
     use super::text;
     use crate::menu::{MenuItem, Submenu, SystemItem};
-    use crate::platform::SaveFile;
     use crate::platform::{AvailableUpdate, DownloadEvent};
     use crate::state::AppState;
     use crate::tray::{self, IconClick, TrayMenu};
@@ -146,7 +169,6 @@ mod desktop {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
     use tauri_plugin_autostart::ManagerExt;
-    use tauri_plugin_dialog::DialogExt;
     use tauri_plugin_updater::{Update, UpdaterExt};
     use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
@@ -355,26 +377,6 @@ mod desktop {
             app.autolaunch().is_enabled().map_err(text)
         }
 
-        /// The system's save dialog (over the window, as a sheet on macOS),
-        /// then the file written where it says. It blocks: dispatch runs
-        /// commands off the main thread.
-        pub fn save_file(&self, app: &AppHandle, file: &SaveFile) -> Result<bool, String> {
-            let mut dialog = app.dialog().file().set_file_name(&file.name);
-            if !file.extension.is_empty() {
-                dialog = dialog.add_filter(&file.kind, &[file.extension.as_str()]);
-            }
-            if let Some(window) = app.get_webview_window(crate::window::MAIN) {
-                dialog = dialog.set_parent(&window);
-            }
-            let Some(path) = dialog.blocking_save_file() else {
-                return Ok(false);
-            };
-            let path = path.into_path().map_err(text)?;
-            std::fs::write(&path, &file.contents).map_err(text)?;
-            log::info!("Saved {}", path.display());
-            Ok(true)
-        }
-
         pub fn set_autostart(&self, app: &AppHandle, enabled: bool) -> Result<(), String> {
             let launcher = app.autolaunch();
             match enabled {
@@ -436,7 +438,7 @@ mod desktop {
 /// there.
 #[cfg(mobile)]
 mod mobile {
-    use crate::platform::{AvailableUpdate, DownloadEvent, SaveFile};
+    use crate::platform::{AvailableUpdate, DownloadEvent};
     use crate::tray::TrayMenu;
     use tauri::AppHandle;
 
@@ -460,10 +462,6 @@ mod mobile {
 
         pub fn autostart(&self, _app: &AppHandle) -> Result<bool, String> {
             Err(missing("Opening at login"))
-        }
-
-        pub fn save_file(&self, _app: &AppHandle, _file: &SaveFile) -> Result<bool, String> {
-            Err(missing("Saving a file"))
         }
 
         pub fn set_autostart(&self, _app: &AppHandle, _enabled: bool) -> Result<(), String> {
@@ -591,8 +589,25 @@ impl Platform for TauriPlatform {
         self.desktop.autostart(&self.app)
     }
 
+    /// The system's save dialog (over the window, as a sheet on macOS; on
+    /// Android its document picker), then the file written where it says. It
+    /// blocks: dispatch runs commands off the main thread.
     fn save_file(&self, file: &SaveFile) -> Result<bool, String> {
-        self.desktop.save_file(&self.app, file)
+        let mut dialog = self.app.dialog().file().set_file_name(&file.name);
+        if !file.extension.is_empty() {
+            dialog = dialog.add_filter(&file.kind, &[file.extension.as_str()]);
+        }
+        #[cfg(desktop)]
+        if let Some(window) = self.app.get_webview_window(MAIN) {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(picked) = dialog.blocking_save_file() else {
+            return Ok(false);
+        };
+        let shown = picked.to_string();
+        write_picked(&self.app, picked, &file.contents)?;
+        log::info!("Saved {}", shown);
+        Ok(true)
     }
 
     fn set_autostart(&self, enabled: bool) -> Result<(), String> {

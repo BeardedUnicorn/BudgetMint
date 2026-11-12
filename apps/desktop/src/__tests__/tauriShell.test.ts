@@ -57,7 +57,7 @@ describe('the Tauri shell', () => {
     expect(createTauriShell({ runtime: 'desktop' }).platform.googleSignIn).toBeUndefined();
   });
 
-  it('on a phone: alarms that come with the app closed, and none of the bridges without Android', () => {
+  it('on a phone: alarms that come with the app closed, the save dialog, and none of the bridges without Android', async () => {
     const { platform } = createTauriShell({ runtime: 'mobile' }, { clientId: 'id', clientSecret: 'secret' });
     expect(platform.notifications.firesWhenClosed).toBe(true);
     expect(platform.tray).toBeUndefined();
@@ -66,8 +66,10 @@ describe('the Tauri shell', () => {
     expect(platform.systemBars).toBeUndefined();
     expect(platform.splashScreen).toBeUndefined();
     expect(platform.analytics).toBeUndefined();
-    // No save dialog: the client says to save the files elsewhere
-    expect(platform.saveFile).toBeUndefined();
+    // Android's document picker, through the same command; false when it's cancelled
+    mockInvoke.mockResolvedValueOnce(false);
+    expect(await platform.saveFile!('budget.csv', 'a,b', 'text/csv')).toBe(false);
+    expect(sent()).toEqual([{ command: 'save_file', args: { name: 'budget.csv', text: 'a,b' } }]);
   });
 
   it("on Android: the status bar, the launch screen, Google's account picker and analytics", async () => {
