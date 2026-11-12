@@ -35,7 +35,7 @@ catalog:
   "@vitest/coverage-v8": ^5.1.0
   dayjs: ^1.11.23
   firebase: ^13.2.0
-  jsdom: ^30.0.1
+  jsdom: ^31.0.0
   react: ^19.2.8
   react-dom: ^19.2.8
   recharts: ^3.10.1
