@@ -809,7 +809,7 @@ describe('a bank statement', () => {
     });
     expect(rent).toBeChecked();
     expect(
-      within(dialog).getByText('1 marked paid already; 1 that aren’t bills or income in BudgetMint.')
+      within(dialog).getByText('1 marked paid already; 1 that isn’t a bill or income in BudgetMint.')
     ).toBeInTheDocument();
     const balance = within(dialog).getByRole('checkbox', {
       name: 'Set your balance to $674.10, as of the end of Nov 7, 2026',

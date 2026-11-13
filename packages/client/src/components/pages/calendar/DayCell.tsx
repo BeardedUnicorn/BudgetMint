@@ -1,9 +1,10 @@
 // Adapted from TaskMint packages/client/src/components/pages/calendar/DayCell.tsx @ 26aff93.
 /**
  * One day on the Calendar: its date, the balance at its end, and badges for
- * the bills due, the income, TaskMint's money coming in (dashed while it's
- * only projected) and what the day's work earned in TaskMint that no
- * withdrawal has taken yet (dotted). A button that opens the day.
+ * the bills due, the income, what's moved between the user's accounts,
+ * TaskMint's money coming in (dashed while it's only projected) and what the
+ * day's work earned in TaskMint that no withdrawal has taken yet (dotted). A
+ * button that opens the day.
  *
  * Narrow grids show whole dollars and dots; wider ones (a container query on
  * the grid, see MonthGrid) show cents and labelled badges.
@@ -17,6 +18,7 @@ import {
   CallMade as BillIcon,
   CallReceived as IncomeIcon,
   Savings as WithdrawalIcon,
+  SwapHoriz as MovedIcon,
   WorkHistory as EarnedIcon,
 } from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
@@ -28,7 +30,7 @@ import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/
 /** The grid is wide enough for cents and labelled badges. */
 export const WIDE = '@container calendar (min-width: 640px)';
 
-type Tone = 'error' | 'success' | 'secondary';
+type Tone = 'error' | 'success' | 'secondary' | 'info';
 
 /** A tone's text colour that stays readable on its own tint, in either mode. */
 const toneText = (tone: Tone) => (theme: Theme) =>
@@ -40,6 +42,7 @@ export function describeDay(day: CalendarDay): string {
   const parts: string[] = [];
   if (bills > 0) parts.push(`bills ${formatCents(bills)}`);
   if (income > 0) parts.push(`income ${formatCents(income)}`);
+  if (day.movedCents > 0) parts.push(`${formatCents(day.movedCents)} moved between accounts`);
   if (day.withdrawalCents > 0) {
     parts.push(
       `${day.withdrawalProjected ? 'TaskMint withdrawal expected' : 'TaskMint withdrawal'} ${formatCents(day.withdrawalCents)}`
@@ -102,13 +105,15 @@ function Badge({
 
 /**
  * A dot's shape says what it is too, not only its color: bills round, income
- * a diamond, withdrawals square, earnings not withdrawn yet a bar.
+ * a diamond, withdrawals square, earnings not withdrawn yet a bar, money
+ * moved between accounts an upright bar.
  */
 const DOT_SHAPES = {
   error: { borderRadius: '50%' },
   success: { borderRadius: '1px', transform: 'rotate(45deg)' },
   secondary: { borderRadius: '1px' },
   earned: { width: 9, height: 3, alignSelf: 'center', borderRadius: '1px' },
+  info: { width: 3, height: 9, borderRadius: '1px' },
 } as const;
 
 export function Dot({
@@ -148,7 +153,7 @@ export interface DayCellProps {
 export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }: DayCellProps) {
   const { billsCents: bills, incomeCents: income } = day;
   const uncertain = day.withdrawalUncertainCents > 0;
-  const busy = bills > 0 || income > 0 || day.withdrawalCents > 0;
+  const busy = bills > 0 || income > 0 || day.movedCents > 0 || day.withdrawalCents > 0;
 
   return (
     <Box role="gridcell" aria-selected={selected} sx={{ minWidth: 0 }}>
@@ -209,6 +214,7 @@ export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }
           <Box sx={{ display: 'flex', gap: 0.25, [WIDE]: { display: 'none' } }}>
             {bills > 0 && <Dot tone="error" />}
             {income > 0 && <Dot tone="success" />}
+            {day.movedCents > 0 && <Dot tone="info" />}
             {day.withdrawalCents > 0 && <Dot tone="secondary" hollow={day.withdrawalProjected} />}
             {day.earnedCents > 0 && <Dot tone="secondary" shape="earned" />}
           </Box>
@@ -221,6 +227,11 @@ export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }
         {income > 0 && (
           <Badge tone="success" icon={<IncomeIcon />}>
             {formatCents(income)}
+          </Badge>
+        )}
+        {day.movedCents > 0 && (
+          <Badge tone="info" icon={<MovedIcon />}>
+            {formatCents(day.movedCents)}
           </Badge>
         )}
         {day.withdrawalCents > 0 && (

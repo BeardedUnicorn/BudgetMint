@@ -366,7 +366,13 @@ describe('several bank accounts', () => {
     ].join('\n');
     await user.upload(screen.getByLabelText('Bank statement file'), new File([ofx], 'savings.ofx'));
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
-    // Taken as the main account's at first: its fee isn't that account's
+    // Asked first, with nothing to save until it's said: a savings statement taken as the
+    // main account's would set the wrong balance
+    expect(within(dialog).getByText('Which account is this statement from?')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    // The main account's: its fee isn't that account's
+    await pick(user, dialog, 'Whose statement', 'Main account');
     expect(within(dialog).getByText('None of it matches a bill or income still open.')).toBeInTheDocument();
     await pick(user, dialog, 'Whose statement', 'Savings');
     expect(within(dialog).getByRole('checkbox', { name: 'Fee, due Nov 5: $7.00 on Nov 5' })).toBeChecked();

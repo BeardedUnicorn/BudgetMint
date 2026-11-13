@@ -43,7 +43,7 @@ function LegendItem({
   dot,
   children,
 }: {
-  tone: 'error' | 'success' | 'secondary';
+  tone: 'error' | 'success' | 'secondary' | 'info';
   dashed?: boolean;
   dotted?: boolean;
   dot: ReactNode;
@@ -180,6 +180,11 @@ export function CalendarPage() {
             <LegendItem tone="success" dot={<Dot tone="success" />}>
               Income
             </LegendItem>
+            {view.days.some(day => day.movedCents > 0) && (
+              <LegendItem tone="info" dot={<Dot tone="info" />}>
+                Moved between accounts
+              </LegendItem>
+            )}
             {taskmintShown && (
               <>
                 <LegendItem tone="secondary" dot={<Dot tone="secondary" />}>

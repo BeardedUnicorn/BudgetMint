@@ -399,6 +399,22 @@ describe('bills and income', () => {
     expect(screen.getByRole('dialog', { name: 'Edit Old' })).toBeInTheDocument();
   });
 
+  it('says each one’s next date under its name on a phone, where the column would be off the screen', async () => {
+    const { setPhoneViewport } = await import('../../../../__tests__/setup/viewport');
+    setPhoneViewport();
+    const { user } = await startBudget({
+      items: [monthly('rent', 'Rent', 1, 120_000), monthly('water', 'Water', 9, 2_000)],
+      settings: { balance: { cents: 500_000, asOf: '2026-11-08' } },
+    });
+    await user.click(within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('button', { name: 'Bills' }));
+    expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Next' })).not.toBeInTheDocument();
+    const row = (name: string) => screen.getByText(name).closest('tr')!;
+    expect(row('Rent')).toHaveTextContent(/Next: .*Dec 1/);
+    // Late, in words
+    expect(row('Water')).toHaveTextContent(/Next: Overdue: /);
+  });
+
   it('saves a rename and a new amount together, or neither, and undoes both', async () => {
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 1, 120_000)] });
     await open(user, 'Bills');

@@ -100,17 +100,20 @@ export function ReportsPage() {
             >
               Download this month
             </Button>
-            <IconButton aria-label="The month before" onClick={() => setMonth(addMonths(month, -1))}>
-              <ChevronLeft />
-            </IconButton>
-            <Typography sx={{ minWidth: 150, textAlign: 'center', fontWeight: 600 }}>{formatMonth(month)}</Typography>
-            <IconButton
-              aria-label="The month after"
-              onClick={() => setMonth(addMonths(month, 1))}
-              disabled={month >= current}
-            >
-              <ChevronRight />
-            </IconButton>
+            {/* Together on a line of their own where the button leaves no room (a phone) */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <IconButton aria-label="The month before" onClick={() => setMonth(addMonths(month, -1))}>
+                <ChevronLeft />
+              </IconButton>
+              <Typography sx={{ minWidth: 150, textAlign: 'center', fontWeight: 600 }}>{formatMonth(month)}</Typography>
+              <IconButton
+                aria-label="The month after"
+                onClick={() => setMonth(addMonths(month, 1))}
+                disabled={month >= current}
+              >
+                <ChevronRight />
+              </IconButton>
+            </Box>
           </Box>
         }
       />

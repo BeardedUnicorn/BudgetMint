@@ -67,6 +67,20 @@ describe('the forecast', () => {
     expect(spending).toHaveTextContent('$470.00');
     // The day after: its own only
     expect(within(days).getByText('Everyday spending').closest('tr')).toHaveTextContent('-$10.00');
+    // And the days after the last bill, so the table ends where the forecast does
+    const rows = within(days).getAllByRole('row');
+    expect(rows[rows.length - 1]).toHaveTextContent(/Tue, Nov 24.*Everyday spending, 11 days.*-\$110\.00.*\$320\.00/);
+    expect(screen.getByText(/\$320\.00 on Nov 24\.$/)).toBeInTheDocument();
+  });
+
+  it('counts no spending on the balance’s own day', async () => {
+    await forecast({
+      items: [monthly('rent', 'Rent', 12, 50_000)],
+      settings: { balance: { cents: 100_000, asOf: '2026-11-10' }, spendingWeeklyCents: 7_000, horizonDays: 14 },
+    });
+    const days = screen.getByRole('region', { name: 'Day by day' });
+    // The 11th and the 12th: today's is in the balance already
+    expect(within(days).getByText('Everyday spending, 2 days').closest('tr')).toHaveTextContent('-$20.00');
   });
 
   it('lists TaskMint’s withdrawals ahead, with what’s estimated', async () => {

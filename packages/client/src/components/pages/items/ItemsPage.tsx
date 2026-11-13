@@ -38,6 +38,7 @@ import {
   Payments as IncomeIcon,
   Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
+import { MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { ItemKind, ItemView } from '@budgetmint/contracts';
 import { useAccounts, useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { useNotification } from '../../../contexts/NotificationContext';
@@ -232,7 +233,8 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
             <TableCell>Name</TableCell>
             <TableCell align="right">Amount</TableCell>
             <TableCell>How often</TableCell>
-            <TableCell>Next</TableCell>
+            {/* On a phone it's under the name: the column would be off the screen's edge */}
+            {!compact && <TableCell>Next</TableCell>}
             <TableCell align="right">A month</TableCell>
             {!compact && (
               <TableCell>
@@ -247,6 +249,12 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
           {views.map(view => {
             const { item } = view;
             const segment = view.current;
+            // Said in words too, not only in red
+            const next = `${view.next?.late ? `${occurrenceLabel(view.next)}: ` : ''}${view.next ? formatRelativeDay(view.next.due, today) : '—'}`;
+            const account =
+              item.kind === 'transfer'
+                ? `${nameOf(accountOf(view))} → ${nameOf(item.toAccountId ?? MAIN_ACCOUNT)}`
+                : nameOf(accountOf(view));
             return (
               <TableRow key={item.id} hover>
                 <TableCell>
@@ -260,7 +268,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
                       {item.name}
                     </Typography>
-                    {several && <Chip size="small" variant="outlined" label={nameOf(accountOf(view))} />}
+                    {several && <Chip size="small" variant="outlined" label={account} />}
                     {item.category && <Chip size="small" label={item.category} />}
                     {item.autopay && (
                       <Chip size="small" label={KIND_WORDS[item.kind].auto} variant="outlined" color="info" />
@@ -268,6 +276,14 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     {item.saveUp && <Chip size="small" label="Setting aside" variant="outlined" color="secondary" />}
                     {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
                   </Stack>
+                  {compact && view.next && (
+                    <Typography
+                      variant="caption"
+                      sx={{ display: 'block', color: view.next.late ? 'error.main' : 'text.secondary' }}
+                    >
+                      Next: {next}
+                    </Typography>
+                  )}
                   {item.note && (
                     <Typography
                       variant="caption"
@@ -299,11 +315,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     </Typography>
                   )}
                 </TableCell>
-                <TableCell sx={{ color: view.next?.late ? 'error.main' : undefined }}>
-                  {/* Said in words too, not only in red */}
-                  {view.next?.late && `${occurrenceLabel(view.next)}: `}
-                  {view.next ? formatRelativeDay(view.next.due, today) : '—'}
-                </TableCell>
+                {!compact && <TableCell sx={{ color: view.next?.late ? 'error.main' : undefined }}>{next}</TableCell>}
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
                   {view.monthlyCents > 0 ? formatCents(view.monthlyCents) : '—'}
                 </TableCell>
