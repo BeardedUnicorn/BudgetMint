@@ -9,8 +9,9 @@
 //! - On autopay, due after the balance's day: its due day.
 //! - Still open and due after today: its due day.
 //! - A bill still open, due after the balance's day and by today, is
-//!   overdue: it's counted today (it's still owed). Income that late is only
-//!   flagged: it can't be counted on.
+//!   overdue: it's counted today (it's still owed; one due today is only
+//!   scheduled, and counted the same). Income that late is only flagged: it
+//!   can't be counted on.
 //! - TaskMint's withdrawals: the ones it recorded on the day they reach the
 //!   bank (after the arrival delay), and the projected ones too (forecast).
 //! - Everyday spending (the settings' weekly amount): a day's share of it
@@ -291,7 +292,13 @@ pub fn project_account(
                 // Still owed (a bill), or still to move (a transfer, into this account or out
                 // of it); income not in yet can't be counted on
                 if leg == Leg::Out || item.kind == ItemKind::Transfer {
-                    flows.push(flow(today, FlowStatus::Overdue, occurrence.expected_cents));
+                    // Due today, it's owed all the same, but it isn't overdue yet
+                    let status = if due == today {
+                        FlowStatus::Scheduled
+                    } else {
+                        FlowStatus::Overdue
+                    };
+                    flows.push(flow(today, status, occurrence.expected_cents));
                     overdue.push(late);
                 } else {
                     late_income.push(late);
@@ -1263,6 +1270,37 @@ mod tests {
         };
         assert_eq!(ids(&all.overdue), ["late"]);
         assert_eq!(ids(&all.late_income), ["refund"]);
+    }
+
+    #[test]
+    fn a_bill_due_today_is_owed_but_not_overdue() {
+        let ctx = ctx();
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 10_000, d(2026, 11, 8), 0);
+        put_item(
+            &mut s,
+            item("late", ItemKind::Bill, d(2026, 11, 9), Repeat::Once, 100),
+        );
+        put_item(
+            &mut s,
+            item("today", ItemKind::Bill, d(2026, 11, 10), Repeat::Once, 200),
+        );
+        let p = project(&s, None, &ctx, d(2026, 11, 12));
+        // Both come off today
+        assert_eq!(p.today_row().closing_cents, 9_700);
+        let said: Vec<_> = p
+            .today_row()
+            .flows
+            .iter()
+            .map(|flow| (flow.item_id.as_deref().unwrap(), flow.status))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("late", FlowStatus::Overdue),
+                ("today", FlowStatus::Scheduled)
+            ]
+        );
     }
 
     #[test]
