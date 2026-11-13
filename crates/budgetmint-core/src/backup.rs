@@ -2,14 +2,15 @@
 //! it, and a spreadsheet (CSV) of its occurrences. The cloud is the only
 //! other copy, so this is the one that survives a mistake there.
 //!
-//! A backup holds what core holds: the settings, every item, and what was
-//! said about the occurrences the client reads (a year and a bit back). It
+//! A backup holds what core holds: the settings, the accounts besides the
+//! main one, every item, and what was said about the occurrences the client
+//! reads (a year and a bit back). It
 //! reads only when it's BudgetMint's, from this version or an older one,
 //! with every document as the cloud would take it (crate::docs).
 
 use crate::docs::{valid_id, Snapshot, Versioned, BASE_SCHEMA};
 use crate::error::{invalid, CoreError};
-use crate::model::{Item, ItemKind, OccStatus, Override, Settings};
+use crate::model::{Account, Item, ItemKind, OccStatus, Override, Settings, MAIN_ACCOUNT};
 use crate::occur::occurrences;
 use crate::time::Ctx;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -21,7 +22,7 @@ pub const BACKUP_FORMAT: &str = "budgetmint-backup";
 /// The newest backup version this BudgetMint reads. It writes the newest
 /// schema any of the backup's documents needs (crate::docs::Versioned), so
 /// a backup with nothing newer still restores in an older BudgetMint.
-pub const BACKUP_VERSION: u32 = 3;
+pub const BACKUP_VERSION: u32 = 4;
 /// How far back the spreadsheet starts: a year.
 pub const CSV_DAYS_BACK: i64 = 366;
 
@@ -33,6 +34,9 @@ pub struct Backup {
     pub exported_at: DateTime<Utc>,
     #[serde(default)]
     pub settings: Option<Settings>,
+    /// The account documents (none, with only the main account unnamed).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accounts: Vec<Account>,
     #[serde(default)]
     pub items: Vec<Item>,
     #[serde(default)]
@@ -60,9 +64,11 @@ pub fn export(snapshot: &Snapshot, ctx: &Ctx) -> BudgetExport {
             .items
             .values()
             .map(Versioned::schema)
+            .chain(snapshot.accounts.values().map(Versioned::schema))
             .fold(BASE_SCHEMA, u32::max),
         exported_at: ctx.now,
         settings: snapshot.settings.clone(),
+        accounts: snapshot.accounts.values().cloned().collect(),
         items: snapshot.items.values().cloned().collect(),
         occurrences: snapshot.overrides.values().cloned().collect(),
     };
@@ -77,6 +83,7 @@ pub fn export(snapshot: &Snapshot, ctx: &Ctx) -> BudgetExport {
 #[derive(Debug, Default)]
 pub struct Restored {
     pub settings: Option<Settings>,
+    pub accounts: BTreeMap<String, Account>,
     pub items: BTreeMap<String, Item>,
     pub overrides: BTreeMap<(String, chrono::NaiveDate), Override>,
 }
@@ -111,8 +118,19 @@ pub fn read_backup(json: &str) -> Result<Restored, CoreError> {
     {
         return Err(damaged());
     }
+    for account in backup.accounts {
+        if !valid_id(&account.id) || !account.in_calendar() {
+            return Err(damaged());
+        }
+        restored.accounts.insert(account.id.clone(), account);
+    }
+    // Each item is in the main account or one of the backup's own
+    let known = |id: &str| id == MAIN_ACCOUNT || restored.accounts.contains_key(id);
     for item in backup.items {
         if !valid_id(&item.id) || item.schedule.is_empty() || !item.in_calendar() {
+            return Err(damaged());
+        }
+        if !known(item.account()) || !item.to_account().is_none_or(known) {
             return Err(damaged());
         }
         restored.items.insert(item.id.clone(), item);
@@ -184,12 +202,16 @@ fn csv_between(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> String {
         vec!["Due,Name,Kind,Category,Expected,Status,Done on,Amount done,Note".to_string()];
     for occurrence in occurrences(snapshot, from, to, true) {
         let item = occurrence.item;
-        let bill = item.kind == ItemKind::Bill;
+        let (kind, done_as) = match item.kind {
+            ItemKind::Bill => ("Bill", "Paid"),
+            ItemKind::Income => ("Income", "Received"),
+            ItemKind::Transfer => ("Transfer", "Moved"),
+        };
         let (status, on, done) = match &occurrence.status {
             OccStatus::Open => ("Open", String::new(), String::new()),
             OccStatus::Skipped => ("Skipped", String::new(), String::new()),
             OccStatus::Done { on, amount_cents } => (
-                if bill { "Paid" } else { "Received" },
+                done_as,
                 on.format("%Y-%m-%d").to_string(),
                 amount(*amount_cents),
             ),
@@ -202,7 +224,7 @@ fn csv_between(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> String {
             [
                 occurrence.due.format("%Y-%m-%d").to_string(),
                 cell(&item.name),
-                (if bill { "Bill" } else { "Income" }).to_string(),
+                kind.to_string(),
                 cell(item.category.as_deref().unwrap_or("")),
                 amount(occurrence.expected_cents),
                 status.to_string(),
@@ -308,6 +330,99 @@ mod tests {
         assert_eq!(
             restored.items["trip"].save_up.unwrap().saved_cents,
             Some(30_000)
+        );
+    }
+
+    #[test]
+    fn a_backup_with_accounts_is_the_newest_and_holds_them() {
+        use crate::docs::DocKey;
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 12), Repeat::Once, 700),
+                "savings",
+            ),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 12),
+                Repeat::Once,
+                5_000,
+            ),
+        );
+        let moved = Override {
+            item_id: "put".into(),
+            date: d(2026, 11, 12),
+            status: OccStatus::Done {
+                on: d(2026, 11, 10),
+                amount_cents: 5_000,
+            },
+            amount_cents: None,
+            moved_to: None,
+            note: None,
+            updated_at: DateTime::UNIX_EPOCH,
+        };
+        s.write(
+            DocKey::Occ {
+                date: moved.date,
+                item_id: "put".into(),
+            },
+            Some(&moved),
+        );
+        let files = export(&s, &ctx());
+        let good: serde_json::Value = serde_json::from_str(&files.backup).unwrap();
+        assert_eq!(good["version"], 4);
+        let restored = read_backup(&files.backup).unwrap();
+        assert_eq!(restored.accounts, s.accounts);
+        assert_eq!(restored.items, s.items);
+        // The spreadsheet says a transfer is one, and moved
+        assert!(files
+            .csv
+            .contains("2026-11-12,PUT,Transfer,,50.00,Moved,2026-11-10,50.00,"));
+        // Just an account, with nothing in it yet: the newest too
+        let mut bare = Snapshot::default();
+        put_account(&mut bare, "savings", None);
+        assert!(export(&bare, &ctx()).backup.contains("\"version\": 4"));
+
+        let with = |change: &dyn Fn(&mut serde_json::Value)| {
+            let mut value = good.clone();
+            change(&mut value);
+            read_backup(&value.to_string())
+                .map(|_| ())
+                .unwrap_err()
+                .to_string()
+        };
+        let damaged = "That backup is damaged: part of it doesn't read. Nothing was changed.";
+        let item_at = |name: &str| {
+            good["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .position(|item| item["id"] == name)
+                .unwrap()
+        };
+        assert_eq!(with(&|v| v["accounts"][0]["id"] = "a b".into()), damaged);
+        assert_eq!(
+            with(&|v| {
+                v["accounts"][0]["balance"] =
+                    serde_json::json!({ "cents": 1, "asOf": "1800-01-01" })
+            }),
+            damaged
+        );
+        // An item of an account the backup doesn't have, either way
+        assert_eq!(
+            with(&|v| v["items"][item_at("fee")]["accountId"] = "gone".into()),
+            damaged
+        );
+        assert_eq!(
+            with(&|v| v["items"][item_at("put")]["toAccountId"] = "gone".into()),
+            damaged
         );
     }
 

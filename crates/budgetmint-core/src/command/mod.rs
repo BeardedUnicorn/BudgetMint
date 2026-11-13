@@ -10,12 +10,16 @@ use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
 use crate::goals::{self, GoalsView};
-use crate::model::{Balance, Cents, Repeat, Settings, Weekends};
-use crate::plan::{self, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange};
+use crate::model::{Balance, Cents, Repeat, Settings, Weekends, MAIN_ACCOUNT};
+use crate::plan::{
+    self, AccountInput, ItemInput, OccurrenceInput, Planned, RecordInput, ScheduleChange,
+};
 use crate::reminders::{self, Reminder};
 use crate::report::{self, ReportView};
 use crate::time::Ctx;
-use crate::views::{self, ForecastView, ItemView, MonthView, OccurrenceView, Overview};
+use crate::views::{
+    self, AccountView, ForecastView, ItemView, MonthView, OccurrenceView, Overview,
+};
 use chrono::NaiveDate;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -59,6 +63,12 @@ pub enum Command {
     GetScheduleDates(ScheduleDatesArgs),
     Record(RecordArgs),
     ExportMonth(MonthArgs),
+    GetAccounts(NoArgs),
+    SaveAccount(SaveAccountArgs),
+    ArchiveAccount(ArchiveAccountArgs),
+    DeleteAccount(AccountIdArgs),
+    GetAccountOverview(AccountIdArgs),
+    GetAccountForecast(AccountIdArgs),
 }
 
 macro_rules! command_types {
@@ -123,6 +133,12 @@ command_types! {
     "get_schedule_dates": ScheduleDatesArgs => Vec<ScheduleDate>,
     "record": RecordArgs => Planned,
     "export_month": MonthArgs => MonthExport,
+    "get_accounts": NoArgs => Vec<AccountView>,
+    "save_account": SaveAccountArgs => Planned,
+    "archive_account": ArchiveAccountArgs => Planned,
+    "delete_account": AccountIdArgs => Planned,
+    "get_account_overview": AccountIdArgs => Overview,
+    "get_account_forecast": AccountIdArgs => ForecastView,
 }
 
 /// `reply` read as a `T` and written back.
@@ -296,6 +312,28 @@ pub struct ItemIdArgs {
 #[derive(Debug, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
+pub struct SaveAccountArgs {
+    pub account: AccountInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveAccountArgs {
+    pub account_id: String,
+    pub archived: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountIdArgs {
+    pub account_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
 pub struct SetOccurrenceArgs {
     pub occurrence: OccurrenceInput,
     /// Paid on or before the balance's day, after it was set: the balance moves by it too.
@@ -320,6 +358,10 @@ pub struct RecordArgs {
 #[serde(rename_all = "camelCase")]
 pub struct SetBalanceArgs {
     pub balance: Balance,
+    /// The bank account it's of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -351,6 +393,10 @@ pub struct RestoreBudgetArgs {
 pub struct BalanceCheckArgs {
     /// The balance the user's giving (not set yet).
     pub balance: Balance,
+    /// The bank account it's of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// The open ones they say haven't come out (or in) yet.
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -365,6 +411,10 @@ pub struct BalanceCheckArgs {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SettleArgs {
+    /// The bank account being settled; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// One-offs to record with it (a statement's transactions that are no bill or income here).
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -387,6 +437,10 @@ pub struct SettleArgs {
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReadStatementArgs {
+    /// The bank account the statement is of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
     /// The statement file's text.
     pub text: String,
     /// A CSV's columns, when they weren't found.
@@ -414,6 +468,11 @@ impl Command {
 
 fn to_value<T: Serialize>(value: T) -> serde_json::Value {
     serde_json::to_value(value).expect("replies are plain data")
+}
+
+/// What a page of one account is refused with once it's gone, or archived.
+fn no_account() -> CoreError {
+    CoreError::NotFound("That account isn't in use any more".into())
 }
 
 /// Runs `command` on `budget`, as of `ctx`; its reply as JSON.
@@ -491,7 +550,12 @@ pub fn execute(
             args.from_balance.unwrap_or(false),
             ctx,
         )?),
-        Command::SetBalance(args) => to_value(plan::set_balance(snapshot, args.balance, ctx)?),
+        Command::SetBalance(args) => to_value(plan::set_account_balance(
+            snapshot,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
+            args.balance,
+            ctx,
+        )?),
         Command::Record(args) => to_value(plan::record_with_balance(
             snapshot,
             args.record,
@@ -503,6 +567,34 @@ pub fn execute(
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
         ),
         Command::SaveSettings(args) => to_value(plan::save_settings(snapshot, args.settings)?),
+        Command::GetAccountOverview(args) => to_value(
+            views::overview_of(
+                snapshot,
+                forecast,
+                &taskmint.status,
+                ctx,
+                Some(&args.account_id),
+            )
+            .ok_or_else(no_account)?,
+        ),
+        Command::GetAccountForecast(args) => to_value(
+            views::forecast_of(
+                snapshot,
+                forecast,
+                &taskmint.status,
+                ctx,
+                Some(&args.account_id),
+            )
+            .ok_or_else(no_account)?,
+        ),
+        Command::GetAccounts(_) => to_value(views::accounts(snapshot)),
+        Command::SaveAccount(args) => to_value(plan::save_account(snapshot, args.account)?),
+        Command::ArchiveAccount(args) => to_value(plan::archive_account(
+            snapshot,
+            &args.account_id,
+            args.archived,
+        )?),
+        Command::DeleteAccount(args) => to_value(plan::delete_account(snapshot, &args.account_id)?),
         Command::Undo(args) => to_value(plan::undo(snapshot, args.planned)?),
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),
         Command::RestoreBudget(args) => to_value(plan::restore_budget(snapshot, &args.backup)?),
@@ -511,29 +603,32 @@ pub fn execute(
             report::report(snapshot, forecast, &args.month, ctx)
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
         ),
-        Command::GetBalanceCheck(args) => to_value(balance::balance_check(
+        Command::GetBalanceCheck(args) => to_value(balance::balance_check_of(
             snapshot,
             forecast,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             args.balance,
             args.still_open.unwrap_or_default(),
             &args.amounts.unwrap_or_default(),
             ctx,
-        )),
+        )?),
         Command::GetSpendingEstimate(_) => to_value(balance::spending_estimate(
             &snapshot.settings(),
             ctx.today(),
         )),
-        Command::Settle(args) => to_value(balance::settle(
+        Command::Settle(args) => to_value(balance::settle_account(
             snapshot,
             forecast,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             args.record.unwrap_or_default(),
             args.paid.unwrap_or_default(),
             args.still_open.unwrap_or_default(),
             args.balance,
             ctx,
         )?),
-        Command::ReadStatement(args) => to_value(bank::read_statement(
+        Command::ReadStatement(args) => to_value(bank::read_statement_of(
             snapshot,
+            args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
             &args.text,
             args.columns,
             ctx,

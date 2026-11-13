@@ -5,7 +5,15 @@ import type { OccStatus } from "./OccStatus";
 /**
  * One occurrence of an item, as the pages list it.
  */
-export type OccurrenceView = { itemId: string, name: string, kind: ItemKind, category: string | null, autopay: boolean, 
+export type OccurrenceView = { itemId: string, name: string, kind: ItemKind, 
+/**
+ * The bank account it's in (a transfer's source): "main" for the main one.
+ */
+accountId: string, 
+/**
+ * Where a transfer goes; none for a bill or income.
+ */
+toAccountId: string | null, category: string | null, autopay: boolean, 
 /**
  * Which occurrence: the schedule's date.
  */

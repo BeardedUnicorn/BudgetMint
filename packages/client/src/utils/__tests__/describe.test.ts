@@ -7,6 +7,8 @@ function occurrence(changes: Partial<OccurrenceView>): OccurrenceView {
     itemId: 'rent',
     name: 'Rent',
     kind: 'bill',
+    accountId: 'main',
+    toAccountId: null,
     category: null,
     autopay: false,
     scheduled: '2026-11-01',

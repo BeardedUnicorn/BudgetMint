@@ -9,7 +9,15 @@ key: string,
 /**
  * The key as a positive 31-bit number (Android's notification ids).
  */
-id: number, atMs: number, kind: ReminderKind, itemId: string | null, name: string, due: string, 
+id: number, atMs: number, kind: ReminderKind, itemId: string | null, 
+/**
+ * The item's name; for a low-balance one, the account's when it isn't the main one (else empty).
+ */
+name: string, 
+/**
+ * The account a low-balance one is about, when it isn't the main one.
+ */
+accountId: string | null, due: string, 
 /**
  * The occurrence's amount; the balance then, for a low-balance one.
  */

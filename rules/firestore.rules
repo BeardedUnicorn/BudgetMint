@@ -8,7 +8,8 @@ rules_version = '2';
 //   budgetmint/{uid}             { epoch }: deleting the data starts a new
 //                                epoch, and writes from an older one are
 //                                refused
-//   budgetmint/{uid}/data/{id}   one settings, item or occurrence:
+//   budgetmint/{uid}/data/{id}   one settings, item, occurrence or bank
+//                                account:
 //                                { kind, json, schema, deviceId, epoch,
 //                                updatedAt }. Its JSON is core's
 //                                (crates/budgetmint-core/src/docs.rs), so the
@@ -42,9 +43,10 @@ service cloud.firestore {
         let ids = {
           'settings': 'settings~account',
           'item': 'item~[A-Za-z0-9-]{1,64}',
-          'occ': 'occ~[0-9]{4}-[0-9]{2}-[0-9]{2}~[A-Za-z0-9-]{1,64}'
+          'occ': 'occ~[0-9]{4}-[0-9]{2}-[0-9]{2}~[A-Za-z0-9-]{1,64}',
+          'account': 'account~[A-Za-z0-9-]{1,64}'
         };
-        let sizes = { 'settings': 20000, 'item': 50000, 'occ': 4000 };
+        let sizes = { 'settings': 20000, 'item': 50000, 'occ': 4000, 'account': 20000 };
         return doc.keys().hasOnly(fields)
           && doc.keys().hasAll(fields)
           && doc.kind is string && doc.kind in ids

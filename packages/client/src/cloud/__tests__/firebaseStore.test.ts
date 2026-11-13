@@ -280,7 +280,7 @@ describe('the Firebase store', () => {
     expect(failed).toHaveBeenCalledWith('boom');
   });
 
-  it('listens to the settings, the items and the occurrences from a date', async () => {
+  it('listens to the settings, the items, the bank accounts and the occurrences from a date', async () => {
     const store = await createFirebaseStore(CONFIG);
     const snapshots: unknown[] = [];
     const stop = vi.fn();
@@ -303,6 +303,13 @@ describe('the Firebase store', () => {
         ['where', '__id__', '<=', 'occ~'],
       ],
     });
+    expect(calls[3][0]).toEqual({
+      ref: { path: 'budgetmint/cal/data' },
+      constraints: [
+        ['where', '__id__', '>=', 'account~'],
+        ['where', '__id__', '<=', 'account~'],
+      ],
+    });
 
     const fields =
       (json: unknown, schema: unknown, epoch: unknown = 3) =>
@@ -316,6 +323,10 @@ describe('the Firebase store', () => {
         { type: 'removed', doc: { id: 'item~old', get: fields('{"b":1}', 1) } },
       ],
       metadata: metadata(false, true),
+    });
+    calls[3][2]({
+      docChanges: () => [{ type: 'added', doc: { id: 'account~savings', get: fields('{"c":1}', 4) } }],
+      metadata: metadata(),
     });
     expect(sdk.batch.delete).not.toHaveBeenCalled();
     expect(snapshots).toEqual([
@@ -340,9 +351,15 @@ describe('the Firebase store', () => {
         fromCache: false,
         pendingWrites: true,
       },
+      {
+        source: 'accounts',
+        docs: [{ docId: 'account~savings', json: '{"c":1}', schema: 4 }],
+        fromCache: false,
+        pendingWrites: false,
+      },
     ]);
     unsubscribe();
-    expect(stop).toHaveBeenCalledTimes(3);
+    expect(stop).toHaveBeenCalledTimes(4);
   });
 
   it('reads what a delete cut short left as deleted, and deletes it again', async () => {

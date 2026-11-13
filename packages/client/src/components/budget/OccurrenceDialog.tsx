@@ -1,7 +1,8 @@
 /**
  * One occurrence of a bill or income: paid (when, how much), skipped, or
  * still to come; this time's amount, its due date, and a note. Newly paid
- * by the balance's day, it can move the balance too (FromBalance).
+ * by the balance's day, it can move the balance too (FromBalance). Money
+ * moved between two accounts is the same, in its own words.
  */
 
 import { useRef, useState } from 'react';
@@ -11,6 +12,7 @@ import { LIMITS } from '@budgetmint/contracts';
 import { useBudgetChange } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { formatDay } from '../../utils/dates';
+import { KIND_WORDS } from '../../utils/kinds';
 import { centsToInput, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
@@ -42,7 +44,7 @@ export function OccurrenceDialog({
 }) {
   const change = useBudgetChange();
   const status = occurrence.status;
-  const bill = occurrence.kind === 'bill';
+  const words = KIND_WORDS[occurrence.kind];
   const [state, setState] = useState<State>(askAmount || paying ? 'done' : status.state);
   // Paid today, as Mark paid records it; one on autopay was paid on its day
   const [paidOn, setPaidOn] = useState(
@@ -62,7 +64,12 @@ export function OccurrenceDialog({
   const paidInput = useRef<HTMLInputElement>(null);
   const expectedInput = useRef<HTMLInputElement>(null);
   // Paid just now (not before): it may move the balance
-  const fromBalance = useFromBalance(state === 'done' && status.state !== 'done' ? paidOn : null, occurrence.autopay);
+  const fromBalance = useFromBalance(state === 'done' && status.state !== 'done' ? paidOn : null, {
+    kind: occurrence.kind,
+    autopay: occurrence.autopay,
+    accountId: occurrence.accountId,
+    toAccountId: occurrence.toAccountId,
+  });
   const dirty = useDirty([state, paidOn, paid, expected, usual, due, note, fromBalance.checked]);
 
   const submit = () => {
@@ -121,20 +128,20 @@ export function OccurrenceDialog({
       <Stack spacing={2}>
         {problem && <Alert severity="error">{problem}</Alert>}
         <Typography variant="body2" color="text.secondary">
-          {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} {bill ? 'due' : 'expected'}{' '}
+          {formatMaybeCents(occurrence.expectedCents, occurrence.estimated)} {words.expected}{' '}
           {formatDay(occurrence.due)}
-          {occurrence.autopay ? (bill ? ', on autopay' : ', comes in automatically') : ''}
+          {occurrence.autopay ? words.onAuto : ''}
           {occurrence.estimated ? ' (its amount varies: this is the average of the last few)' : ''}
         </Typography>
         <RadioGroup value={state} onChange={event => setState(event.target.value as State)} aria-label="What happened">
-          <FormControlLabel value="open" control={<Radio />} label={bill ? 'Still to pay' : 'Still to come'} />
-          <FormControlLabel value="done" control={<Radio />} label={bill ? 'Paid' : 'Received'} />
+          <FormControlLabel value="open" control={<Radio />} label={words.stillOpen} />
+          <FormControlLabel value="done" control={<Radio />} label={words.done} />
           <FormControlLabel value="skipped" control={<Radio />} label="Not this time (skip it)" />
         </RadioGroup>
         {state === 'done' && (
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
-              label={bill ? 'Paid on' : 'Received on'}
+              label={words.doneOn}
               type="date"
               value={paidOn}
               onChange={event => setPaidOn(event.target.value)}

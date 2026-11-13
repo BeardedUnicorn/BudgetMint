@@ -6,9 +6,9 @@
 use crate::docs::{valid_id, DocKey, DocWrite, Snapshot};
 use crate::error::{invalid, invalid_at, CoreError, FormField};
 use crate::model::{
-    Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, OccStatus, Override, Repeat,
-    SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAX_CENTS, MAX_HORIZON_DAYS,
-    MIN_HORIZON_DAYS,
+    Account, Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, Leg, OccStatus,
+    Override, Repeat, SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAIN_ACCOUNT, MAX_CENTS,
+    MAX_HORIZON_DAYS, MIN_HORIZON_DAYS,
 };
 use crate::occur::MOVE_DAYS;
 use crate::recur::{is_item_date, item_dates};
@@ -26,6 +26,8 @@ pub const MAX_LEAD_DAYS: u8 = 30;
 pub const MAX_BALANCE_AGE_DAYS: i64 = 366;
 /// The longest a withdrawal may be taken to reach the bank: two weeks.
 pub const MAX_ARRIVAL_HOURS: u16 = 336;
+/// The most bank accounts besides the main one.
+pub const MAX_ACCOUNTS: usize = 12;
 
 /// What a change writes, and what writing undoes it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +97,14 @@ pub struct ItemInput {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub saved_cents: Option<Cents>,
+    /// The bank account it's in (a transfer's source); none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
+    /// Where a transfer goes; none: the main account.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub to_account_id: Option<String>,
 }
 
 /// `text` trimmed, None when empty; refused when longer than `max`.
@@ -271,6 +281,29 @@ fn item<'a>(snapshot: &'a Snapshot, id: &str) -> Result<&'a Item, CoreError> {
     })
 }
 
+/// The account an item names, as it's kept: none for the main one. Refused
+/// when there's no such account, or it's archived and the item isn't.
+fn item_account(
+    snapshot: &Snapshot,
+    id: Option<String>,
+    archived: bool,
+) -> Result<Option<String>, CoreError> {
+    let Some(id) = id.filter(|id| id != MAIN_ACCOUNT) else {
+        return Ok(None);
+    };
+    match snapshot.accounts.get(&id) {
+        Some(account) if archived || !account.archived => Ok(Some(id)),
+        Some(_) => Err(invalid_at(
+            FormField::Account,
+            "That account is archived: bring it back first, or choose another",
+        )),
+        None => Err(invalid_at(
+            FormField::Account,
+            "That account isn't there any more (deleted on another device?)",
+        )),
+    }
+}
+
 fn write_item(snapshot: &mut Snapshot, item: &Item) -> Planned {
     let mut planned = Planned::default();
     planned.add(snapshot.write(DocKey::Item(item.id.clone()), Some(item)));
@@ -372,6 +405,21 @@ pub fn save_item_from(
     let category = text(input.category, MAX_CATEGORY, "category")
         .map_err(at(FormField::Category))?
         .map(|category| spelled_as_before(snapshot, &input.id, category));
+    let account_id = item_account(snapshot, input.account_id, input.archived)?;
+    let to_account_id = match input.kind {
+        ItemKind::Transfer => {
+            let to = item_account(snapshot, input.to_account_id, input.archived)?;
+            if to == account_id {
+                return Err(invalid_at(
+                    FormField::Account,
+                    "Choose two different accounts to move money between",
+                ));
+            }
+            to
+        }
+        // Only a transfer goes anywhere
+        ItemKind::Bill | ItemKind::Income => None,
+    };
     let saved = Item {
         id: input.id,
         kind: input.kind,
@@ -384,6 +432,8 @@ pub fn save_item_from(
         note: text(input.note, MAX_NOTE, "note").map_err(at(FormField::Note))?,
         varies: input.varies,
         save_up,
+        account_id,
+        to_account_id,
         created_at,
         updated_at: ctx.now,
     };
@@ -476,6 +526,14 @@ pub struct RecordInput {
     pub category: Option<String>,
     #[serde(default)]
     pub note: Option<String>,
+    /// The bank account it's in (a transfer's source); none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
+    /// Where a transfer goes; none: the main account.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub to_account_id: Option<String>,
 }
 
 /// A one-off item, already paid (or received) when it's dated today or
@@ -512,6 +570,8 @@ pub fn record(
             varies: false,
             save_up: false,
             saved_cents: None,
+            account_id: input.account_id,
+            to_account_id: input.to_account_id,
         },
         ctx,
     )?;
@@ -569,6 +629,7 @@ pub fn change_schedule(
 pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, CoreError> {
     let restored = crate::backup::read_backup(json)?;
     let items: Vec<String> = snapshot.items.keys().cloned().collect();
+    let accounts: Vec<String> = snapshot.accounts.keys().cloned().collect();
     let overrides: Vec<(String, NaiveDate)> = snapshot.overrides.keys().cloned().collect();
     let occ = |(item_id, date): &(String, NaiveDate)| DocKey::Occ {
         date: *date,
@@ -583,6 +644,12 @@ pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, Co
             .map(|id| DocKey::Item(id.clone())),
     );
     keys.extend(overrides.iter().chain(restored.overrides.keys()).map(occ));
+    keys.extend(
+        accounts
+            .iter()
+            .chain(restored.accounts.keys())
+            .map(|id| DocKey::Account(id.clone())),
+    );
     for key in &keys {
         ours(snapshot, key)?;
     }
@@ -596,7 +663,16 @@ pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, Co
     for id in items.iter().filter(|id| !restored.items.contains_key(*id)) {
         planned.add(snapshot.write::<Item>(DocKey::Item(id.clone()), None));
     }
+    for id in accounts
+        .iter()
+        .filter(|id| !restored.accounts.contains_key(*id))
+    {
+        planned.add(snapshot.write::<Account>(DocKey::Account(id.clone()), None));
+    }
     planned.add(snapshot.write(DocKey::Settings, restored.settings.as_ref()));
+    for (id, account) in &restored.accounts {
+        planned.add(snapshot.write(DocKey::Account(id.clone()), Some(account)));
+    }
     for (id, item) in &restored.items {
         planned.add(snapshot.write(DocKey::Item(id.clone()), Some(item)));
     }
@@ -616,6 +692,11 @@ pub fn archive_item(
     let mut changed = item(snapshot, item_id)?.clone();
     if changed.archived == archived {
         return Ok(Planned::default());
+    }
+    if !archived {
+        // Its accounts are still in use (an archived account holds only what's archived)
+        item_account(snapshot, changed.account_id.clone(), false)?;
+        item_account(snapshot, changed.to_account_id.clone(), false)?;
     }
     changed.archived = archived;
     changed.updated_at = ctx.now;
@@ -740,14 +821,33 @@ pub fn set_occurrence(
     Ok(planned)
 }
 
-/// Whether `balance` is one the forecast can start from (and the settings
-/// this version's to change).
+/// The account `id` names, when it's in use: the main one, or another
+/// that's there and not archived.
+pub(crate) fn live_account(snapshot: &Snapshot, id: &str) -> Result<Account, CoreError> {
+    if id == MAIN_ACCOUNT {
+        return Ok(snapshot.main_account());
+    }
+    let found = account(snapshot, id)?;
+    if found.archived {
+        return Err(invalid("That account is archived: bring it back first"));
+    }
+    Ok(found.clone())
+}
+
+/// Whether `balance` is one `account_id`'s forecast can start from (and
+/// the account's document this version's to change: the settings, for the
+/// main one).
 pub(crate) fn check_balance(
     snapshot: &Snapshot,
+    account_id: &str,
     balance: Balance,
     ctx: &Ctx,
 ) -> Result<(), CoreError> {
-    ours(snapshot, &DocKey::Settings)?;
+    if account_id == MAIN_ACCOUNT {
+        ours(snapshot, &DocKey::Settings)?;
+    } else {
+        live_account(snapshot, account_id)?;
+    }
     let today = ctx.today();
     if balance.as_of > today {
         return Err(invalid("Set the balance as of today or a day before"));
@@ -763,76 +863,148 @@ pub(crate) fn check_balance(
     Ok(())
 }
 
-/// Sets the balance the forecast starts from.
+/// Sets the balance the main account's forecast starts from.
 pub fn set_balance(
     snapshot: &mut Snapshot,
     balance: Balance,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    check_balance(snapshot, balance, ctx)?;
-    Ok(write_balance(snapshot, balance))
+    set_account_balance(snapshot, MAIN_ACCOUNT, balance, ctx)
 }
 
-fn write_balance(snapshot: &mut Snapshot, balance: Balance) -> Planned {
-    let settings = Settings {
-        balance: Some(balance),
-        ..snapshot.settings()
-    };
+/// Sets the balance `account_id`'s forecast starts from.
+pub fn set_account_balance(
+    snapshot: &mut Snapshot,
+    account_id: &str,
+    balance: Balance,
+    ctx: &Ctx,
+) -> Result<Planned, CoreError> {
+    check_balance(snapshot, account_id, balance, ctx)?;
+    Ok(write_balance(snapshot, account_id, balance, None))
+}
+
+/// Writes `account_id`'s balance (checked already) and, with them, its
+/// checks: in the settings for the main account, in its own document for
+/// another.
+pub(crate) fn write_balance(
+    snapshot: &mut Snapshot,
+    account_id: &str,
+    balance: Balance,
+    checks: Option<Vec<crate::model::BalanceCheck>>,
+) -> Planned {
     let mut planned = Planned::default();
-    planned.add(snapshot.write(DocKey::Settings, Some(&settings)));
+    match snapshot.accounts.get(account_id) {
+        Some(kept) if account_id != MAIN_ACCOUNT => {
+            let updated = Account {
+                balance: Some(balance),
+                checks: checks.unwrap_or_else(|| kept.checks.clone()),
+                ..kept.clone()
+            };
+            planned.add(snapshot.write(DocKey::Account(account_id.to_string()), Some(&updated)));
+        }
+        _ => {
+            let settings = snapshot.settings();
+            let updated = Settings {
+                balance: Some(balance),
+                checks: checks.unwrap_or_else(|| settings.checks.clone()),
+                ..settings
+            };
+            planned.add(snapshot.write(DocKey::Settings, Some(&updated)));
+        }
+    }
     planned
 }
 
-/// The balance once money paid (or received) on or before its day is
-/// taken off it (or added): the user says it went after the balance was
-/// set. Left as it is, the balance is taken to count it already, and the
-/// forecast leaves it out. Checked before anything is written.
-fn moved_balance(
+/// Each account an item of `kind` moves money in, and which way: its own
+/// for a bill or income, and where it goes too for a transfer.
+fn legs(kind: ItemKind, account: &str, to: &str) -> Vec<(String, Leg)> {
+    match kind {
+        ItemKind::Bill => vec![(account.to_string(), Leg::Out)],
+        ItemKind::Income => vec![(account.to_string(), Leg::In)],
+        ItemKind::Transfer => vec![(account.to_string(), Leg::Out), (to.to_string(), Leg::In)],
+    }
+}
+
+fn item_legs(item: &Item) -> Vec<(String, Leg)> {
+    legs(
+        item.kind,
+        item.account(),
+        item.to_account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
+    )
+}
+
+/// The balances once money paid (or received, or moved) on or before
+/// their day is taken off them (or added): the user says it went after the
+/// balance was set. Left as it is, a balance is taken to count it already,
+/// and the forecast leaves it out. A transfer moves each of its two
+/// accounts' balances that's dated on or after its day; a bill or income,
+/// its own account's. Refused when it would move none. Checked before
+/// anything is written.
+fn moved_balances(
     snapshot: &Snapshot,
-    kind: ItemKind,
+    legs: Vec<(String, Leg)>,
     amount_cents: Cents,
     on: NaiveDate,
     ctx: &Ctx,
-) -> Result<Balance, CoreError> {
-    let Some(balance) = snapshot.settings().balance else {
-        return Err(invalid("Set your balance first"));
-    };
-    if on > balance.as_of {
-        return Err(invalid(
-            "It's after your balance's day: the forecast counts it already",
-        ));
+) -> Result<Vec<(String, Balance)>, CoreError> {
+    let mut moved = Vec::new();
+    let mut why = "Set your balance first";
+    for (account_id, leg) in legs {
+        match snapshot.balance_of(&account_id) {
+            None => {}
+            Some(balance) if on > balance.as_of => {
+                why = "It's after your balance's day: the forecast counts it already";
+            }
+            Some(balance) => {
+                let now = Balance {
+                    cents: balance.cents + leg.sign() * amount_cents,
+                    as_of: balance.as_of,
+                };
+                check_balance(snapshot, &account_id, now, ctx)?;
+                moved.push((account_id, now));
+            }
+        }
     }
-    let moved = Balance {
-        cents: match kind {
-            ItemKind::Bill => balance.cents - amount_cents,
-            ItemKind::Income => balance.cents + amount_cents,
-        },
-        as_of: balance.as_of,
-    };
-    check_balance(snapshot, moved, ctx)?;
+    if moved.is_empty() {
+        return Err(invalid(why));
+    }
     Ok(moved)
 }
 
+fn write_moved(snapshot: &mut Snapshot, moved: Vec<(String, Balance)>) -> Planned {
+    let mut planned = Planned::default();
+    for (account_id, balance) in moved {
+        planned.then(write_balance(snapshot, &account_id, balance, None));
+    }
+    planned
+}
+
 /// `record`, and with `from_balance`, what it records moves the balance
-/// too (moved_balance): one change, with one undo.
+/// too (moved_balances): one change, with one undo.
 pub fn record_with_balance(
     snapshot: &mut Snapshot,
     input: RecordInput,
     from_balance: bool,
     ctx: &Ctx,
 ) -> Result<Planned, CoreError> {
-    let moved = from_balance
-        .then(|| moved_balance(snapshot, input.kind, input.amount_cents, input.on, ctx))
-        .transpose()?;
+    let moved = if from_balance {
+        let named = |id: &Option<String>| id.as_deref().unwrap_or(MAIN_ACCOUNT).to_string();
+        let legs = legs(
+            input.kind,
+            &named(&input.account_id),
+            &named(&input.to_account_id),
+        );
+        moved_balances(snapshot, legs, input.amount_cents, input.on, ctx)?
+    } else {
+        Vec::new()
+    };
     let mut planned = record(snapshot, input, ctx)?;
-    if let Some(moved) = moved {
-        planned.then(write_balance(snapshot, moved));
-    }
+    planned.then(write_moved(snapshot, moved));
     Ok(planned)
 }
 
 /// `set_occurrence`, and with `from_balance`, what was paid moves the
-/// balance too (moved_balance): one change, with one undo.
+/// balance too (moved_balances): one change, with one undo.
 pub fn set_occurrence_with_balance(
     snapshot: &mut Snapshot,
     input: OccurrenceInput,
@@ -843,7 +1015,7 @@ pub fn set_occurrence_with_balance(
         let OccStatus::Done { on, amount_cents } = input.status else {
             return Err(invalid("Only what's paid moves the balance"));
         };
-        let kind = item(snapshot, &input.item_id)?.kind;
+        let legs = item_legs(item(snapshot, &input.item_id)?);
         // Marked paid before, it moved the balance then (or the balance had it)
         if snapshot
             .overrides
@@ -854,14 +1026,12 @@ pub fn set_occurrence_with_balance(
                 "It's marked paid already: the balance stays as it is",
             ));
         }
-        Some(moved_balance(snapshot, kind, amount_cents, on, ctx)?)
+        moved_balances(snapshot, legs, amount_cents, on, ctx)?
     } else {
-        None
+        Vec::new()
     };
     let mut planned = set_occurrence(snapshot, input, ctx)?;
-    if let Some(moved) = moved {
-        planned.then(write_balance(snapshot, moved));
-    }
+    planned.then(write_moved(snapshot, moved));
     Ok(planned)
 }
 
@@ -916,6 +1086,157 @@ pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Plan
     Ok(planned)
 }
 
+/// A bank account as the user edits it.
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AccountInput {
+    /// Made by the client for a new one; "main" for the main account.
+    pub id: String,
+    pub name: String,
+    /// Days below this are flagged low.
+    #[serde(default)]
+    pub low_balance_cents: Cents,
+}
+
+fn account<'a>(snapshot: &'a Snapshot, id: &str) -> Result<&'a Account, CoreError> {
+    ours(snapshot, &DocKey::Account(id.to_string()))?;
+    snapshot.accounts.get(id).ok_or_else(|| {
+        CoreError::NotFound("That account isn't there any more (deleted on another device?)".into())
+    })
+}
+
+/// Adds a bank account, or saves one's name and low mark. The main
+/// account's name is kept in a document of its own, and its low mark in the
+/// settings, where it's always been.
+pub fn save_account(snapshot: &mut Snapshot, input: AccountInput) -> Result<Planned, CoreError> {
+    if !valid_id(&input.id) {
+        return Err(invalid(
+            "An account's id is 1–64 letters, digits and dashes",
+        ));
+    }
+    let key = DocKey::Account(input.id.clone());
+    ours(snapshot, &key)?;
+    let name = text(Some(input.name), MAX_NAME, "name")
+        .map_err(at(FormField::Name))?
+        .ok_or_else(|| invalid_at(FormField::Name, "Give it a name"))?;
+    if snapshot
+        .all_accounts()
+        .iter()
+        .any(|other| other.id != input.id && other.name.to_lowercase() == name.to_lowercase())
+    {
+        return Err(invalid_at(FormField::Name, "Another account has that name"));
+    }
+    let low_balance_cents = cents(input.low_balance_cents, "low balance")?;
+    let existing = snapshot.accounts.get(&input.id).cloned();
+    let extra: Vec<u32> = snapshot
+        .accounts
+        .values()
+        .filter(|account| !account.is_main())
+        .map(|account| account.order)
+        .collect();
+    let mut planned = Planned::default();
+    let saved = match existing {
+        _ if input.id == MAIN_ACCOUNT => {
+            let settings = snapshot.settings();
+            if settings.low_balance_cents != low_balance_cents {
+                ours(snapshot, &DocKey::Settings)?;
+                let settings = Settings {
+                    low_balance_cents,
+                    ..settings
+                };
+                planned.add(snapshot.write(DocKey::Settings, Some(&settings)));
+            }
+            // Only its name and place: the rest is the settings'
+            Account {
+                id: input.id,
+                name,
+                order: existing.map_or(0, |existing| existing.order),
+                balance: None,
+                low_balance_cents: 0,
+                checks: Vec::new(),
+                archived: false,
+            }
+        }
+        Some(existing) => Account {
+            name,
+            low_balance_cents,
+            ..existing
+        },
+        None if extra.len() >= MAX_ACCOUNTS => {
+            return Err(invalid(format!(
+                "BudgetMint keeps up to {} accounts besides the main one",
+                MAX_ACCOUNTS
+            )));
+        }
+        // After the ones there are
+        None => Account {
+            id: input.id,
+            name,
+            order: extra.into_iter().max().unwrap_or(0) + 1,
+            balance: None,
+            low_balance_cents,
+            checks: Vec::new(),
+            archived: false,
+        },
+    };
+    planned.add(snapshot.write(key, Some(&saved)));
+    Ok(planned)
+}
+
+/// Whether `item` is in `account_id`, or moves money to it.
+fn uses(item: &Item, account_id: &str) -> bool {
+    item.account_id.as_deref() == Some(account_id)
+        || item.to_account_id.as_deref() == Some(account_id)
+}
+
+/// The main account is every budget's: it can't be archived or deleted.
+fn not_main(account_id: &str) -> Result<(), CoreError> {
+    if account_id == MAIN_ACCOUNT {
+        return Err(invalid("The main account stays: every budget has it"));
+    }
+    Ok(())
+}
+
+/// Archives an account (it leaves the lists and the totals; its history
+/// stays), or brings it back. Refused while anything not archived is in it.
+pub fn archive_account(
+    snapshot: &mut Snapshot,
+    account_id: &str,
+    archived: bool,
+) -> Result<Planned, CoreError> {
+    not_main(account_id)?;
+    let mut changed = account(snapshot, account_id)?.clone();
+    if archived
+        && snapshot
+            .items
+            .values()
+            .any(|item| !item.archived && uses(item, account_id))
+    {
+        return Err(invalid(
+            "It still has bills, income or transfers: archive them or move them to another account first",
+        ));
+    }
+    changed.archived = archived;
+    let mut planned = Planned::default();
+    planned.add(snapshot.write(DocKey::Account(account_id.to_string()), Some(&changed)));
+    Ok(planned)
+}
+
+/// Deletes an account nothing is in (archived items too: their history names it).
+pub fn delete_account(snapshot: &mut Snapshot, account_id: &str) -> Result<Planned, CoreError> {
+    not_main(account_id)?;
+    account(snapshot, account_id)?;
+    if snapshot.items.values().any(|item| uses(item, account_id)) {
+        return Err(invalid(
+            "It has bills, income or transfers (archived ones too): archive the account instead",
+        ));
+    }
+    let mut planned = Planned::default();
+    planned.add(snapshot.write::<Account>(DocKey::Account(account_id.to_string()), None));
+    Ok(planned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -949,6 +1270,8 @@ mod tests {
             varies: false,
             save_up: false,
             saved_cents: None,
+            account_id: None,
+            to_account_id: None,
         }
     }
 
@@ -963,6 +1286,8 @@ mod tests {
             on,
             category: None,
             note: Some("Brakes".into()),
+            account_id: None,
+            to_account_id: None,
         };
         let planned = record(&mut s, one("repair", d(2026, 11, 9)), &ctx()).unwrap();
         assert_eq!(planned.writes.len(), 2);
@@ -1368,6 +1693,8 @@ mod tests {
             on,
             category: None,
             note: None,
+            account_id: None,
+            to_account_id: None,
         };
         let repair = || one("repair", ItemKind::Bill, d(2026, 11, 10));
         assert_eq!(
@@ -2063,5 +2390,460 @@ mod tests {
         // A deletion is undone while the item is still gone
         let deleted = delete_item(&mut s, "rent").unwrap();
         assert_eq!(undo(&s, deleted.clone()).unwrap(), deleted.undo);
+    }
+
+    fn account_input(id: &str, name: &str, low_balance_cents: Cents) -> AccountInput {
+        AccountInput {
+            id: id.into(),
+            name: name.into(),
+            low_balance_cents,
+        }
+    }
+
+    fn newer(doc_id: &str) -> crate::docs::IncomingDoc {
+        crate::docs::IncomingDoc {
+            doc_id: doc_id.into(),
+            json: Some("{}".into()),
+            schema: crate::docs::BUDGET_SCHEMA + 1,
+        }
+    }
+
+    #[test]
+    fn adds_and_names_bank_accounts_and_keeps_the_main_ones_in_the_settings() {
+        let mut s = Snapshot::default();
+        assert_eq!(
+            message(save_account(&mut s, account_input("a b", "X", 0))),
+            "An account's id is 1–64 letters, digits and dashes"
+        );
+        let unnamed = save_account(&mut s, account_input("savings", "  ", 0)).unwrap_err();
+        assert_eq!(unnamed.field(), Some(FormField::Name));
+        let long = save_account(&mut s, account_input("savings", &"x".repeat(81), 0)).unwrap_err();
+        assert_eq!(long.field(), Some(FormField::Name));
+        assert_eq!(
+            message(save_account(
+                &mut s,
+                account_input("savings", "Savings", -1)
+            )),
+            "The low balance must be between $0 and $10,000,000,000"
+        );
+
+        let planned = save_account(&mut s, account_input("savings", " Savings ", 5_000)).unwrap();
+        assert_eq!(planned.writes.len(), 1);
+        assert_eq!(
+            (planned.writes[0].doc_id.as_str(), planned.writes[0].schema),
+            ("account~savings", 4)
+        );
+        assert_eq!(
+            (
+                s.accounts["savings"].name.as_str(),
+                s.accounts["savings"].order
+            ),
+            ("Savings", 1)
+        );
+        // The next one comes after it
+        save_account(&mut s, account_input("card", "Card", 0)).unwrap();
+        assert_eq!(s.accounts["card"].order, 2);
+        // One name each, whatever its letters' case: the main account's too
+        for taken in ["savings", "MAIN ACCOUNT"] {
+            let refused = save_account(&mut s, account_input("x", taken, 0)).unwrap_err();
+            assert_eq!(refused.to_string(), "Another account has that name");
+            assert_eq!(refused.field(), Some(FormField::Name));
+        }
+        // Renamed, with another low mark: its place and balance stay
+        save_account(&mut s, account_input("savings", "Rainy day", 7_000)).unwrap();
+        let savings = &s.accounts["savings"];
+        assert_eq!(
+            (
+                savings.name.as_str(),
+                savings.order,
+                savings.low_balance_cents
+            ),
+            ("Rainy day", 1, 7_000)
+        );
+        // Saved as it is: nothing to write
+        assert_eq!(
+            save_account(&mut s, account_input("savings", "Rainy day", 7_000)).unwrap(),
+            Planned::default()
+        );
+
+        // The main account's name is a document of its own, and no settings are written for it
+        let named = save_account(&mut s, account_input(MAIN_ACCOUNT, "Checking", 0)).unwrap();
+        assert_eq!(named.writes.len(), 1);
+        assert_eq!(named.writes[0].doc_id, "account~main");
+        assert!(s.settings.is_none());
+        // Its low mark is the settings', as ever
+        let marked = save_account(&mut s, account_input(MAIN_ACCOUNT, "Checking", 2_500)).unwrap();
+        assert_eq!(marked.writes.len(), 1);
+        assert_eq!(marked.writes[0].doc_id, "settings~account");
+        assert_eq!(s.settings().low_balance_cents, 2_500);
+        assert_eq!(s.accounts[MAIN_ACCOUNT].low_balance_cents, 0);
+        let main = s.account(MAIN_ACCOUNT).unwrap();
+        assert_eq!(
+            (main.name.as_str(), main.low_balance_cents),
+            ("Checking", 2_500)
+        );
+
+        // So many and no more (the main one aside)
+        for n in 2..MAX_ACCOUNTS {
+            save_account(
+                &mut s,
+                account_input(&format!("a{}", n), &format!("A {}", n), 0),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            message(save_account(&mut s, account_input("more", "More", 0))),
+            "BudgetMint keeps up to 12 accounts besides the main one"
+        );
+        // One there already can still be saved
+        save_account(&mut s, account_input("card", "Credit card", 0)).unwrap();
+
+        // What a newer BudgetMint wrote isn't this one's to change
+        s.apply(vec![newer("account~held"), newer("settings~account")]);
+        assert_eq!(
+            message(save_account(&mut s, account_input("held", "Held", 0))),
+            NEWER
+        );
+        assert_eq!(
+            message(save_account(
+                &mut s,
+                account_input(MAIN_ACCOUNT, "Checking", 1)
+            )),
+            NEWER
+        );
+    }
+
+    #[test]
+    fn puts_an_item_in_an_account_and_moves_money_between_two() {
+        let mut s = Snapshot::default();
+        save_account(&mut s, account_input("savings", "Savings", 0)).unwrap();
+        let in_account =
+            |id: &str, kind: ItemKind, from: Option<&str>, to: Option<&str>| ItemInput {
+                kind,
+                account_id: from.map(str::to_string),
+                to_account_id: to.map(str::to_string),
+                ..input(id)
+            };
+        let field = |result: Result<Planned, CoreError>| {
+            let refused = result.unwrap_err();
+            assert_eq!(refused.field(), Some(FormField::Account));
+            refused.to_string()
+        };
+        // A bill in savings: a newer document, with its account
+        let fee = in_account("fee", ItemKind::Bill, Some("savings"), Some("savings"));
+        let planned = save_item(&mut s, fee, &ctx()).unwrap();
+        assert_eq!(planned.writes[0].schema, 4);
+        // Only a transfer goes anywhere
+        assert_eq!(
+            (
+                s.items["fee"].account_id.as_deref(),
+                &s.items["fee"].to_account_id
+            ),
+            (Some("savings"), &None)
+        );
+        // "main" is no account of its own: it's kept as none
+        let rent = in_account("rent", ItemKind::Bill, Some(MAIN_ACCOUNT), None);
+        let planned = save_item(&mut s, rent, &ctx()).unwrap();
+        assert_eq!(planned.writes[0].schema, crate::docs::BASE_SCHEMA);
+        assert_eq!(s.items["rent"].account_id, None);
+
+        // A transfer names two accounts that are there, and not the same one
+        let put = in_account("put", ItemKind::Transfer, None, Some("savings"));
+        save_item(&mut s, put, &ctx()).unwrap();
+        assert_eq!(s.items["put"].to_account(), Some("savings"));
+        let take = in_account(
+            "take",
+            ItemKind::Transfer,
+            Some("savings"),
+            Some(MAIN_ACCOUNT),
+        );
+        save_item(&mut s, take, &ctx()).unwrap();
+        assert_eq!(
+            (s.items["take"].account(), s.items["take"].to_account()),
+            ("savings", Some(MAIN_ACCOUNT))
+        );
+        let different = "Choose two different accounts to move money between";
+        for (from, to) in [(None, None), (Some("savings"), Some("savings"))] {
+            let same = in_account("same", ItemKind::Transfer, from, to);
+            assert_eq!(field(save_item(&mut s, same, &ctx())), different);
+        }
+        let gone = "That account isn't there any more (deleted on another device?)";
+        let from_gone = in_account("x", ItemKind::Bill, Some("gone"), None);
+        assert_eq!(field(save_item(&mut s, from_gone, &ctx())), gone);
+        let to_gone = in_account("x", ItemKind::Transfer, None, Some("gone"));
+        assert_eq!(field(save_item(&mut s, to_gone, &ctx())), gone);
+        // Money isn't set aside for a transfer
+        let mut saved_for = in_account("x", ItemKind::Transfer, None, Some("savings"));
+        saved_for.save_up = true;
+        assert_eq!(
+            message(save_item(&mut s, saved_for, &ctx())),
+            "Money can be set aside for bills that come monthly or less often"
+        );
+
+        // Recorded once: a transfer made today is done, in both its accounts
+        let moved = RecordInput {
+            id: "moved".into(),
+            kind: ItemKind::Transfer,
+            name: "To savings".into(),
+            amount_cents: 2_000,
+            on: d(2026, 11, 10),
+            category: None,
+            note: None,
+            account_id: None,
+            to_account_id: Some("savings".into()),
+        };
+        let planned = record(&mut s, moved, &ctx()).unwrap();
+        assert_eq!(planned.writes.len(), 2);
+        assert_eq!(s.items["moved"].to_account(), Some("savings"));
+    }
+
+    #[test]
+    fn archives_an_account_once_nothing_live_is_in_it_and_deletes_an_empty_one() {
+        let mut s = Snapshot::default();
+        save_account(&mut s, account_input("savings", "Savings", 0)).unwrap();
+        save_account(&mut s, account_input("card", "Card", 0)).unwrap();
+        let stays = "The main account stays: every budget has it";
+        assert_eq!(message(archive_account(&mut s, MAIN_ACCOUNT, true)), stays);
+        assert_eq!(message(delete_account(&mut s, MAIN_ACCOUNT)), stays);
+        let gone = "That account isn't there any more (deleted on another device?)";
+        assert_eq!(message(archive_account(&mut s, "gone", true)), gone);
+        assert_eq!(message(delete_account(&mut s, "gone")), gone);
+
+        let fee = ItemInput {
+            account_id: Some("savings".into()),
+            ..input("fee")
+        };
+        save_item(&mut s, fee.clone(), &ctx()).unwrap();
+        let put = ItemInput {
+            kind: ItemKind::Transfer,
+            to_account_id: Some("card".into()),
+            ..input("put")
+        };
+        save_item(&mut s, put, &ctx()).unwrap();
+        let in_use = "It still has bills, income or transfers: archive them or move them to another account first";
+        assert_eq!(message(archive_account(&mut s, "savings", true)), in_use);
+        assert_eq!(message(archive_account(&mut s, "card", true)), in_use);
+        let has_some =
+            "It has bills, income or transfers (archived ones too): archive the account instead";
+        assert_eq!(message(delete_account(&mut s, "savings")), has_some);
+
+        // Its items archived, it can be: out of use, its history kept
+        archive_item(&mut s, "fee", true, &ctx()).unwrap();
+        archive_item(&mut s, "put", true, &ctx()).unwrap();
+        let archived = archive_account(&mut s, "savings", true).unwrap();
+        assert_eq!(archived.writes[0].doc_id, "account~savings");
+        assert!(s.accounts["savings"].archived);
+        archive_account(&mut s, "card", true).unwrap();
+        // Archived again: nothing to write
+        assert_eq!(
+            archive_account(&mut s, "card", true).unwrap(),
+            Planned::default()
+        );
+        assert_eq!(message(delete_account(&mut s, "savings")), has_some);
+
+        // Nothing live goes into an archived account, or comes back in one
+        let closed = "That account is archived: bring it back first, or choose another";
+        let refused = save_item(&mut s, fee.clone(), &ctx()).unwrap_err();
+        assert_eq!(refused.to_string(), closed);
+        assert_eq!(refused.field(), Some(FormField::Account));
+        assert_eq!(message(archive_item(&mut s, "fee", false, &ctx())), closed);
+        assert_eq!(message(archive_item(&mut s, "put", false, &ctx())), closed);
+        // An archived item in it can still be edited
+        let renamed = ItemInput {
+            name: "Old fee".into(),
+            archived: true,
+            ..fee
+        };
+        save_item(&mut s, renamed, &ctx()).unwrap();
+        assert_eq!(s.items["fee"].name, "Old fee");
+
+        // Brought back, so can they be
+        archive_account(&mut s, "savings", false).unwrap();
+        archive_account(&mut s, "card", false).unwrap();
+        archive_item(&mut s, "fee", false, &ctx()).unwrap();
+        archive_item(&mut s, "put", false, &ctx()).unwrap();
+        // Empty, an account is deleted, and that's undone with it as it was
+        delete_item(&mut s, "fee").unwrap();
+        let deleted = delete_account(&mut s, "savings").unwrap();
+        assert_eq!(deleted.writes[0].json, None);
+        assert!(deleted.undo[0].json.as_ref().unwrap().contains("Savings"));
+        assert!(!s.accounts.contains_key("savings"));
+
+        // A newer BudgetMint's account is left alone
+        s.apply(vec![newer("account~card")]);
+        assert_eq!(message(archive_account(&mut s, "card", true)), NEWER);
+        assert_eq!(message(delete_account(&mut s, "card")), NEWER);
+    }
+
+    #[test]
+    fn moves_the_balance_of_each_account_the_money_is_in() {
+        let mut s = Snapshot::default();
+        for (id, name) in [("savings", "Savings"), ("card", "Card"), ("old", "Old")] {
+            save_account(&mut s, account_input(id, name, 0)).unwrap();
+        }
+        // The main account named: its balance is the settings' all the same
+        save_account(&mut s, account_input(MAIN_ACCOUNT, "Checking", 0)).unwrap();
+        archive_account(&mut s, "old", true).unwrap();
+        let on = |day| d(2026, 11, day);
+        let balance = |cents, day| Balance {
+            cents,
+            as_of: on(day),
+        };
+        let set = set_balance(&mut s, balance(10_000, 10), &ctx()).unwrap();
+        assert_eq!(set.writes[0].doc_id, "settings~account");
+        let set = set_account_balance(&mut s, "savings", balance(5_000, 10), &ctx()).unwrap();
+        assert_eq!(set.writes[0].doc_id, "account~savings");
+        assert_eq!(
+            message(set_account_balance(&mut s, "gone", balance(1, 10), &ctx())),
+            "That account isn't there any more (deleted on another device?)"
+        );
+        assert_eq!(
+            message(set_account_balance(&mut s, "old", balance(1, 10), &ctx())),
+            "That account is archived: bring it back first"
+        );
+        assert_eq!(
+            message(set_account_balance(
+                &mut s,
+                "savings",
+                balance(1, 11),
+                &ctx()
+            )),
+            "Set the balance as of today or a day before"
+        );
+        let cents = |s: &Snapshot| {
+            (
+                s.settings().balance.unwrap().cents,
+                s.accounts["savings"].balance.unwrap().cents,
+            )
+        };
+        let one = |id: &str, kind: ItemKind, day: u32, from: Option<&str>, to: Option<&str>| {
+            RecordInput {
+                id: id.into(),
+                kind,
+                name: id.into(),
+                amount_cents: 1_000,
+                on: on(day),
+                category: None,
+                note: None,
+                account_id: from.map(str::to_string),
+                to_account_id: to.map(str::to_string),
+            }
+        };
+        // Moved from the main account to savings today: out of the one, into the other
+        let put = one("put", ItemKind::Transfer, 10, None, Some("savings"));
+        let planned = record_with_balance(&mut s, put, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 6_000));
+        let written: Vec<&str> = planned.writes.iter().map(|w| w.doc_id.as_str()).collect();
+        assert_eq!(
+            written,
+            [
+                "item~put",
+                "occ~2026-11-10~put",
+                "settings~account",
+                "account~savings"
+            ]
+        );
+        // A bill and income in savings: its balance alone
+        let fee = one("fee", ItemKind::Bill, 10, Some("savings"), None);
+        record_with_balance(&mut s, fee, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 5_000));
+        let interest = one("interest", ItemKind::Income, 10, Some("savings"), None);
+        record_with_balance(&mut s, interest, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 6_000));
+        // To an account with no balance yet: only where it leaves
+        let pay_card = one(
+            "pay-card",
+            ItemKind::Transfer,
+            10,
+            Some("savings"),
+            Some("card"),
+        );
+        record_with_balance(&mut s, pay_card, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (9_000, 5_000));
+        assert_eq!(s.accounts["card"].balance, None);
+        // All in an account with none: nothing to move, and nothing recorded
+        let due = one("due", ItemKind::Bill, 10, Some("card"), None);
+        assert_eq!(
+            message(record_with_balance(&mut s, due, true, &ctx())),
+            "Set your balance first"
+        );
+        assert!(!s.items.contains_key("due"));
+
+        // Savings' balance as of the 8th: a transfer on the 9th is after it (its forecast counts
+        // it), and on or before the main account's, which moves
+        set_account_balance(&mut s, "savings", balance(5_000, 8), &ctx()).unwrap();
+        let later = one("later", ItemKind::Transfer, 9, None, Some("savings"));
+        record_with_balance(&mut s, later, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (8_000, 5_000));
+        let after = "It's after your balance's day: the forecast counts it already";
+        let late_fee = one("late-fee", ItemKind::Bill, 9, Some("savings"), None);
+        assert_eq!(
+            message(record_with_balance(&mut s, late_fee, true, &ctx())),
+            after
+        );
+        // With no balance on the other side either, that's still why
+        let nowhere = one(
+            "nowhere",
+            ItemKind::Transfer,
+            9,
+            Some("savings"),
+            Some("card"),
+        );
+        assert_eq!(
+            message(record_with_balance(&mut s, nowhere, true, &ctx())),
+            after
+        );
+
+        // Marked paid on its balance's day: the account it's in
+        let rent = ItemInput {
+            account_id: Some("savings".into()),
+            ..input("rent")
+        };
+        save_item(&mut s, rent, &ctx()).unwrap();
+        let paid = occurrence(
+            "rent",
+            d(2026, 11, 1),
+            OccStatus::Done {
+                on: on(8),
+                amount_cents: 100,
+            },
+        );
+        let planned = set_occurrence_with_balance(&mut s, paid, true, &ctx()).unwrap();
+        assert_eq!(cents(&s), (8_000, 4_900));
+        assert_eq!(planned.writes[1].doc_id, "account~savings");
+
+        // A newer BudgetMint's account isn't this one's to set a balance in
+        s.apply(vec![newer("account~card")]);
+        assert_eq!(
+            message(set_account_balance(&mut s, "card", balance(1, 10), &ctx())),
+            NEWER
+        );
+    }
+
+    #[test]
+    fn restores_a_backups_accounts_and_drops_the_ones_it_hasnt() {
+        let mut s = Snapshot::default();
+        save_account(&mut s, account_input("savings", "Savings", 0)).unwrap();
+        let fee = ItemInput {
+            account_id: Some("savings".into()),
+            ..input("fee")
+        };
+        save_item(&mut s, fee, &ctx()).unwrap();
+        let backup = crate::backup::export(&s, &ctx()).backup;
+        // Since: savings renamed, and another account added
+        save_account(&mut s, account_input("savings", "Rainy day", 0)).unwrap();
+        save_account(&mut s, account_input("card", "Card", 0)).unwrap();
+        let planned = restore_budget(&mut s, &backup).unwrap();
+        assert_eq!(s.accounts.keys().collect::<Vec<_>>(), ["savings"]);
+        assert_eq!(s.accounts["savings"].name, "Savings");
+        let written: Vec<&str> = planned
+            .writes
+            .iter()
+            .map(|write| write.doc_id.as_str())
+            .collect();
+        assert_eq!(written, ["account~card", "account~savings"]);
+        // An account a newer BudgetMint wrote isn't replaced: nothing is
+        s.apply(vec![newer("account~savings")]);
+        assert_eq!(message(restore_budget(&mut s, &backup)), NEWER);
     }
 }

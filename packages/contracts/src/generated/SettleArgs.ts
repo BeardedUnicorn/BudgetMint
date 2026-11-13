@@ -6,6 +6,10 @@ import type { RecordInput } from "./RecordInput";
 
 export type SettleArgs = { 
 /**
+ * The bank account being settled; none: the main one.
+ */
+accountId?: string, 
+/**
  * One-offs to record with it (a statement's transactions that are no bill or income here).
  */
 record?: Array<RecordInput>, 

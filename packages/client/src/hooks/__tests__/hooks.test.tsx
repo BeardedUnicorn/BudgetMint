@@ -16,6 +16,7 @@ const reminder = (changes: Partial<Reminder>): Reminder => ({
   kind: 'bill',
   itemId: 'rent',
   name: 'Rent',
+  accountId: null,
   due: '2026-12-01',
   amountCents: 120_000,
   leadDays: 3,
@@ -144,11 +145,26 @@ describe('reminders', () => {
     expect(reminderText(reminder({ kind: 'income', name: 'Pay', daysLeft: -1 })).title).toBe(
       'Pay was to come in yesterday'
     );
+    expect(reminderText(reminder({ kind: 'transfer', name: 'To savings', daysLeft: 1 }))).toEqual({
+      title: 'To savings: move it tomorrow',
+      body: '$1,200.00, Tue, Dec 1.',
+    });
+    expect(reminderText(reminder({ kind: 'transfer', name: 'To savings', daysLeft: -2, autopay: true }))).toEqual({
+      title: 'To savings: to move since 2 days ago',
+      body: '$1,200.00 moves by itself, Tue, Dec 1.',
+    });
     expect(reminderText(reminder({ kind: 'lowBalance', amountCents: 800 })).title).toBe('Your balance gets low');
     expect(reminderText(reminder({ kind: 'lowBalance', amountCents: -800, short: true }))).toEqual({
       title: 'Your balance goes below zero',
       body: 'It’s -$8.00 on Tue, Dec 1.',
     });
+    // Another bank account's: by its name
+    expect(
+      reminderText(reminder({ kind: 'lowBalance', name: 'Savings', accountId: 'savings', amountCents: 800 })).title
+    ).toBe('Savings gets low');
+    expect(
+      reminderText(reminder({ kind: 'lowBalance', name: 'Savings', accountId: 'savings', short: true })).title
+    ).toBe('Savings goes below zero');
     expect(scheduled([reminder({})])).toEqual([
       { id: 7, atMs: 1, title: 'Rent is due in 3 days', body: '$1,200.00, Tue, Dec 1.' },
     ]);

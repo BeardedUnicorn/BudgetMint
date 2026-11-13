@@ -9,6 +9,10 @@ export type BalanceCheckArgs = {
  */
 balance: Balance, 
 /**
+ * The bank account it's of; none: the main one.
+ */
+accountId?: string, 
+/**
  * The open ones they say haven't come out (or in) yet.
  */
 stillOpen?: Array<OccRef>, 

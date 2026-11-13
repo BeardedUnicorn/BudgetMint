@@ -28,6 +28,12 @@ impl JsonHost {
         }
     }
 
+    /// The account's data as it stands (the golden tests read its cash flow).
+    #[cfg(test)]
+    pub(crate) fn budget(&self) -> &Budget {
+        &self.budget
+    }
+
     /// Now in another zone (the user travelled, or changed the device's).
     pub fn set_zone(&mut self, zone: &str) {
         self.zone = zone.to_string();

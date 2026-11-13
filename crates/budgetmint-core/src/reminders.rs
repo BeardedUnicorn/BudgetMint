@@ -1,6 +1,6 @@
 //! The reminders coming up: each open occurrence of an item with a
 //! reminder, the set number of days before it's due, at the hour the user
-//! chose; and, when the balance is about to go low, one about that. Each has
+//! chose; and, when an account's balance is about to go low, one about that. Each has
 //! a stable key (and a 31-bit id from it, for Android's scheduled
 //! notifications), so scheduling them again replaces rather than repeats.
 //! The client words them.
@@ -13,7 +13,7 @@ use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
 use crate::model::{Cents, ItemKind, OccStatus};
 use crate::occur::occurrences;
-use crate::project::project;
+use crate::project::project_accounts;
 use crate::time::{hour, Ctx};
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,8 @@ pub const MISSED_MAX_MS: i64 = crate::time::DAY_MS;
 pub enum ReminderKind {
     Bill,
     Income,
+    /// Money to move between two accounts.
+    Transfer,
     /// The balance goes below the low mark (or zero) on `due`.
     LowBalance,
 }
@@ -45,7 +47,10 @@ pub struct Reminder {
     pub at_ms: i64,
     pub kind: ReminderKind,
     pub item_id: Option<String>,
+    /// The item's name; for a low-balance one, the account's when it isn't the main one (else empty).
     pub name: String,
+    /// The account a low-balance one is about, when it isn't the main one.
+    pub account_id: Option<String>,
     pub due: NaiveDate,
     /// The occurrence's amount; the balance then, for a low-balance one.
     pub amount_cents: Cents,
@@ -115,13 +120,14 @@ pub fn upcoming(
                 id: reminder_id(&key),
                 key,
                 at_ms,
-                kind: if item.kind == ItemKind::Bill {
-                    ReminderKind::Bill
-                } else {
-                    ReminderKind::Income
+                kind: match item.kind {
+                    ItemKind::Bill => ReminderKind::Bill,
+                    ItemKind::Income => ReminderKind::Income,
+                    ItemKind::Transfer => ReminderKind::Transfer,
                 },
                 item_id: Some(item.id.clone()),
                 name: item.name.clone(),
+                account_id: None,
                 due: occurrence.due,
                 amount_cents: occurrence.expected_cents,
                 lead_days: *lead,
@@ -133,13 +139,6 @@ pub fn upcoming(
     }
 
     if settings.reminders.low_balance {
-        let projection = project(snapshot, taskmint, ctx, today + Duration::days(window));
-        // Without a balance the cash flow starts at an invented zero: no warning
-        let low = projection
-            .ahead()
-            .iter()
-            .filter(|_| projection.has_balance)
-            .find(|day| day.closing_cents < settings.low_balance_cents.max(0));
         // At the reminder hour, today's if it's still to come
         let next_at = |date: NaiveDate| ctx.at(date, at_hour);
         let at_ms = if next_at(today) > now {
@@ -147,15 +146,39 @@ pub fn upcoming(
         } else {
             next_at(today + Duration::days(1))
         };
-        if let Some(day) = low.filter(|day| ctx.day_of(at_ms) <= day.date && at_ms <= until) {
-            let key = format!("low~{}", day.date.format("%Y-%m-%d"));
+        // Each account by its own balance and low mark
+        for flow in project_accounts(snapshot, taskmint, ctx, today + Duration::days(window)) {
+            let (account, projection) = (&flow.account, &flow.projection);
+            // Without a balance the cash flow starts at an invented zero: no warning
+            let low = projection
+                .ahead()
+                .iter()
+                .filter(|_| projection.has_balance)
+                .find(|day| day.closing_cents < account.low_balance_cents.max(0));
+            let Some(day) = low.filter(|day| ctx.day_of(at_ms) <= day.date && at_ms <= until)
+            else {
+                continue;
+            };
+            let on = day.date.format("%Y-%m-%d");
+            // The main account's key is what it was before there were others
+            let key = if account.is_main() {
+                format!("low~{}", on)
+            } else {
+                format!("low~{}~{}", account.id, on)
+            };
             found.push(Reminder {
                 id: reminder_id(&key),
                 key,
                 at_ms,
                 kind: ReminderKind::LowBalance,
                 item_id: None,
-                name: String::new(),
+                // Which account, when it isn't the main one
+                name: if account.is_main() {
+                    String::new()
+                } else {
+                    account.name.clone()
+                },
+                account_id: (!account.is_main()).then(|| account.id.clone()),
                 due: day.date,
                 amount_cents: day.closing_cents,
                 lead_days: 0,
@@ -394,5 +417,102 @@ mod tests {
     fn ids_are_stable_31_bit_hashes() {
         assert_eq!(reminder_id(""), 0x811c_9dc5 & 0x7fff_ffff);
         assert_eq!(reminder_id("a"), 0xe40c_292c & 0x7fff_ffff);
+    }
+
+    #[test]
+    fn reminds_of_a_transfer_as_one() {
+        use crate::occur::tests::{put_account, transfer};
+        let mut s = Snapshot::default();
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            reminded(
+                vec![1],
+                transfer(
+                    "put",
+                    (None, Some("savings")),
+                    d(2026, 11, 14),
+                    Repeat::Once,
+                    5_000,
+                ),
+            ),
+        );
+        let found = upcoming(&s, None, &ctx(), 10, 10, None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].kind, found[0].amount_cents, found[0].due),
+            (ReminderKind::Transfer, 5_000, d(2026, 11, 14))
+        );
+    }
+
+    #[test]
+    fn warns_of_each_account_by_its_own_balance_and_low_mark() {
+        use crate::model::Account;
+        use crate::occur::tests::in_account;
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 1_000,
+                as_of: d(2026, 11, 10),
+            }),
+            low_balance_cents: 500,
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        let account = |id: &str, balance: Option<Balance>| Account {
+            id: id.into(),
+            name: format!("My {}", id),
+            order: 1,
+            balance,
+            low_balance_cents: 25_000,
+            checks: Vec::new(),
+            archived: false,
+        };
+        let savings = account(
+            "savings",
+            Some(Balance {
+                cents: 30_000,
+                as_of: d(2026, 11, 10),
+            }),
+        );
+        s.write(DocKey::Account("savings".into()), Some(&savings));
+        // No balance yet: nothing to warn of
+        s.write(DocKey::Account("card".into()), Some(&account("card", None)));
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 14), Repeat::Once, 6_000),
+                "savings",
+            ),
+        );
+        put_item(
+            &mut s,
+            in_account(
+                item("due", ItemKind::Bill, d(2026, 11, 14), Repeat::Once, 6_000),
+                "card",
+            ),
+        );
+        let found = upcoming(&s, None, &ctx(), 10, 10, None);
+        assert_eq!(found.len(), 1);
+        let low = &found[0];
+        assert_eq!(low.key, "low~savings~2026-11-14");
+        assert_eq!(
+            (
+                low.name.as_str(),
+                low.account_id.as_deref(),
+                low.amount_cents,
+                low.short
+            ),
+            ("My savings", Some("savings"), 24_000, false)
+        );
+        // The main account going low too: its own reminder, keyed as it always was
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 16), Repeat::Once, 2_000),
+        );
+        let found = upcoming(&s, None, &ctx(), 10, 10, None);
+        let keys: Vec<&str> = found.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(keys, ["low~2026-11-16", "low~savings~2026-11-14"]);
+        assert_eq!((found[0].name.as_str(), &found[0].account_id), ("", &None));
     }
 }

@@ -6,7 +6,7 @@
 
 import { render, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ForecastDoc, Item, Override, Settings } from '@budgetmint/contracts';
+import type { Account, ForecastDoc, Item, Override, Settings } from '@budgetmint/contracts';
 import { App } from '../../App';
 import { BudgetSession } from '../../cloud/session';
 import { setShell } from '../../shell';
@@ -52,6 +52,20 @@ export function override(seed: Pick<Override, 'itemId' | 'date' | 'status'> & Pa
   return { amountCents: null, movedTo: null, note: null, updatedAt: STAMP, ...seed };
 }
 
+/** A bank account besides the main one (or, as `main`, the main one's name), with $500 as of yesterday unless said. */
+export function account(id: string, name: string, more: Partial<Account> = {}): Account {
+  return {
+    id,
+    name,
+    order: 1,
+    balance: { cents: 50_000, asOf: '2026-11-09' },
+    lowBalanceCents: 0,
+    checks: [],
+    archived: false,
+    ...more,
+  };
+}
+
 /** TaskMint's forecast document, from the forecast's fields. */
 export function forecastDoc(forecast: Record<string, unknown>, appVersion = '4.2.0'): ForecastDoc {
   return {
@@ -71,6 +85,8 @@ export interface Seed {
   /** The settings document (none: onboarding comes first). */
   settings?: SettingsSeed | null;
   items?: Item[];
+  /** The bank accounts besides the main one. */
+  accounts?: Account[];
   overrides?: Override[];
   forecast?: ForecastDoc | null;
   shell?: ReturnType<typeof createFakeShell>;
@@ -82,10 +98,19 @@ export interface Seed {
 /** A balance of $1,000 at the end of yesterday. */
 export const SETTLED: SettingsSeed = { balance: { cents: 100_000, asOf: '2026-11-09' } };
 
-export function seededStore({ settings = SETTLED, items = [], overrides = [], forecast = null }: Seed = {}) {
+export function seededStore({
+  settings = SETTLED,
+  items = [],
+  accounts = [],
+  overrides = [],
+  forecast = null,
+}: Seed = {}) {
   const store = createFakeStore();
   if (settings) store.putDoc('settings~account', JSON.stringify(settings));
-  for (const seed of items) store.putDoc(`item~${seed.id}`, JSON.stringify(seed));
+  for (const seed of accounts) store.putDoc(`account~${seed.id}`, JSON.stringify(seed), 4);
+  // One in another account, or a transfer, is a newer document
+  for (const seed of items)
+    store.putDoc(`item~${seed.id}`, JSON.stringify(seed), seed.accountId || seed.kind === 'transfer' ? 4 : 1);
   for (const seed of overrides) store.putDoc(`occ~${seed.date}~${seed.itemId}`, JSON.stringify(seed));
   store.publishForecast(forecast);
   return store;

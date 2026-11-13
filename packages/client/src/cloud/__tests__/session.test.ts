@@ -131,6 +131,7 @@ describe('the session', () => {
     store.putDoc('item~rent', store.docs.get('item~rent')!.json);
     store.putDoc('settings~account', null);
     store.putDoc('occ~2026-12-01~rent', null);
+    store.putDoc('account~savings', null);
     expect(session.getView()).toMatchObject({ offline: false, saving: false });
   });
 

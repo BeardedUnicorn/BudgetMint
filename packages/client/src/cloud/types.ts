@@ -50,7 +50,7 @@ export interface CloudUser {
 }
 
 /** Which of the account's documents a snapshot is of. */
-export type DocsSource = 'settings' | 'items' | 'occurrences';
+export type DocsSource = 'settings' | 'items' | 'occurrences' | 'accounts';
 
 /** What changed in one of the listened-to sets of documents. */
 export interface DocsSnapshot {
@@ -123,8 +123,8 @@ export interface BudgetStore {
   /** The epoch as the server has it, as it changes (null: deleted). */
   watchAccount(uid: string, listener: (epoch: number | null) => void, onError: (error: unknown) => void): Unsubscribe;
   /**
-   * The settings, every item, and the occurrences from `occurrencesFrom`
-   * (YYYY-MM-DD) on, as they change. A document from before `epoch` (the
+   * The settings, every item, every bank account, and the occurrences from
+   * `occurrencesFrom` (YYYY-MM-DD) on, as they change. A document from before `epoch` (the
    * account's now) is what a delete cut short left: it reads as deleted.
    */
   listen(

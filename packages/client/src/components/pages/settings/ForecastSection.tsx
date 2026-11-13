@@ -84,7 +84,7 @@ export function ForecastSection() {
           </Stack>
         )}
       </Stack>
-      {editing && <BalanceDialog balance={balance} today={today} onClose={() => setEditing(false)} />}
+      {editing && <BalanceDialog today={today} onClose={() => setEditing(false)} />}
     </SettingsSection>
   );
 }

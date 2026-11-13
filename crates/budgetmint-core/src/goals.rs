@@ -73,15 +73,27 @@ fn split(cents: Cents, n: usize) -> Vec<Cents> {
 }
 
 /// Every time a bill is saved up for that's set aside on some day in
-/// [from, to]: soonest due first.
-pub fn savings(snapshot: &Snapshot, ctx: &Ctx, from: NaiveDate, to: NaiveDate) -> Vec<Saving> {
+/// [from, to]: soonest due first. With `account`, only the bills paid from
+/// it: what's set aside for a bill is in the account it leaves.
+pub fn savings(
+    snapshot: &Snapshot,
+    ctx: &Ctx,
+    from: NaiveDate,
+    to: NaiveDate,
+    account: Option<&str>,
+) -> Vec<Saving> {
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
     let mut found = Vec::new();
-    for item in snapshot.items.values().filter(|item| !item.archived) {
+    for item in snapshot
+        .items
+        .values()
+        .filter(|item| !item.archived && account.is_none_or(|id| item.account() == id))
+    {
         let Some(save_up) = item.save_up else {
             continue;
         };
+        // What its own account's balance has settled
+        let settled = settled_through(snapshot.balance_of(item.account()), today);
         let back = from - Duration::days(LOOK_BACK_DAYS);
         // Past the window, the first time due: it's saved up for in it
         let ahead = to + Duration::days(LOOK_BACK_DAYS);
@@ -195,7 +207,13 @@ pub struct GoalsView {
 pub fn goals(snapshot: &Snapshot, ctx: &Ctx) -> GoalsView {
     let today = ctx.today();
     // As far ahead as the next time saving for one begins (after one skipped, a while)
-    let all = savings(snapshot, ctx, today, today + Duration::days(LOOK_BACK_DAYS));
+    let all = savings(
+        snapshot,
+        ctx,
+        today,
+        today + Duration::days(LOOK_BACK_DAYS),
+        None,
+    );
     let mut goals = Vec::new();
     for item in snapshot
         .items
@@ -297,7 +315,7 @@ mod tests {
             saved_cents: Some(30_000),
         });
         put_item(&mut s, car.clone());
-        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2028, 3, 3));
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2028, 3, 3), None);
         // $300 now, and the $900 left over the three months after, to March 3
         assert_eq!(
             found[0].parts,
@@ -316,7 +334,7 @@ mod tests {
             saved_cents: Some(500_000),
         });
         put_item(&mut s, car);
-        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 3, 3));
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 3, 3), None);
         assert_eq!(found[0].on(d(2026, 11, 10)), 120_000);
         assert_eq!(found[0].on(d(2027, 2, 10)), 120_000);
         // Due within the month: its one day has it all
@@ -332,7 +350,7 @@ mod tests {
             saved_cents: Some(10_000),
         });
         put_item(&mut s, soon);
-        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 11, 25));
+        let found = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 11, 25), None);
         let soon = found
             .iter()
             .find(|saving| saving.item_id == "soon")
@@ -354,7 +372,7 @@ mod tests {
                 d(2026, 1, 1),
             ),
         );
-        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 1, 31));
+        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 1, 31), None);
         assert_eq!(all.len(), 1);
         let next = &all[0];
         assert_eq!(
@@ -426,7 +444,7 @@ mod tests {
         assert!(trip.once);
         assert_eq!(trip.set_aside_cents, 25_000);
         assert_eq!(trip.parts_left, 3);
-        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 2, 28));
+        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2027, 2, 28), None);
         let parts: Vec<Cents> = all[0].parts.iter().map(|(_, cents)| *cents).collect();
         // The odd cent in the last part
         assert_eq!(parts, vec![25_000, 25_000, 25_000, 25_001]);
@@ -450,6 +468,7 @@ mod tests {
             &Ctx::new(1_801_000_000_000, "America/Chicago"),
             d(2027, 1, 1),
             d(2027, 3, 1),
+            None,
         );
         assert_eq!(paid[0].freed, d(2027, 2, 1));
         assert_eq!(paid[0].parts.len(), 3);
@@ -471,14 +490,14 @@ mod tests {
                 d(2026, 10, 1),
             ),
         );
-        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 12, 31));
+        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 12, 31), None);
         let dues = |all: &[Saving]| all.iter().map(|s| s.due).collect::<Vec<_>>();
         assert_eq!(dues(&all), vec![d(2026, 12, 5), d(2027, 1, 5)]);
         assert_eq!(all[0].parts, vec![(d(2026, 11, 6), 30_000)]);
 
         // December's skipped: nothing set aside for it, and January's still from Dec 6
         put_over(&mut s, over("tax", d(2026, 12, 5), OccStatus::Skipped));
-        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 12, 31));
+        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 12, 31), None);
         assert_eq!(dues(&all), vec![d(2027, 1, 5)]);
         assert_eq!(all[0].parts, vec![(d(2026, 12, 6), 30_000)]);
         assert_eq!(goals(&s, &ctx()).goals[0].set_aside_cents, 0);
@@ -501,7 +520,7 @@ mod tests {
             as_of: d(2026, 11, 8),
         });
         late.write(DocKey::Settings, Some(&settings));
-        let all = savings(&late, &ctx(), d(2026, 11, 9), d(2026, 11, 10));
+        let all = savings(&late, &ctx(), d(2026, 11, 9), d(2026, 11, 10), None);
         assert_eq!(
             (all[0].due, all[0].freed),
             (d(2026, 11, 9), d(2026, 11, 10))
@@ -515,7 +534,7 @@ mod tests {
         gone.archived = true;
         let mut s = budget();
         put_item(&mut s, gone);
-        assert!(savings(&s, &ctx(), d(2026, 11, 10), d(2027, 1, 1)).is_empty());
+        assert!(savings(&s, &ctx(), d(2026, 11, 10), d(2027, 1, 1), None).is_empty());
         // Not saved up for: nothing either
         put_item(
             &mut s,
@@ -532,7 +551,7 @@ mod tests {
             &mut s,
             saved("now", d(2026, 11, 10), Repeat::Once, 5_000, d(2026, 11, 10)),
         );
-        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 11, 30));
+        let all = savings(&s, &ctx(), d(2026, 11, 10), d(2026, 11, 30), None);
         assert!(all.is_empty());
         assert!(goals(&s, &ctx()).goals.is_empty());
         assert_eq!(split(100, 0), Vec::<Cents>::new());
@@ -542,5 +561,39 @@ mod tests {
             MAX_PARTS as usize
         );
         assert!(part_days(NaiveDate::MAX, NaiveDate::MAX).is_empty());
+    }
+
+    #[test]
+    fn what_is_set_aside_for_a_bill_is_in_the_account_it_leaves() {
+        use crate::occur::tests::{in_account, put_account};
+        let mut s = budget();
+        put_account(
+            &mut s,
+            "savings",
+            Some(Balance {
+                cents: 90_000,
+                as_of: d(2026, 11, 9),
+            }),
+        );
+        let trip = saved(
+            "trip",
+            d(2027, 2, 10),
+            Repeat::Once,
+            30_000,
+            d(2026, 11, 10),
+        );
+        put_item(&mut s, in_account(trip, "savings"));
+        let (from, to) = (d(2026, 11, 10), d(2026, 12, 31));
+        assert!(savings(&s, &ctx(), from, to, Some("main")).is_empty());
+        assert_eq!(savings(&s, &ctx(), from, to, Some("savings")).len(), 1);
+        assert_eq!(savings(&s, &ctx(), from, to, None).len(), 1);
+        // The main account's cash flow has none of it set aside; savings' has
+        let account = s.account("savings").unwrap();
+        let main = crate::project::project(&s, None, &ctx(), to);
+        let other = crate::project::project_account(&s, &account, None, &ctx(), to);
+        assert_eq!(main.today_row().set_aside_cents, 0);
+        assert_eq!(other.today_row().set_aside_cents, 10_000);
+        // The savings page still shows it
+        assert_eq!(goals(&s, &ctx()).set_aside_cents, 10_000);
     }
 }

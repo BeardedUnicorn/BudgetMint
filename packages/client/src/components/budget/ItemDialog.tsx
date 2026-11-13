@@ -13,16 +13,18 @@
 import { useRef, useState } from 'react';
 import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
 import type { FormField, ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
-import { LIMITS } from '@budgetmint/contracts';
+import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { CoreRefusal } from '../../core';
-import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { otherAccount, useAccounts, useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { categoriesOf } from '../pages/items/ItemFilters';
 import { formatWeekdayFrom, parseDay } from '../../utils/dates';
 import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
+import { KIND_WORDS } from '../../utils/kinds';
 import { centsToInput, formatCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { AccountField } from './AccountField';
 import { type Every, RepeatField } from './RepeatField';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,7 +55,10 @@ export const leadChoices = (...current: number[]) => [...new Set([...LEAD_CHOICE
 export const leadLabel = (days: number) =>
   days === 0 ? 'On the day' : days === 1 ? '1 day before' : `${days} days before`;
 
-const NOUNS: Record<ItemKind, string> = { bill: 'bill', income: 'income' };
+const NOUNS: Record<ItemKind, string> = { bill: 'bill', income: 'income', transfer: 'transfer' };
+
+/** What the account it's in is called, for each kind. */
+const ACCOUNT_LABELS: Record<ItemKind, string> = { bill: 'Paid from', income: 'Paid into', transfer: 'From' };
 
 /** The days, weeks and weekday a repeat may use besides how often. */
 interface RepeatParts {
@@ -121,7 +126,8 @@ type Field =
   | 'category'
   | 'note'
   | 'reminder'
-  | 'saved';
+  | 'saved'
+  | 'account';
 
 export interface ItemDialogProps {
   kind: ItemKind;
@@ -171,6 +177,12 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   /** After how many payments it ends, as typed. */
   const [payments, setPayments] = useState('');
   const [category, setCategory] = useState(item?.category ?? '');
+  // The bank account it's in: kept as it is when the form doesn't show it (one account in use)
+  const [accountId, setAccountId] = useState(item?.accountId ?? MAIN_ACCOUNT);
+  // Where a transfer goes: as it is (the main account, when it names none), or as chosen
+  const [wantedTo, setWantedTo] = useState<string | null>(item?.toAccountId ?? (item ? MAIN_ACCOUNT : null));
+  const toAccountId = otherAccount(useAccounts().live, accountId, wantedTo);
+  const words = KIND_WORDS[kind];
   const [autopay, setAutopay] = useState(item?.autopay ?? false);
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
   const [leads, setLeads] = useState<number[]>(item?.reminder?.leadDays ?? [defaultLeadDays]);
@@ -200,6 +212,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     endsOn,
     payments,
     category,
+    accountId,
+    wantedTo,
     autopay,
     reminded,
     leads,
@@ -219,6 +233,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     note: useRef<HTMLInputElement>(null),
     reminder: useRef<HTMLInputElement>(null),
     saved: useRef<HTMLInputElement>(null),
+    account: useRef<HTMLInputElement>(null),
   };
   const refuse = (field: Field, message: string) => {
     setProblem(null);
@@ -260,7 +275,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     ending === 'after' && Number.isInteger(counted) && counted > 0 && DAY.test(countFrom)
       ? datesFrom(countFrom, counted).at(counted - 1)
       : undefined;
-  const due = kind === 'bill' ? 'due' : 'comes';
+  const due = words.comes;
 
   /** The form's field for core's (a start date, once started, is the change's). */
   const fieldOf = (field: FormField): Field => (field === 'dates' && started ? 'changeFrom' : field);
@@ -287,6 +302,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
       kind,
       name,
       category: category || null,
+      accountId,
+      // (Only a transfer goes anywhere: core drops it for a bill or income)
+      toAccountId: toAccountId ?? undefined,
       autopay: autopay && !isGoal,
       // None chosen: no reminder (core's)
       reminder: reminded ? { leadDays: leads } : null,
@@ -363,6 +381,17 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           helperText={wrongAt('amount')}
           inputRef={inputs.amount}
         />
+        <AccountField
+          label={ACCOUNT_LABELS[kind]}
+          value={accountId}
+          onChange={setAccountId}
+          inputRef={inputs.account}
+          error={wrong?.field === 'account'}
+          helperText={wrongAt('account')}
+        />
+        {kind === 'transfer' && toAccountId && (
+          <AccountField label="To" value={toAccountId} onChange={setWantedTo} exclude={accountId} />
+        )}
         <RepeatField
           every={every}
           n={n}
@@ -379,7 +408,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
             <TextField
               select
-              label={every === 'months' ? (kind === 'bill' ? 'Due on' : 'Comes on') : 'First on day'}
+              label={every === 'months' ? words.onDay : 'First on day'}
               value={firstDay}
               onChange={event => {
                 setDay(Number(event.target.value));
@@ -447,9 +476,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
             label="On a weekend"
             value={weekends}
             onChange={event => setWeekends(event.target.value as Weekends)}
-            helperText={
-              kind === 'bill' ? 'When it’s due on a Saturday or Sunday' : 'When it comes on a Saturday or Sunday'
-            }
+            helperText={words.weekend}
           >
             {(Object.keys(WEEKEND_CHOICES) as Weekends[]).map(value => (
               <MenuItem key={value} value={value}>
@@ -562,14 +589,14 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
         {!isGoal && (
           <FormControlLabel
             control={<Switch checked={autopay} onChange={event => setAutopay(event.target.checked)} />}
-            label={kind === 'bill' ? 'Paid automatically (autopay)' : 'Comes in automatically'}
+            label={words.autoSwitch}
           />
         )}
         {/* Once, it's what it is: nothing to average */}
         {every !== 'once' && (
           <FormControlLabel
             control={<Switch checked={varies} onChange={event => setVaries(event.target.checked)} />}
-            label={`The amount varies: expect the average of the last ${LIMITS.ESTIMATE_FROM} ${kind === 'bill' ? 'paid' : 'received'}`}
+            label={`The amount varies: expect the average of the last ${LIMITS.ESTIMATE_FROM} ${words.verb}`}
           />
         )}
         {canSaveUp && (

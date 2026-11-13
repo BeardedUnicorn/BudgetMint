@@ -664,6 +664,8 @@ mod tests {
             note: None,
             varies: false,
             save_up: None,
+            account_id: None,
+            to_account_id: None,
             created_at: chrono::DateTime::UNIX_EPOCH,
             updated_at: chrono::DateTime::UNIX_EPOCH,
         };

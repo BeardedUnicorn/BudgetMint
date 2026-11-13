@@ -1,11 +1,13 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { BUDGET_SCHEMA, COMMAND_NAMES, FORECAST_SCHEMA, LIMITS } from '../index';
+import { BUDGET_SCHEMA, COMMAND_NAMES, FORECAST_SCHEMA, LIMITS, MAIN_ACCOUNT } from '../index';
 import type { CommandArgs, CommandName, CommandReply, OccStatus, Overview, Repeat, SpendingEstimate } from '../index';
 
 describe('the generated contracts', () => {
   it('name every command core runs, and its schemas and limits', () => {
     expect(COMMAND_NAMES).toContain('get_overview');
-    expect(BUDGET_SCHEMA).toBe(3);
+    expect(BUDGET_SCHEMA).toBe(4);
+    expect(MAIN_ACCOUNT).toBe('main');
+    expect(COMMAND_NAMES).toContain('save_account');
     expect(COMMAND_NAMES).toContain('settle');
     expect(LIMITS.ESTIMATE_FROM).toBe(3);
     expect(FORECAST_SCHEMA).toBe(1);

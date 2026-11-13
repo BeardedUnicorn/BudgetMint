@@ -3,15 +3,17 @@
 //! balance has taken in, as paid at what was expected, as the cash flow has
 //! it); what TaskMint paid in; the bills paid late;
 //! what went out besides the bills, by the balance's updates; and the six
-//! months up to it, side by side.
+//! months up to it, side by side. Every account's bills and income count,
+//! together; money moved between two accounts is neither, and is left out.
 
 use crate::docs::Snapshot;
 use crate::forecast::contract::PayoutForecast;
 use crate::model::{Cents, ItemKind, OccStatus};
 use crate::occur::{occurrences, Occurrence};
-use crate::project::{recorded_arrivals, settled_through, spending_between};
+use crate::project::{recorded_arrivals, spending_between};
 use crate::recur::days_in_month;
 use crate::time::{in_calendar, Ctx};
+use crate::views::Settleds;
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -126,7 +128,9 @@ pub(crate) fn month_days(month: &str) -> Option<(NaiveDate, NaiveDate)> {
 /// What counts as paid: one marked so, at what it came to; one on autopay
 /// that's come due, or one the balance has taken in (due by its day), at
 /// what was expected. None: still open.
-fn paid_cents(occurrence: &Occurrence<'_>, today: NaiveDate, settled: NaiveDate) -> Option<Cents> {
+fn paid_cents(occurrence: &Occurrence<'_>, today: NaiveDate, settleds: &Settleds) -> Option<Cents> {
+    // By its own account's balance
+    let settled = settleds.of(occurrence.item).through;
     match occurrence.status {
         OccStatus::Done { amount_cents, .. } => Some(amount_cents),
         _ if (occurrence.item.autopay && occurrence.due <= today) || occurrence.due <= settled => {
@@ -140,7 +144,7 @@ fn add(
     totals: &mut ReportTotals,
     occurrence: &Occurrence<'_>,
     today: NaiveDate,
-    settled: NaiveDate,
+    settleds: &Settleds,
 ) {
     if occurrence.status == OccStatus::Skipped {
         totals.skipped += 1;
@@ -148,7 +152,7 @@ fn add(
     }
     totals.count += 1;
     totals.expected_cents += occurrence.expected_cents;
-    match paid_cents(occurrence, today, settled) {
+    match paid_cents(occurrence, today, settleds) {
         Some(cents) => totals.done_cents += cents,
         None => totals.open_cents += occurrence.expected_cents,
     }
@@ -181,7 +185,7 @@ fn totals(
     last: NaiveDate,
     today: NaiveDate,
 ) -> (ReportTotals, ReportTotals) {
-    let settled = settled_through(&snapshot.settings(), today);
+    let settleds = Settleds::new(snapshot, today, None);
     let (mut bills, mut income) = (ReportTotals::default(), ReportTotals::default());
     for occurrence in occurrences(snapshot, first, last, true)
         .iter()
@@ -190,8 +194,9 @@ fn totals(
         let totals = match occurrence.item.kind {
             ItemKind::Bill => &mut bills,
             ItemKind::Income => &mut income,
+            ItemKind::Transfer => continue,
         };
-        add(totals, occurrence, today, settled);
+        add(totals, occurrence, today, &settleds);
     }
     (bills, income)
 }
@@ -205,11 +210,12 @@ pub fn report(
 ) -> Option<ReportView> {
     let (first, last) = month_days(month)?;
     let today = ctx.today();
-    let settled = settled_through(&snapshot.settings(), today);
+    let settleds = Settleds::new(snapshot, today, None);
     let all = occurrences(snapshot, first, last, true);
     let counted: Vec<_> = all
         .iter()
         .filter(|o| !o.item.archived || o.status != OccStatus::Open)
+        .filter(|o| o.item.kind != ItemKind::Transfer)
         .collect();
 
     // A category is one whatever its letters' case ("Utilities", "utilities"), named as first spelled
@@ -229,7 +235,7 @@ pub fn report(
                 .1,
             occurrence,
             today,
-            settled,
+            &settleds,
         );
         if let OccStatus::Done { on, amount_cents } = occurrence.status {
             if occurrence.item.kind == ItemKind::Bill && on > occurrence.due {
@@ -573,5 +579,77 @@ mod tests {
         assert_eq!(report(&s, None, "1900-03", &ctx()).unwrap().months.len(), 3);
         assert_eq!(report(&s, None, "1899-12", &ctx()), None);
         assert_eq!(report(&s, None, "nope", &ctx()), None);
+    }
+
+    #[test]
+    fn leaves_money_moved_between_accounts_out_of_the_totals() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 3),
+                Repeat::Once,
+                40_000,
+            ),
+        );
+        // A bill of another account counts: the report is of every account together
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 4), Repeat::Once, 700),
+                "savings",
+            ),
+        );
+        let november = report(&s, None, "2026-11", &ctx()).unwrap();
+        assert_eq!(
+            (november.bills.count, november.bills.expected_cents),
+            (1, 700)
+        );
+        assert_eq!(november.income.count, 0);
+        assert_eq!(november.categories.len(), 1);
+        assert_eq!(november.categories[0].kind, ItemKind::Bill);
+    }
+
+    #[test]
+    fn takes_an_open_bill_as_paid_by_its_own_accounts_balance() {
+        use crate::occur::tests::{in_account, put_account};
+        let mut s = Snapshot::default();
+        let settings = Settings {
+            balance: Some(Balance {
+                cents: 1,
+                as_of: d(2026, 11, 3),
+            }),
+            ..Settings::default()
+        };
+        s.write(DocKey::Settings, Some(&settings));
+        put_account(
+            &mut s,
+            "savings",
+            Some(Balance {
+                cents: 1,
+                as_of: d(2026, 11, 8),
+            }),
+        );
+        // Both due on the 6th and never marked: savings' balance (the 8th) has taken its one in
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 6), Repeat::Once, 5_000),
+        );
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 6), Repeat::Once, 700),
+                "savings",
+            ),
+        );
+        let november = report(&s, None, "2026-11", &ctx()).unwrap();
+        assert_eq!(
+            (november.bills.done_cents, november.bills.open_cents),
+            (700, 5_000)
+        );
     }
 }

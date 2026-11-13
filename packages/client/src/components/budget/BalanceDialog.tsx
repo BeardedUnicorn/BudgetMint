@@ -5,7 +5,9 @@
  * bills and income due since the last balance are listed, none ticked; the
  * ones ticked came out (or in), at what each really came to, and the rest
  * are still to come, the day after. Saving settles them and keeps the check
- * (core's settle), with one Undo.
+ * (core's settle), with one Undo. With more than one bank account it's one
+ * account's balance, chosen at the top: only what's in that account is
+ * asked about, and the others' balances stay as they are.
  */
 
 import { useRef, useState } from 'react';
@@ -21,12 +23,14 @@ import {
   Typography,
 } from '@mui/material';
 import type { Balance, OccRef, OccurrenceView, PaidInput } from '@budgetmint/contracts';
-import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { MAIN_ACCOUNT } from '@budgetmint/contracts';
+import { accountBalance, useAccounts, useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { formatDay } from '../../utils/dates';
 import { centsToInput, currencySymbol, formatCents, formatMaybeCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { AccountField } from './AccountField';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -52,19 +56,22 @@ function paidOf(open: OccurrenceView[], ticked: Ticked): PaidInput[] {
 }
 
 function BalanceCheck({
+  accountId,
   balance,
   ticked,
   missing,
   onTicked,
 }: {
+  accountId: string;
   balance: Balance;
   ticked: Ticked;
   /** A ticked one without an amount, said under it. */
   missing: string | null;
   onTicked: (ticked: Ticked) => void;
 }) {
-  const { open } = useCoreQuery('get_balance_check', { balance });
+  const { open } = useCoreQuery('get_balance_check', { accountId, balance });
   const check = useCoreQuery('get_balance_check', {
+    accountId,
     balance,
     stillOpen: open.filter(view => !(keyOf(view) in ticked)).map(refOf),
     amounts: paidOf(open, ticked),
@@ -106,7 +113,8 @@ function BalanceCheck({
                       }}
                     />
                   }
-                  label={`${view.name}: ${view.kind === 'income' ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
+                  // Into this account: income, or money moved to it
+                  label={`${view.name}: ${view.kind === 'income' || view.toAccountId === accountId ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
                 />
                 {key in ticked && (
                   <CurrencyInput
@@ -128,16 +136,21 @@ function BalanceCheck({
 }
 
 export function BalanceDialog({
-  balance,
+  accountId: opened = MAIN_ACCOUNT,
   today,
   onClose,
 }: {
-  balance: Balance | null;
+  /** The account it opens on (the main one, unless given). */
+  accountId?: string;
   today: string;
   onClose: () => void;
 }) {
   const { core } = useBudget();
   const change = useBudgetChange();
+  const { all } = useAccounts();
+  const [accountId, setAccountId] = useState(opened);
+  // The balance it has now (none yet, or the account's gone meanwhile: core says so on saving)
+  const balance = accountBalance(all, accountId);
   const [amount, setAmount] = useState('');
   const [asOf, setAsOf] = useState(today);
   const [ticked, setTicked] = useState<Ticked>({});
@@ -146,7 +159,7 @@ export function BalanceDialog({
   /** The balance isn't an amount: said under it, and focus goes to it. */
   const [wrong, setWrong] = useState(false);
   const balanceInput = useRef<HTMLInputElement>(null);
-  const dirty = useDirty([amount, asOf, ticked]);
+  const dirty = useDirty([accountId, amount, asOf, ticked]);
   const cents = parseDollars(amount);
   const typed = cents !== null && DAY.test(asOf) ? { cents, asOf } : null;
 
@@ -159,13 +172,13 @@ export function BalanceDialog({
     }
     const given = { cents, asOf };
     try {
-      const { open } = core.call('get_balance_check', { balance: given });
+      const { open } = core.call('get_balance_check', { accountId, balance: given });
       // Each ticked one needs what it came to
       const unsaid = open.find(view => keyOf(view) in ticked && parseDollars(ticked[keyOf(view)]) === null);
       setMissing(unsaid ? keyOf(unsaid) : null);
       if (unsaid) return;
       const stillOpen = open.filter(view => !(keyOf(view) in ticked)).map(refOf);
-      change('settle', { paid: paidOf(open, ticked), stillOpen, balance: given }, 'Balance updated');
+      change('settle', { accountId, paid: paidOf(open, ticked), stillOpen, balance: given }, 'Balance updated');
     } catch (error) {
       setProblem((error as Error).message);
       return;
@@ -181,6 +194,16 @@ export function BalanceDialog({
           move it from there.
         </Typography>
         {problem && <Alert severity="error">{problem}</Alert>}
+        <AccountField
+          label="Account"
+          value={accountId}
+          onChange={next => {
+            setAccountId(next);
+            // What was ticked was the other account's
+            setTicked({});
+            setMissing(null);
+          }}
+        />
         <TextField
           label="Balance"
           value={amount}
@@ -205,7 +228,9 @@ export function BalanceDialog({
           onChange={event => setAsOf(event.target.value)}
           slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: today } }}
         />
-        {typed && <BalanceCheck balance={typed} ticked={ticked} missing={missing} onTicked={setTicked} />}
+        {typed && (
+          <BalanceCheck accountId={accountId} balance={typed} ticked={ticked} missing={missing} onTicked={setTicked} />
+        )}
       </Stack>
     </FormDialog>
   );

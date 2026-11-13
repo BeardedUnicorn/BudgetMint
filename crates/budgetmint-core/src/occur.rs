@@ -170,7 +170,7 @@ pub fn paid_outside(snapshot: &Snapshot, from: NaiveDate, to: NaiveDate) -> Vec<
 pub(crate) mod tests {
     use super::*;
     use crate::docs::DocKey;
-    use crate::model::{ItemKind, Repeat, Segment};
+    use crate::model::{Account, Balance, ItemKind, Repeat, Segment};
     use chrono::DateTime;
 
     pub fn d(y: i32, m: u32, day: u32) -> NaiveDate {
@@ -196,6 +196,8 @@ pub(crate) mod tests {
             note: None,
             varies: false,
             save_up: None,
+            account_id: None,
+            to_account_id: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         }
@@ -210,6 +212,41 @@ pub(crate) mod tests {
             moved_to: None,
             note: None,
             updated_at: DateTime::UNIX_EPOCH,
+        }
+    }
+
+    /// An account besides the main one, with the balance it holds (if any).
+    pub fn put_account(snapshot: &mut Snapshot, id: &str, balance: Option<Balance>) {
+        let account = Account {
+            id: id.into(),
+            name: id.to_uppercase(),
+            order: 1,
+            balance,
+            low_balance_cents: 0,
+            checks: Vec::new(),
+            archived: false,
+        };
+        snapshot.write(DocKey::Account(id.into()), Some(&account));
+    }
+
+    /// `item`, in `account`.
+    pub fn in_account(mut item: Item, account: &str) -> Item {
+        item.account_id = Some(account.into());
+        item
+    }
+
+    /// A transfer of `cents` from one account to another (None: the main one).
+    pub fn transfer(
+        id: &str,
+        accounts: (Option<&str>, Option<&str>),
+        from: NaiveDate,
+        repeat: Repeat,
+        cents: Cents,
+    ) -> Item {
+        Item {
+            account_id: accounts.0.map(str::to_string),
+            to_account_id: accounts.1.map(str::to_string),
+            ..item(id, ItemKind::Transfer, from, repeat, cents)
         }
     }
 

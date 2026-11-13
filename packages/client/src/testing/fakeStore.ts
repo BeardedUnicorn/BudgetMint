@@ -38,7 +38,13 @@ export function cal(uid = 'cal'): CloudUser {
 }
 
 const sourceOf = (docId: string): DocsSource =>
-  docId.startsWith('settings~') ? 'settings' : docId.startsWith('item~') ? 'items' : 'occurrences';
+  docId.startsWith('settings~')
+    ? 'settings'
+    : docId.startsWith('item~')
+      ? 'items'
+      : docId.startsWith('account~')
+        ? 'accounts'
+        : 'occurrences';
 
 export function createFakeStore(): FakeStore {
   let user: CloudUser | null = null;
@@ -116,7 +122,7 @@ export function createFakeStore(): FakeStore {
         const open = { onDocs, onError, from };
         listening.add(open);
         // The first answer: what's there, per source
-        for (const source of ['settings', 'items', 'occurrences'] as const) {
+        for (const source of ['settings', 'items', 'occurrences', 'accounts'] as const) {
           const found = [...docs]
             .filter(([docId]) => sourceOf(docId) === source && !(source === 'occurrences' && docId < `occ~${from}`))
             .map(([docId, doc]) => ({ docId, json: doc.json, schema: doc.schema }));

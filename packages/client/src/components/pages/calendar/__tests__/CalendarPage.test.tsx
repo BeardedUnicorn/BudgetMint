@@ -269,6 +269,8 @@ describe('the calendar', () => {
       itemId: 'rent',
       name: 'Rent',
       kind: 'bill' as const,
+      accountId: 'main',
+      toAccountId: null,
       category: null,
       autopay: false,
       scheduled: '2026-11-12',

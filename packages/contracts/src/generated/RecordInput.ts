@@ -9,4 +9,12 @@ export type RecordInput = {
 /**
  * Made by the client, for the item it becomes.
  */
-id: string, kind: ItemKind, name: string, amountCents: number, on: string, category: string | null, note: string | null, };
+id: string, kind: ItemKind, name: string, amountCents: number, on: string, category: string | null, note: string | null, 
+/**
+ * The bank account it's in (a transfer's source); none: the main one.
+ */
+accountId?: string, 
+/**
+ * Where a transfer goes; none: the main account.
+ */
+toAccountId?: string, };

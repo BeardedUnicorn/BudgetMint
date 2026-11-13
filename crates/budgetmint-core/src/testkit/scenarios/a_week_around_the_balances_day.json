@@ -1,0 +1,429 @@
+{
+  "name": "The days around the balance's, with one account",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    {
+      "call": "set_balance",
+      "args": {
+        "balance": {
+          "cents": 150000,
+          "asOf": "2026-11-08"
+        }
+      }
+    },
+    {
+      "call": "save_settings",
+      "args": {
+        "settings": {
+          "lowBalanceCents": 30000,
+          "spendingWeeklyCents": 14000,
+          "horizonDays": 45
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "net",
+          "kind": "bill",
+          "name": "Internet",
+          "schedule": [
+            {
+              "from": "2026-11-08",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 6500
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "gym",
+          "kind": "bill",
+          "name": "Gym",
+          "schedule": [
+            {
+              "from": "2026-10-08",
+              "repeat": {
+                "every": "months",
+                "n": 1,
+                "day": 8
+              },
+              "amountCents": 3000
+            }
+          ],
+          "autopay": true,
+          "category": "Health"
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "rent",
+          "kind": "bill",
+          "name": "Rent",
+          "schedule": [
+            {
+              "from": "2026-10-09",
+              "repeat": {
+                "every": "months",
+                "n": 1,
+                "day": 9
+              },
+              "amountCents": 120000
+            }
+          ],
+          "category": "Home",
+          "reminder": {
+            "leadDays": [
+              3
+            ]
+          }
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "pay",
+          "kind": "income",
+          "name": "Paycheck",
+          "schedule": [
+            {
+              "from": "2026-11-09",
+              "repeat": {
+                "every": "weeks",
+                "n": 2
+              },
+              "amountCents": 90000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "power",
+          "kind": "bill",
+          "name": "Power",
+          "schedule": [
+            {
+              "from": "2026-09-15",
+              "repeat": {
+                "every": "months",
+                "n": 1,
+                "day": 15
+              },
+              "amountCents": 8000
+            }
+          ],
+          "autopay": true,
+          "varies": true,
+          "category": "home",
+          "reminder": {
+            "leadDays": [
+              3,
+              0
+            ]
+          }
+        }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": {
+        "occurrence": {
+          "itemId": "power",
+          "date": "2026-10-15",
+          "status": {
+            "state": "done",
+            "on": "2026-10-16",
+            "amountCents": 8200
+          }
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "insurance",
+          "kind": "bill",
+          "name": "Insurance",
+          "schedule": [
+            {
+              "from": "2027-03-01",
+              "repeat": {
+                "every": "years",
+                "n": 1
+              },
+              "amountCents": 60000
+            }
+          ],
+          "saveUp": true,
+          "savedCents": 10000
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "tax",
+          "kind": "bill",
+          "name": "Tax",
+          "schedule": [
+            {
+              "from": "2027-01-15",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 20000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": {
+        "occurrence": {
+          "itemId": "tax",
+          "date": "2027-01-15",
+          "status": {
+            "state": "done",
+            "on": "2026-11-10",
+            "amountCents": 20000
+          }
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "phone",
+          "kind": "bill",
+          "name": "Phone",
+          "schedule": [
+            {
+              "from": "2026-10-20",
+              "repeat": {
+                "every": "months",
+                "n": 1,
+                "day": 20
+              },
+              "amountCents": 5000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": {
+        "occurrence": {
+          "itemId": "phone",
+          "date": "2026-11-20",
+          "status": {
+            "state": "open"
+          },
+          "movedTo": "2026-11-25",
+          "amountCents": 5500,
+          "note": "New plan"
+        }
+      }
+    },
+    {
+      "call": "set_occurrence",
+      "args": {
+        "occurrence": {
+          "itemId": "phone",
+          "date": "2026-12-20",
+          "status": {
+            "state": "skipped"
+          }
+        }
+      }
+    },
+    {
+      "call": "save_item",
+      "args": {
+        "item": {
+          "id": "gift",
+          "kind": "income",
+          "name": "Gift",
+          "schedule": [
+            {
+              "from": "2026-11-20",
+              "repeat": {
+                "every": "once"
+              },
+              "amountCents": 10000
+            }
+          ],
+          "weekends": "after"
+        }
+      }
+    },
+    {
+      "call": "record",
+      "args": {
+        "record": {
+          "id": "coffee",
+          "kind": "bill",
+          "name": "Coffee",
+          "amountCents": 450,
+          "on": "2026-11-10",
+          "category": "Food"
+        }
+      }
+    },
+    {
+      "call": "record",
+      "args": {
+        "record": {
+          "id": "refund",
+          "kind": "income",
+          "name": "Refund",
+          "amountCents": 1200,
+          "on": "2026-11-08"
+        },
+        "fromBalance": true
+      }
+    },
+    {
+      "call": "apply_forecast",
+      "args": {
+        "doc": {
+          "schema": 1,
+          "appVersion": "4.2.0",
+          "updatedAtMs": 1794330000000,
+          "json": "{\"schema\":1,\"asOfMs\":1794330000000,\"fundsReleaseDays\":7,\"withdrawalIntervalMs\":259200000,\"lastImportMs\":1794330000000,\"cutoff\":{\"takenAtMs\":1794247200000,\"amountCents\":5000},\"recentWithdrawals\":[{\"takenAtMs\":1794247200000,\"amountCents\":5000}],\"nextAllowedAtMs\":1794506400000,\"scheduled\":null,\"carried\":{\"actualCents\":1000,\"estimatedCents\":0,\"pastDueCents\":0},\"steps\":[{\"atMs\":1794592800000,\"actualCents\":2000,\"estimatedCents\":0,\"pastDueCents\":0}],\"recentDays\":[],\"zone\":\"America/Chicago\"}"
+        }
+      }
+    },
+    {
+      "call": "get_overview"
+    },
+    {
+      "call": "get_forecast"
+    },
+    {
+      "call": "get_month",
+      "args": {
+        "month": "2026-11"
+      }
+    },
+    {
+      "call": "get_month",
+      "args": {
+        "month": "2026-12"
+      }
+    },
+    {
+      "call": "get_items"
+    },
+    {
+      "call": "get_goals"
+    },
+    {
+      "call": "get_reminders",
+      "args": {
+        "windowDays": 30,
+        "max": 20
+      }
+    },
+    {
+      "call": "get_report",
+      "args": {
+        "month": "2026-11"
+      }
+    },
+    {
+      "call": "get_report",
+      "args": {
+        "month": "2026-10"
+      }
+    },
+    {
+      "call": "get_balance_check",
+      "args": {
+        "balance": {
+          "cents": 100000,
+          "asOf": "2026-11-10"
+        }
+      }
+    },
+    {
+      "call": "export_month",
+      "args": {
+        "month": "2026-11"
+      }
+    },
+    {
+      "call": "get_item_history",
+      "args": {
+        "itemId": "phone",
+        "from": "2026-10-01",
+        "to": "2026-12-31"
+      }
+    },
+    {
+      "call": "read_statement",
+      "args": {
+        "text": "Date,Description,Amount,Balance\n2026-11-09,RENT PAYMENT,-1200.00,280.00\n2026-11-10,COFFEE,-4.50,275.50\n2026-11-09,PAYCHECK,900.00,1480.00\n"
+      }
+    },
+    {
+      "call": "settle",
+      "args": {
+        "paid": [
+          {
+            "itemId": "rent",
+            "date": "2026-11-09",
+            "on": "2026-11-09",
+            "amountCents": 120000
+          }
+        ],
+        "stillOpen": [
+          {
+            "itemId": "net",
+            "date": "2026-11-08"
+          }
+        ],
+        "balance": {
+          "cents": 20000,
+          "asOf": "2026-11-10"
+        }
+      }
+    },
+    {
+      "call": "get_overview"
+    },
+    {
+      "call": "get_forecast"
+    },
+    {
+      "call": "get_settings"
+    },
+    {
+      "call": "get_spending_estimate"
+    },
+    {
+      "call": "export_budget"
+    }
+  ]
+}

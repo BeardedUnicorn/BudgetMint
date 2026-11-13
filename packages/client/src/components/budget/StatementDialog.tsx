@@ -5,7 +5,9 @@
  * closing balance too. A transaction nothing matched can be matched by hand
  * to an open bill or income, or recorded as a one-off. When a CSV's columns
  * can't be told, they're chosen here. Saving is one change with Undo (core's
- * settle, which also checks the balance against what was expected).
+ * settle, which also checks the balance against what was expected). With
+ * more than one bank account, it's one account's statement, chosen at the
+ * top: it's matched to what's in that account, and settles that one.
  */
 
 import { useState } from 'react';
@@ -25,12 +27,13 @@ import {
   Typography,
 } from '@mui/material';
 import type { CsvColumns, PaidInput, RecordInput, StatementView } from '@budgetmint/contracts';
-import { LIMITS } from '@budgetmint/contracts';
+import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import { useBudget, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay, formatDayInYear } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
 import { useBackDismiss } from '../../contexts/NavigationContext';
 import { ConfirmDialog } from '../ui/dialogs/ConfirmDialog';
+import { AccountField } from './AccountField';
 
 type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit';
 
@@ -110,6 +113,8 @@ export function StatementDialog({
   const { core } = useBudget();
   const change = useBudgetChange();
   const [view, setView] = useState(first);
+  /** Whose statement it is (the first read took it as the main account's). */
+  const [accountId, setAccountId] = useState<string>(MAIN_ACCOUNT);
   /** The matches left unticked, by transaction. */
   const [unticked, setUnticked] = useState<number[]>([]);
   const [takeBalance, setTakeBalance] = useState(view.balance !== null);
@@ -119,13 +124,20 @@ export function StatementDialog({
   /** Escape was pressed with something to save: asking before it's dropped. */
   const [asking, setAsking] = useState(false);
 
-  const read = (columns: CsvColumns) => {
+  const read = (columns: CsvColumns | null, account = accountId) => {
     try {
-      setView(core.call('read_statement', { text, columns }));
+      setView(core.call('read_statement', { text, columns: columns ?? undefined, accountId: account }));
       setProblem(null);
     } catch (error) {
       setProblem((error as Error).message);
     }
+  };
+  /** Another account's: read again against what's in that one, with nothing chosen yet. */
+  const choose = (account: string) => {
+    setAccountId(account);
+    setUnticked([]);
+    setLeft({});
+    read(view.columns, account);
   };
 
   const chosen = view.matches.filter(match => !unticked.includes(match.transaction));
@@ -161,6 +173,9 @@ export function StatementDialog({
       category: null,
       note: null,
     }));
+  /** Which way an open one's money goes in this account: a transfer, by which end it is. */
+  const wayOf = (open: StatementView['open'][number]) =>
+    open.kind === 'bill' || (open.kind === 'transfer' && open.accountId === accountId) ? 'out' : 'in';
   const nothing = chosen.length === 0 && balance === null && byHand.length === 0 && recorded.length === 0;
   const dates = view.transactions.map(transaction => transaction.date).sort();
 
@@ -169,6 +184,7 @@ export function StatementDialog({
       change(
         'settle',
         {
+          accountId,
           record: recorded,
           paid: [
             ...byHand,
@@ -213,6 +229,7 @@ export function StatementDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {problem && <Alert severity="error">{problem}</Alert>}
+          <AccountField label="Whose statement" value={accountId} onChange={choose} size="small" />
           {view.columns === null && view.format === 'csv' ? (
             <ColumnChooser headers={view.headers} onRead={read} />
           ) : (
@@ -291,7 +308,8 @@ export function StatementDialog({
                           {out ? 'A one-off spend: record it' : 'A one-off: record it'}
                         </MenuItem>
                         {view.open
-                          .filter(open => open.kind === (out ? 'bill' : 'income'))
+                          // The same way: a bill (or money moved out of this account) for a line out
+                          .filter(open => wayOf(open) === (out ? 'out' : 'in'))
                           .map(open => (
                             <MenuItem key={keyOf(open)} value={keyOf(open)}>
                               {`${open.name}, due ${formatDay(open.due)}`}

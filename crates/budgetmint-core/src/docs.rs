@@ -6,12 +6,13 @@
 //! | `settings~account` | [`Settings`] |
 //! | `item~{id}` | an [`Item`] |
 //! | `occ~{YYYY-MM-DD}~{itemId}` | an [`Override`]: the occurrence its schedule puts on that date |
+//! | `account~{id}` | an [`Account`]: a bank account besides the main one (`account~main`: the main one's name) |
 //!
 //! The date leads an occurrence's id so the client can listen to a range of
 //! dates. Each document's JSON is the type's; the client wraps it with the
 //! fields the rules want (kind, schema, device, epoch, time).
 
-use crate::model::{Item, Override, Settings};
+use crate::model::{Account, Item, ItemKind, Override, Settings, MAIN_ACCOUNT, MAIN_ACCOUNT_NAME};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,7 +22,8 @@ use std::collections::{BTreeMap, BTreeSet};
 /// a month or on a weekday of the month, weekends moved, varying amounts,
 /// money set aside, everyday spending and balance checks (fields an older
 /// BudgetMint would drop). 3: an amount already set aside for a bill.
-pub const BUDGET_SCHEMA: u32 = 3;
+/// 4: bank accounts besides the main one, the items in them, and transfers.
+pub const BUDGET_SCHEMA: u32 = 4;
 
 /// The schema a document is written with when it has nothing a newer one added.
 pub const BASE_SCHEMA: u32 = 2;
@@ -42,7 +44,14 @@ impl Versioned for Override {}
 
 impl Versioned for Item {
     fn schema(&self) -> u32 {
-        if self
+        // In another account, or moving money between two: an older
+        // BudgetMint would count it in the main one, as a bill or income
+        if self.kind == ItemKind::Transfer
+            || self.account_id.is_some()
+            || self.to_account_id.is_some()
+        {
+            4
+        } else if self
             .save_up
             .is_some_and(|save_up| save_up.saved_cents.is_some())
         {
@@ -50,6 +59,12 @@ impl Versioned for Item {
         } else {
             BASE_SCHEMA
         }
+    }
+}
+
+impl Versioned for Account {
+    fn schema(&self) -> u32 {
+        4
     }
 }
 
@@ -69,6 +84,7 @@ pub enum DocKey {
     Settings,
     Item(String),
     Occ { date: NaiveDate, item_id: String },
+    Account(String),
 }
 
 impl DocKey {
@@ -78,6 +94,7 @@ impl DocKey {
         match kind {
             "settings" if rest == "account" => Some(DocKey::Settings),
             "item" if valid_id(rest) => Some(DocKey::Item(rest.to_string())),
+            "account" if valid_id(rest) => Some(DocKey::Account(rest.to_string())),
             "occ" => {
                 let (date, item_id) = rest.split_once('~')?;
                 let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
@@ -96,6 +113,7 @@ impl DocKey {
             DocKey::Settings => "settings~account".to_string(),
             DocKey::Item(id) => format!("item~{}", id),
             DocKey::Occ { date, item_id } => format!("occ~{}~{}", date.format("%Y-%m-%d"), item_id),
+            DocKey::Account(id) => format!("account~{}", id),
         }
     }
 
@@ -105,6 +123,7 @@ impl DocKey {
             DocKey::Settings => "settings",
             DocKey::Item(_) => "item",
             DocKey::Occ { .. } => "occ",
+            DocKey::Account(_) => "account",
         }
     }
 }
@@ -151,6 +170,10 @@ pub struct Snapshot {
     pub items: BTreeMap<String, Item>,
     /// By (item, date).
     pub overrides: BTreeMap<(String, NaiveDate), Override>,
+    /// The account documents as kept, by id: the accounts besides the main
+    /// one, and the main one's name when it has one (`account` and
+    /// `all_accounts` are what the rules go by).
+    pub accounts: BTreeMap<String, Account>,
     /// Each document's JSON as read, to tell a change from none.
     json: BTreeMap<String, String>,
     /// Each document's schema as read: a write never lowers it (the rules
@@ -164,6 +187,58 @@ impl Snapshot {
     /// The settings, or the defaults before any are saved.
     pub fn settings(&self) -> Settings {
         self.settings.clone().unwrap_or_default()
+    }
+
+    /// The account `id` as the rules see it. The main one always is: its
+    /// balance, low mark and checks are the settings', and its name the
+    /// user's when they gave it one.
+    pub fn account(&self, id: &str) -> Option<Account> {
+        if id != MAIN_ACCOUNT {
+            return self.accounts.get(id).cloned();
+        }
+        Some(self.main_account())
+    }
+
+    /// The balance `id`'s account holds, when it's there and has one.
+    pub fn balance_of(&self, id: &str) -> Option<crate::model::Balance> {
+        self.account(id).and_then(|account| account.balance)
+    }
+
+    /// The main account: the settings' balance, low mark and checks, under
+    /// the name the user gave it (if any).
+    pub fn main_account(&self) -> Account {
+        let settings = self.settings();
+        let named = self.accounts.get(MAIN_ACCOUNT);
+        Account {
+            id: MAIN_ACCOUNT.into(),
+            name: named.map_or(MAIN_ACCOUNT_NAME.into(), |named| named.name.clone()),
+            order: named.map_or(0, |named| named.order),
+            balance: settings.balance,
+            low_balance_cents: settings.low_balance_cents,
+            checks: settings.checks,
+            archived: false,
+        }
+    }
+
+    /// Every account, the main one among them, in their order.
+    pub fn all_accounts(&self) -> Vec<Account> {
+        let mut all: Vec<Account> = self
+            .accounts
+            .values()
+            .filter(|account| !account.is_main())
+            .cloned()
+            .chain([self.main_account()])
+            .collect();
+        all.sort_by(|a, b| (a.order, &a.name, &a.id).cmp(&(b.order, &b.name, &b.id)));
+        all
+    }
+
+    /// The accounts in use (not archived), in their order.
+    pub fn live_accounts(&self) -> Vec<Account> {
+        self.all_accounts()
+            .into_iter()
+            .filter(|account| !account.archived)
+            .collect()
     }
 
     /// Whether a newer BudgetMint wrote `key`'s document (it's held, not read).
@@ -243,6 +318,15 @@ impl Snapshot {
                     if item.id == *id && !item.schedule.is_empty() && item.in_calendar() =>
                 {
                     self.items.insert(id.clone(), item);
+                }
+                Some(_) => return false,
+            },
+            DocKey::Account(id) => match json.map(serde_json::from_str::<Account>) {
+                None => {
+                    self.accounts.remove(id);
+                }
+                Some(Ok(account)) if account.id == *id && account.in_calendar() => {
+                    self.accounts.insert(id.clone(), account);
                 }
                 Some(_) => return false,
             },
@@ -328,6 +412,8 @@ mod tests {
             note: None,
             varies: false,
             save_up: None,
+            account_id: None,
+            to_account_id: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         }
@@ -355,7 +441,13 @@ mod tests {
                 item_id: "rent".into()
             })
         );
+        assert_eq!(
+            DocKey::parse("account~savings-1"),
+            Some(DocKey::Account("savings-1".into()))
+        );
         for bad in [
+            "account~",
+            "account~a b",
             "settings~device",
             "item~",
             "item~a b",
@@ -371,6 +463,7 @@ mod tests {
         for key in [
             DocKey::Settings,
             DocKey::Item("x".into()),
+            DocKey::Account("x".into()),
             DocKey::Occ {
                 date: d(2026, 1, 2),
                 item_id: "x".into(),
@@ -611,5 +704,146 @@ mod tests {
         ]);
         assert_eq!(applied.held, vec!["item~later".to_string()]);
         assert_eq!(snapshot.items["old"].name, "Old rent");
+    }
+
+    fn savings() -> Account {
+        Account {
+            id: "savings".into(),
+            name: "Savings".into(),
+            order: 1,
+            balance: None,
+            low_balance_cents: 500,
+            checks: Vec::new(),
+            archived: false,
+        }
+    }
+
+    #[test]
+    fn keeps_the_accounts_besides_the_main_one_which_is_the_settings() {
+        let mut snapshot = Snapshot::default();
+        // With no account documents there's still the main one, as the settings have it
+        let main = snapshot.account(MAIN_ACCOUNT).unwrap();
+        assert_eq!((main.name.as_str(), main.balance), ("Main account", None));
+        assert_eq!(snapshot.all_accounts(), vec![main]);
+        assert_eq!(snapshot.account("savings"), None);
+
+        let balance = crate::model::Balance {
+            cents: 700,
+            as_of: d(2026, 11, 9),
+        };
+        let settings = Settings {
+            balance: Some(balance),
+            low_balance_cents: 100,
+            ..Settings::default()
+        };
+        snapshot.write(DocKey::Settings, Some(&settings));
+        let (write, undo) = snapshot
+            .write(DocKey::Account("savings".into()), Some(&savings()))
+            .unwrap();
+        assert_eq!(
+            (write.kind.as_str(), write.schema, undo.schema),
+            ("account", 4, 4)
+        );
+        assert_eq!(write.doc_id, "account~savings");
+        let closed = Account {
+            id: "old".into(),
+            name: "Old".into(),
+            order: 1,
+            archived: true,
+            ..savings()
+        };
+        snapshot.write(DocKey::Account("old".into()), Some(&closed));
+        // The main one named: only its name and place are taken from its document
+        let named = Account {
+            id: MAIN_ACCOUNT.into(),
+            name: "Checking".into(),
+            order: 2,
+            balance: None,
+            low_balance_cents: 9_999,
+            checks: Vec::new(),
+            archived: true,
+        };
+        snapshot.write(DocKey::Account(MAIN_ACCOUNT.into()), Some(&named));
+        let main = snapshot.account(MAIN_ACCOUNT).unwrap();
+        assert_eq!(
+            (
+                main.name.as_str(),
+                main.balance,
+                main.low_balance_cents,
+                main.archived
+            ),
+            ("Checking", Some(balance), 100, false)
+        );
+        let names = |accounts: Vec<Account>| -> Vec<String> {
+            accounts.into_iter().map(|account| account.name).collect()
+        };
+        assert_eq!(
+            names(snapshot.all_accounts()),
+            ["Old", "Savings", "Checking"]
+        );
+        assert_eq!(names(snapshot.live_accounts()), ["Savings", "Checking"]);
+
+        // One that isn't its document's, or dated outside the calendar, doesn't read; deleted, it's gone
+        let far = Account {
+            balance: Some(crate::model::Balance {
+                cents: 1,
+                as_of: d(1800, 1, 1),
+            }),
+            ..savings()
+        };
+        let applied = snapshot.apply(vec![
+            doc(
+                "account~other",
+                Some(serde_json::to_string(&savings()).unwrap()),
+            ),
+            doc(
+                "account~savings",
+                Some(serde_json::to_string(&far).unwrap()),
+            ),
+            doc("account~old", None),
+        ]);
+        assert_eq!(applied.unreadable, ["account~other", "account~savings"]);
+        assert_eq!(names(snapshot.all_accounts()), ["Savings", "Checking"]);
+    }
+
+    #[test]
+    fn an_item_in_another_account_or_a_transfer_is_a_newer_document() {
+        let mut snapshot = Snapshot::default();
+        let schema = |snapshot: &mut Snapshot, item: &Item| {
+            snapshot
+                .write(DocKey::Item(item.id.clone()), Some(item))
+                .unwrap()
+                .0
+                .schema
+        };
+        let mut bill = rent();
+        assert_eq!(schema(&mut snapshot, &bill), BASE_SCHEMA);
+        bill.account_id = Some("savings".into());
+        assert_eq!(schema(&mut snapshot, &bill), 4);
+        // Back in the main account: still 4, since a schema is never lowered
+        bill.account_id = None;
+        assert_eq!(schema(&mut snapshot, &bill), 4);
+        let moved = Item {
+            id: "move".into(),
+            kind: ItemKind::Transfer,
+            to_account_id: Some("savings".into()),
+            ..rent()
+        };
+        assert_eq!(schema(&mut snapshot, &moved), 4);
+        // To the main account from another: no destination written, and still a transfer
+        let back = Item {
+            id: "back".into(),
+            kind: ItemKind::Transfer,
+            ..rent()
+        };
+        assert_eq!(schema(&mut snapshot, &back), 4);
+        let odd = Item {
+            id: "odd".into(),
+            to_account_id: Some("savings".into()),
+            ..rent()
+        };
+        assert_eq!(schema(&mut snapshot, &odd), 4);
+        // The settings and what's said of an occurrence stay the base schema
+        assert_eq!(Versioned::schema(&Settings::default()), BASE_SCHEMA);
     }
 }

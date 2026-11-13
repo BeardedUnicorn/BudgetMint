@@ -22,4 +22,8 @@ spendingWeeklyCents: number,
  * Income that's late (due, not on autopay, not marked received): left
  * out of the balance until it's marked, so the forecast runs low by it.
  */
-lateIncomeCents: number, };
+lateIncomeCents: number, 
+/**
+ * The account this is of; none: every account together.
+ */
+accountId: string | null, };

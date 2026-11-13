@@ -6,7 +6,7 @@
 
 use crate::docs::Snapshot;
 use crate::error::{invalid, CoreError};
-use crate::model::{Balance, Cents, ItemKind, OccStatus, MAX_CENTS};
+use crate::model::{Balance, Cents, Item, Leg, OccStatus, MAIN_ACCOUNT, MAX_CENTS};
 use crate::occur::occurrences;
 use crate::time::{in_calendar, Ctx};
 use crate::views::{occurrence_view, OccurrenceView};
@@ -98,13 +98,26 @@ pub struct StatementView {
     pub open: Vec<OccurrenceView>,
 }
 
-/// `text` as a statement, its transactions matched to the budget.
+/// `text` as the main account's statement (read_statement_of).
 pub fn read_statement(
     snapshot: &Snapshot,
     text: &str,
     columns: Option<CsvColumns>,
     ctx: &Ctx,
 ) -> Result<StatementView, CoreError> {
+    read_statement_of(snapshot, MAIN_ACCOUNT, text, columns, ctx)
+}
+
+/// `text` as `account_id`'s statement, its transactions matched to what's
+/// in that account: its bills and income, and its side of each transfer.
+pub fn read_statement_of(
+    snapshot: &Snapshot,
+    account_id: &str,
+    text: &str,
+    columns: Option<CsvColumns>,
+    ctx: &Ctx,
+) -> Result<StatementView, CoreError> {
+    crate::plan::live_account(snapshot, account_id)?;
     if text.len() > MAX_STATEMENT_BYTES {
         return Err(invalid(
             "That file is too large: export a few months at a time",
@@ -117,8 +130,8 @@ pub fn read_statement(
     } else {
         read_csv(text, columns)
     }?;
-    (view.matches, view.already) = match_open(snapshot, &view.transactions, ctx);
-    view.open = unmatched_open(snapshot, &view.transactions, &view.matches, ctx);
+    (view.matches, view.already) = match_open(snapshot, account_id, &view.transactions, ctx);
+    view.open = unmatched_open(snapshot, account_id, &view.transactions, &view.matches, ctx);
     Ok(view)
 }
 
@@ -126,6 +139,7 @@ pub fn read_statement(
 /// matched, for a transaction left over to be matched to by hand.
 fn unmatched_open(
     snapshot: &Snapshot,
+    account_id: &str,
     transactions: &[BankTransaction],
     matches: &[StatementMatch],
     ctx: &Ctx,
@@ -138,11 +152,11 @@ fn unmatched_open(
     };
     let window = Duration::days(MATCH_DAYS);
     let today = ctx.today();
-    let settled = crate::views::Settled::of(&snapshot.settings(), today);
+    let settleds = crate::views::Settleds::new(snapshot, today, Some(account_id));
     occurrences(snapshot, first - window, last + window, false)
         .iter()
-        .filter(|o| o.status == OccStatus::Open)
-        .map(|o| occurrence_view(o, today, settled))
+        .filter(|o| o.status == OccStatus::Open && o.item.touches(account_id))
+        .map(|o| occurrence_view(o, today, &settleds))
         .filter(|view| {
             !matches.iter().any(|m| {
                 m.occurrence.item_id == view.item_id && m.occurrence.scheduled == view.scheduled
@@ -556,6 +570,7 @@ fn amount_fit(amount: Cents, expected: Cents) -> u8 {
 /// the ones that paid one marked paid already.
 fn match_open(
     snapshot: &Snapshot,
+    account_id: &str,
     transactions: &[BankTransaction],
     ctx: &Ctx,
 ) -> (Vec<StatementMatch>, Vec<u32>) {
@@ -568,13 +583,16 @@ fn match_open(
     let window = Duration::days(MATCH_DAYS);
     let all = occurrences(snapshot, first - window, last + window, false);
     let today = ctx.today();
-    let settled = crate::views::Settled::of(&snapshot.settings(), today);
-    let kind_of = |t: &BankTransaction| {
-        if t.amount_cents < 0 {
-            ItemKind::Bill
+    let settleds = crate::views::Settleds::new(snapshot, today, Some(account_id));
+    // The statement is this account's: a line out of it is a bill's (or a
+    // transfer's out of it), one into it income's (or a transfer's into it)
+    let same_way = |item: &Item, t: &BankTransaction| {
+        let way = if t.amount_cents < 0 {
+            Leg::Out
         } else {
-            ItemKind::Income
-        }
+            Leg::In
+        };
+        item.leg(account_id) == Some(way)
     };
     let near = |a: NaiveDate, b: NaiveDate, days: i64| (a - b).num_days().abs() <= days;
 
@@ -584,7 +602,7 @@ fn match_open(
         .filter(|t| {
             all.iter().any(|o| match o.status {
                 OccStatus::Done { on, amount_cents } => {
-                    o.item.kind == kind_of(t)
+                    same_way(o.item, t)
                         && amount_cents == t.amount_cents.abs()
                         && near(on, t.date, 3)
                 }
@@ -602,7 +620,7 @@ fn match_open(
         let description = t.description.to_lowercase();
         for (at, o) in all.iter().enumerate() {
             if o.status != OccStatus::Open
-                || o.item.kind != kind_of(t)
+                || !same_way(o.item, t)
                 || !near(o.due, t.date, MATCH_DAYS)
             {
                 continue;
@@ -645,7 +663,7 @@ fn match_open(
         matches.push(StatementMatch {
             transaction: t,
             exact: transactions[t as usize].amount_cents.abs() == occurrence.expected_cents,
-            occurrence: occurrence_view(occurrence, today, settled),
+            occurrence: occurrence_view(occurrence, today, &settleds),
         });
     }
     matches.sort_by_key(|m| m.transaction);
@@ -656,7 +674,7 @@ fn match_open(
 mod tests {
     use super::*;
     use crate::docs::DocKey;
-    use crate::model::{Repeat, Settings};
+    use crate::model::{ItemKind, Repeat, Settings};
     use crate::occur::tests::{d, item, over, put_item, put_over};
 
     fn ctx() -> Ctx {
@@ -1028,10 +1046,11 @@ mod tests {
             amount_cents: cents,
             description: description.into(),
         };
-        let (matches, already) = match_open(&s, &[], &ctx());
+        let (matches, already) = match_open(&s, MAIN_ACCOUNT, &[], &ctx());
         assert!(matches.is_empty() && already.is_empty());
         let (matches, _) = match_open(
             &s,
+            MAIN_ACCOUNT,
             &[
                 // Near rent's amount, close in time, no name: likely
                 t(0, d(2026, 11, 2), -121_000, "ACH 1234"),
@@ -1054,6 +1073,7 @@ mod tests {
         // Two transactions for one bill: the better one gets it
         let (matches, _) = match_open(
             &s,
+            MAIN_ACCOUNT,
             &[
                 t(0, d(2026, 11, 9), -120_000, "RENT"),
                 t(1, d(2026, 11, 1), -120_000, "RENT"),
@@ -1076,5 +1096,126 @@ mod tests {
         );
         assert_eq!(find_columns(&["Date".into(), "Description".into()]), None);
         assert_eq!(words("A to Zed's Co"), vec!["zed".to_string()]);
+    }
+
+    #[test]
+    fn matches_a_transfer_by_which_way_it_goes_in_the_main_account() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        s.write(DocKey::Settings, Some(&Settings::default()));
+        put_account(&mut s, "savings", None);
+        let once = Repeat::Once;
+        put_item(
+            &mut s,
+            transfer("put", (None, Some("savings")), d(2026, 11, 3), once, 40_000),
+        );
+        put_item(
+            &mut s,
+            transfer(
+                "take",
+                (Some("savings"), None),
+                d(2026, 11, 4),
+                once,
+                15_000,
+            ),
+        );
+        // A bill paid from savings isn't on the main account's statement
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 5), once, 700),
+                "savings",
+            ),
+        );
+        // One moved already
+        put_item(
+            &mut s,
+            transfer(
+                "moved",
+                (None, Some("savings")),
+                d(2026, 11, 6),
+                once,
+                2_500,
+            ),
+        );
+        put_over(
+            &mut s,
+            over(
+                "moved",
+                d(2026, 11, 6),
+                OccStatus::Done {
+                    on: d(2026, 11, 6),
+                    amount_cents: 2_500,
+                },
+            ),
+        );
+        let csv = "Date,Description,Amount\n\
+                   2026-11-03,TO SAVINGS,-400.00\n\
+                   2026-11-04,FROM SAVINGS,150.00\n\
+                   2026-11-05,FEE,-7.00\n\
+                   2026-11-06,TO SAVINGS,-25.00\n\
+                   2026-11-03,DEPOSIT,400.00\n";
+        let view = read_statement(&s, csv, None, &ctx()).unwrap();
+        let matched: Vec<_> = view
+            .matches
+            .iter()
+            .map(|m| (m.transaction, m.occurrence.item_id.as_str()))
+            .collect();
+        // Out of it to savings, into it from savings; the deposit of the same amount is neither
+        assert_eq!(matched, [(0, "put"), (1, "take")]);
+        assert_eq!(view.already, [3]);
+    }
+
+    #[test]
+    fn reads_another_accounts_statement_against_what_is_in_that_account() {
+        use crate::occur::tests::{in_account, put_account, transfer};
+        let mut s = Snapshot::default();
+        s.write(DocKey::Settings, Some(&Settings::default()));
+        put_account(&mut s, "savings", None);
+        let once = Repeat::Once;
+        put_item(
+            &mut s,
+            transfer("put", (None, Some("savings")), d(2026, 11, 3), once, 40_000),
+        );
+        put_item(
+            &mut s,
+            in_account(
+                item("fee", ItemKind::Bill, d(2026, 11, 5), once, 700),
+                "savings",
+            ),
+        );
+        put_item(
+            &mut s,
+            item("rent", ItemKind::Bill, d(2026, 11, 4), once, 5_000),
+        );
+        let csv = "Date,Description,Amount\n\
+                   2026-11-03,TRANSFER IN,400.00\n\
+                   2026-11-04,RENT,-50.00\n\
+                   2026-11-05,FEE,-7.00\n";
+        let view = read_statement_of(&s, "savings", csv, None, &ctx()).unwrap();
+        let matched: Vec<_> = view
+            .matches
+            .iter()
+            .map(|m| (m.transaction, m.occurrence.item_id.as_str()))
+            .collect();
+        // The transfer comes into savings; the rent is the main account's, and isn't asked about
+        assert_eq!(matched, [(0, "put"), (2, "fee")]);
+        assert!(view.open.is_empty());
+        // The main account's statement has the same transfer going out
+        let main = read_statement(&s, csv, None, &ctx()).unwrap();
+        let matched: Vec<_> = main
+            .matches
+            .iter()
+            .map(|m| (m.transaction, m.occurrence.item_id.as_str()))
+            .collect();
+        assert_eq!(matched, [(1, "rent")]);
+        let open: Vec<&str> = main.open.iter().map(|o| o.item_id.as_str()).collect();
+        assert_eq!(open, ["put"]);
+        assert_eq!(
+            read_statement_of(&s, "gone", csv, None, &ctx())
+                .unwrap_err()
+                .to_string(),
+            "That account isn't there any more (deleted on another device?)"
+        );
     }
 }

@@ -22,6 +22,34 @@ pub enum ItemKind {
     Bill,
     /// Money coming in (other than TaskMint's withdrawals).
     Income,
+    /// Money moved from one of the user's bank accounts to another: out of
+    /// its account, into its `to` account, and neither spent nor earned.
+    Transfer,
+}
+
+/// The account every budget has: its balance, low mark and checks are the
+/// settings' (crate::model::Settings), so a budget with one account keeps
+/// no account documents at all.
+pub const MAIN_ACCOUNT: &str = "main";
+
+/// What the main account is called until the user names it.
+pub const MAIN_ACCOUNT_NAME: &str = "Main account";
+
+/// Which way an item's money moves in an account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Leg {
+    Out,
+    In,
+}
+
+impl Leg {
+    /// Out below zero, in above.
+    pub fn sign(self) -> Cents {
+        match self {
+            Leg::Out => -1,
+            Leg::In => 1,
+        }
+    }
 }
 
 /// How often an item comes round.
@@ -124,6 +152,16 @@ pub struct Item {
     /// Money is set aside for it ahead of each time it's due (crate::goals).
     #[serde(default)]
     pub save_up: Option<SaveUp>,
+    /// The bank account it's paid from (or into; a transfer's source).
+    /// None: the main one. Written only when it's another: an item with
+    /// one is a newer document (crate::docs::Versioned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
+    /// A transfer's destination, when it isn't the main account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub to_account_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -180,6 +218,47 @@ pub struct Override {
     #[serde(default)]
     pub note: Option<String>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// A bank account besides the main one (`account~{id}`), or the main
+/// one's name and place (`account~main`: its balance, low mark and checks
+/// stay in the settings, and are ignored here).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Account {
+    /// Made by the client, as an item's is; "main" for the main account.
+    pub id: String,
+    pub name: String,
+    /// Its place among the accounts (lowest first).
+    #[serde(default)]
+    pub order: u32,
+    #[serde(default)]
+    pub balance: Option<Balance>,
+    /// Days below this are flagged low.
+    #[serde(default)]
+    pub low_balance_cents: Cents,
+    /// Its balance's past updates (as Settings::checks).
+    #[serde(default)]
+    pub checks: Vec<BalanceCheck>,
+    /// Closed: out of the lists and the totals, its history kept.
+    #[serde(default)]
+    pub archived: bool,
+}
+
+impl Account {
+    pub fn in_calendar(&self) -> bool {
+        self.balance
+            .is_none_or(|balance| in_calendar(balance.as_of))
+            && self
+                .checks
+                .iter()
+                .all(|check| in_calendar(check.from) && in_calendar(check.to))
+    }
+
+    pub fn is_main(&self) -> bool {
+        self.id == MAIN_ACCOUNT
+    }
 }
 
 /// The balance the forecast starts from: what the account held at the end
@@ -356,6 +435,33 @@ impl Default for Settings {
 // one with a date outside it doesn't read.
 
 impl Item {
+    /// The account it's paid from or into (a transfer's source).
+    pub fn account(&self) -> &str {
+        self.account_id.as_deref().unwrap_or(MAIN_ACCOUNT)
+    }
+
+    /// A transfer's destination; None for a bill or income.
+    pub fn to_account(&self) -> Option<&str> {
+        (self.kind == ItemKind::Transfer)
+            .then(|| self.to_account_id.as_deref().unwrap_or(MAIN_ACCOUNT))
+    }
+
+    /// Which way its money moves in `account`; None when it isn't that account's.
+    pub fn leg(&self, account: &str) -> Option<Leg> {
+        let own = self.account() == account;
+        match self.kind {
+            ItemKind::Bill => own.then_some(Leg::Out),
+            ItemKind::Income => own.then_some(Leg::In),
+            ItemKind::Transfer if own => Some(Leg::Out),
+            ItemKind::Transfer => (self.to_account() == Some(account)).then_some(Leg::In),
+        }
+    }
+
+    /// Whether it's `account`'s, either way.
+    pub fn touches(&self, account: &str) -> bool {
+        self.leg(account).is_some()
+    }
+
     pub fn in_calendar(&self) -> bool {
         self.schedule
             .iter()
@@ -428,9 +534,66 @@ mod tests {
             note: None,
             varies: false,
             save_up: None,
+            account_id: None,
+            to_account_id: None,
             created_at: DateTime::UNIX_EPOCH,
             updated_at: DateTime::UNIX_EPOCH,
         };
+        // An item of another account, and a transfer: each says which way its money goes where
+        let saved = Item {
+            account_id: Some("savings".into()),
+            ..item.clone()
+        };
+        assert_eq!((saved.account(), saved.to_account()), ("savings", None));
+        assert_eq!(saved.leg("savings"), Some(Leg::Out));
+        assert_eq!(saved.leg(MAIN_ACCOUNT), None);
+        let pay = Item {
+            kind: ItemKind::Income,
+            ..item.clone()
+        };
+        assert_eq!(pay.leg(MAIN_ACCOUNT), Some(Leg::In));
+        assert!(!pay.touches("savings"));
+        let moved = Item {
+            kind: ItemKind::Transfer,
+            to_account_id: Some("savings".into()),
+            ..item.clone()
+        };
+        assert_eq!(moved.to_account(), Some("savings"));
+        assert_eq!(moved.leg(MAIN_ACCOUNT), Some(Leg::Out));
+        assert_eq!(moved.leg("savings"), Some(Leg::In));
+        assert_eq!(moved.leg("other"), None);
+        assert_eq!((Leg::Out.sign(), Leg::In.sign()), (-1, 1));
+        let back = Item {
+            kind: ItemKind::Transfer,
+            account_id: Some("savings".into()),
+            ..item.clone()
+        };
+        assert_eq!(back.to_account(), Some(MAIN_ACCOUNT));
+        assert_eq!(
+            serde_json::to_value(&back).unwrap()["accountId"],
+            json!("savings")
+        );
+        assert_eq!(
+            serde_json::to_value(ItemKind::Transfer).unwrap(),
+            json!("transfer")
+        );
+        // An account reads with only its name, and says when a date is outside the calendar
+        let account: Account =
+            serde_json::from_value(json!({ "id": "main", "name": "Checking" })).unwrap();
+        assert!(account.is_main() && account.in_calendar() && account.balance.is_none());
+        let far: Account = serde_json::from_value(json!({
+            "id": "s", "name": "S", "balance": { "cents": 1, "asOf": "1800-01-01" }
+        }))
+        .unwrap();
+        assert!(!far.in_calendar() && !far.is_main());
+        let checked: Account = serde_json::from_value(json!({
+            "id": "s", "name": "S", "checks": [{
+                "from": "2026-11-01", "to": "2300-01-01",
+                "expectedCents": 1, "actualCents": 1, "assumedSpendingCents": 0
+            }]
+        }))
+        .unwrap();
+        assert!(!checked.in_calendar());
         assert_eq!(
             serde_json::to_value(&item).unwrap(),
             json!({

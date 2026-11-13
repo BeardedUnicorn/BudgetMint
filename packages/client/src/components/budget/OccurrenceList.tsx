@@ -4,16 +4,20 @@
  * rest. One whose amount varies asks what it came to instead (its estimate
  * isn't what was paid), and so does one on autopay once it's due; on the
  * balance's own day, Mark paid opens it too, to ask whether the balance
- * has it already (FromBalance). Used by the overview and the calendar's day.
+ * has it already (FromBalance). With more than one bank account, each says
+ * which it's in, and money moved between two says from which to which: out
+ * of the account the list is of (`scope`) or into it, and neither way in a
+ * list of every account. Used by the overview and the calendar's day.
  */
 
 import { useState } from 'react';
 import { Box, Button, Chip, IconButton, List, ListItem, Tooltip, Typography } from '@mui/material';
 import { CheckCircleOutlined as PaidIcon, MoreHoriz as MoreIcon } from '@mui/icons-material';
 import type { OccurrenceView } from '@budgetmint/contracts';
-import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { accountBalance, useAccounts, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { occurrenceLabel } from '../../utils/describe';
+import { KIND_WORDS } from '../../utils/kinds';
 import { formatCents, formatMaybeCents } from '../../utils/money';
 import { PHONE } from '../../theme/media';
 import { useNotification } from '../../contexts/NotificationContext';
@@ -24,6 +28,7 @@ const MONO = '"Roboto Mono", monospace';
 const CHIP_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
   Paid: 'success',
   Received: 'success',
+  Moved: 'success',
   Skipped: 'default',
   Overdue: 'error',
   Late: 'warning',
@@ -31,12 +36,31 @@ const CHIP_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default' | 
   Automatic: 'info',
 };
 
-export function OccurrenceList({ occurrences, today }: { occurrences: OccurrenceView[]; today: string }) {
+export function OccurrenceList({
+  occurrences,
+  today,
+  scope = null,
+}: {
+  occurrences: OccurrenceView[];
+  today: string;
+  /** The one account the list is of (none: every account). */
+  scope?: string | null;
+}) {
   const change = useBudgetChange();
   const { showError } = useNotification();
   const [open, setOpen] = useState<{ occurrence: OccurrenceView; askAmount?: boolean; paying?: boolean } | null>(null);
-  // Set today, the balance may or may not have what's paid now: Mark paid asks
-  const balanceToday = useCoreQuery('get_settings').settings.balance?.asOf === today;
+  const { all, several, nameOf } = useAccounts();
+  // A balance of its account (either one, for a transfer) set today may or may not have what's
+  // paid now: Mark paid asks
+  const balanceToday = (occurrence: OccurrenceView) =>
+    [occurrence.accountId, occurrence.toAccountId].some(id => id !== null && accountBalance(all, id)?.asOf === today);
+  /** Before its amount: out, in, or (moved, in a list of every account) neither. */
+  const signOf = (occurrence: OccurrenceView) =>
+    occurrence.kind !== 'transfer' || scope === null
+      ? KIND_WORDS[occurrence.kind].sign
+      : occurrence.accountId === scope
+        ? '−'
+        : '+';
 
   const markDone = (occurrence: OccurrenceView) => {
     try {
@@ -53,7 +77,7 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
             note: occurrence.note,
           },
         },
-        `${occurrence.name} marked ${occurrence.kind === 'bill' ? 'paid' : 'received'}`
+        `${occurrence.name} marked ${KIND_WORDS[occurrence.kind].verb}`
       );
     } catch (error) {
       showError((error as Error).message);
@@ -66,8 +90,8 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
         {occurrences.map(occurrence => {
           const label = occurrenceLabel(occurrence);
           const done = occurrence.status.state !== 'open';
-          const sign = occurrence.kind === 'bill' ? '−' : '+';
-          const verb = occurrence.kind === 'bill' ? 'paid' : 'received';
+          const words = KIND_WORDS[occurrence.kind];
+          const sign = signOf(occurrence);
           return (
             <ListItem
               key={`${occurrence.itemId} ${occurrence.scheduled}`}
@@ -95,6 +119,12 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     {occurrence.due !== occurrence.scheduled ? `Moved from ${formatDay(occurrence.scheduled)}` : ''}
                     {occurrence.due !== occurrence.scheduled && occurrence.note ? ' · ' : ''}
                     {occurrence.note}
+                  </Typography>
+                )}
+                {several && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {nameOf(occurrence.accountId)}
+                    {occurrence.toAccountId && ` → ${nameOf(occurrence.toAccountId)}`}
                   </Typography>
                 )}
                 {/* Its amount doesn't move the day's balance: say why */}
@@ -139,13 +169,13 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     onClick={() =>
                       occurrence.varies
                         ? setOpen({ occurrence, askAmount: true })
-                        : balanceToday
+                        : balanceToday(occurrence)
                           ? setOpen({ occurrence, paying: true })
                           : markDone(occurrence)
                     }
-                    aria-label={`Mark ${occurrence.name} ${verb}`}
+                    aria-label={`Mark ${occurrence.name} ${words.verb}`}
                   >
-                    {occurrence.kind === 'bill' ? 'Mark paid' : 'Mark received'}
+                    {words.mark}
                   </Button>
                 ) : !done && occurrence.varies && occurrence.due <= today ? (
                   // On autopay, so it's gone: what it came to teaches its estimate
