@@ -17,8 +17,8 @@
 //!   each day after the balance's.
 //! - A transfer between two of the user's accounts: out of the one, into
 //!   the other, on the days a bill and income would be. One still open and
-//!   past due is owed today where it leaves, and not counted on where it
-//!   arrives.
+//!   past due counts today on both sides: it's the user's money wherever it
+//!   is, so the accounts together hold the same until it's marked moved.
 //!
 //! Without a balance set, the cash flow starts at zero from yesterday's end,
 //! and bills open in the last month count as overdue.
@@ -65,7 +65,7 @@ pub enum FlowStatus {
     Scheduled,
     /// Due then, paid (or received) on its own.
     Autopay,
-    /// A bill past due and still owed: counted today.
+    /// A bill past due and still owed, or a transfer past due and still to make: counted today.
     Overdue,
     /// Marked paid (or received) then.
     Done,
@@ -288,14 +288,13 @@ pub fn project_account(
                     item_id: item.id.clone(),
                     scheduled: occurrence.scheduled,
                 };
-                match leg {
-                    // Still owed (a bill, or a transfer out not made yet)
-                    Leg::Out => {
-                        flows.push(flow(today, FlowStatus::Overdue, occurrence.expected_cents));
-                        overdue.push(late);
-                    }
-                    // Not in yet: it can't be counted on
-                    Leg::In => late_income.push(late),
+                // Still owed (a bill), or still to move (a transfer, into this account or out
+                // of it); income not in yet can't be counted on
+                if leg == Leg::Out || item.kind == ItemKind::Transfer {
+                    flows.push(flow(today, FlowStatus::Overdue, occurrence.expected_cents));
+                    overdue.push(late);
+                } else {
+                    late_income.push(late);
                 }
             }
             OccStatus::Open => {}
@@ -446,7 +445,7 @@ pub fn project_accounts(
 /// Several accounts' cash flows as one, from the first day they all cover:
 /// every account's money in and out, and the balances of the ones that
 /// count added up. A day is short (or low) when any account is. A transfer
-/// still to make is owed where it leaves, and only listed once.
+/// still to make counts on both sides, and is only listed once.
 pub fn combined(flows: &[AccountFlow]) -> Projection {
     if let [only] = flows {
         return only.projection.clone();
@@ -495,11 +494,14 @@ pub fn combined(flows: &[AccountFlow]) -> Projection {
             .flat_map(|flow| pick(&flow.projection).iter().cloned())
             .collect()
     };
-    let overdue = all(|projection| &projection.overdue);
-    let late_income = all(|projection| &projection.late_income)
-        .into_iter()
-        .filter(|late| !overdue.contains(late))
-        .collect();
+    // (A transfer between two of them is in both accounts' lists)
+    let mut overdue: Vec<Late> = Vec::new();
+    for late in all(|projection| &projection.overdue) {
+        if !overdue.contains(&late) {
+            overdue.push(late);
+        }
+    }
+    let late_income = all(|projection| &projection.late_income);
     Projection {
         today,
         base,
@@ -999,7 +1001,7 @@ mod tests {
                 900,
             ),
         );
-        // Still open and past due: the one out is owed today, the one in isn't counted on
+        // Still open and past due: the money is the user's either way, so both count today
         put_item(
             &mut s,
             transfer(
@@ -1021,7 +1023,7 @@ mod tests {
             ),
         );
         let p = project(&s, None, &ctx, d(2026, 11, 20));
-        assert_eq!(row(&p, d(2026, 11, 10)), (100_000, 98_000, false, false));
+        assert_eq!(row(&p, d(2026, 11, 10)), (100_000, 102_000, false, false));
         let owed = &p.today_row().flows[0];
         assert_eq!(
             (owed.kind, owed.status, owed.amount_cents),
@@ -1030,11 +1032,16 @@ mod tests {
         let ids = |late: &[Late]| -> Vec<String> {
             late.iter().map(|late| late.item_id.clone()).collect()
         };
-        assert_eq!(ids(&p.overdue), ["late-out"]);
-        assert_eq!(ids(&p.late_income), ["late-in"]);
-        assert_eq!(row(&p, d(2026, 11, 12)), (98_000, 68_000, false, false));
-        assert_eq!(row(&p, d(2026, 11, 13)), (68_000, 68_000, false, false));
-        assert_eq!(row(&p, d(2026, 11, 14)), (68_000, 73_000, false, false));
+        let arriving = &p.today_row().flows[1];
+        assert_eq!(
+            (arriving.kind, arriving.status, arriving.amount_cents),
+            (FlowKind::Transfer, FlowStatus::Overdue, 4_000)
+        );
+        assert_eq!(ids(&p.overdue), ["late-out", "late-in"]);
+        assert!(p.late_income.is_empty());
+        assert_eq!(row(&p, d(2026, 11, 12)), (102_000, 72_000, false, false));
+        assert_eq!(row(&p, d(2026, 11, 13)), (72_000, 72_000, false, false));
+        assert_eq!(row(&p, d(2026, 11, 14)), (72_000, 77_000, false, false));
         let back = &p.day(d(2026, 11, 14)).unwrap().flows[0];
         assert_eq!((back.kind, back.amount_cents), (FlowKind::Transfer, 5_000));
     }
@@ -1216,7 +1223,7 @@ mod tests {
                 "card",
             ),
         );
-        // Still to move, and past due: owed by the main account, awaited by the card; listed once
+        // Still to move, and past due: out of the main account and into the card; listed once
         put_item(
             &mut s,
             in_account(
@@ -1256,5 +1263,41 @@ mod tests {
         };
         assert_eq!(ids(&all.overdue), ["late"]);
         assert_eq!(ids(&all.late_income), ["refund"]);
+    }
+
+    #[test]
+    fn a_transfer_still_to_make_leaves_what_the_accounts_hold_together_as_it_is() {
+        use crate::occur::tests::transfer;
+        let ctx = ctx();
+        let mut s = Snapshot::default();
+        with_balance(&mut s, 10_000, d(2026, 11, 8), 0);
+        let savings = account("savings", 50_000, d(2026, 11, 8), 0);
+        put(&mut s, &savings);
+        // Due yesterday and not marked moved: out of the one today, and into the other
+        put_item(
+            &mut s,
+            transfer(
+                "late",
+                (None, Some("savings")),
+                d(2026, 11, 9),
+                Repeat::Once,
+                1_000,
+            ),
+        );
+        let end = d(2026, 11, 12);
+        assert_eq!(
+            project(&s, None, &ctx, end).today_row().closing_cents,
+            9_000
+        );
+        let other = project_account(&s, &savings, None, &ctx, end);
+        assert_eq!(other.today_row().closing_cents, 51_000);
+        assert!(other.late_income.is_empty());
+        let all = combined(&project_accounts(&s, None, &ctx, end));
+        let today = all.today_row();
+        assert_eq!((today.opening_cents, today.closing_cents), (60_000, 60_000));
+        assert_eq!((today.in_cents, today.out_cents), (1_000, 1_000));
+        // Still to do, and listed once
+        assert_eq!(all.overdue.len(), 1);
+        assert_eq!(all.overdue[0].item_id, "late");
     }
 }

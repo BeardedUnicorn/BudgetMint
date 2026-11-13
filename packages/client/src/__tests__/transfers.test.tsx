@@ -124,7 +124,7 @@ describe('money moved between accounts', () => {
     expect(row('To savings')).toHaveTextContent(/Savings\$100\.00/);
     expect(row('Back again')).toHaveTextContent('Savings → Main account');
     expect(within(row('Back again')).getByText('Automatic')).toBeInTheDocument();
-    // Late, it's owed where it leaves, and listed once
+    // Late, it still counts on both sides, and is listed once
     const overdue = section('Overdue and late');
     expect(within(overdue).getAllByRole('listitem')).toHaveLength(1);
     expect(within(overdue).getByText('Overdue')).toBeInTheDocument();
