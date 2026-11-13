@@ -3,6 +3,7 @@
 //! reminders keep coming. Without a tray icon to bring it back from, it's
 //! never hidden.
 
+use crate::environment::Environment;
 use crate::platform::Platform;
 
 /// The main window's label (tauri.conf.json's only window).
@@ -19,15 +20,18 @@ pub fn at_launch(platform: &dyn Platform, started_at_login: bool) {
 }
 
 /// The app's link scheme (tauri.conf.json's plugins.deep-link): opening a
-/// `budgetmint://` link brings the app forward.
-pub const SCHEME: &str = "budgetmint";
+/// `budgetmint://` link brings the app forward, or a `budgetmint-dev://`
+/// one a dev build (environment.rs), so each opens its own app.
+pub fn scheme() -> &'static str {
+    Environment::current().deep_link_scheme()
+}
 
-/// The system opened `urls` with the app: a `budgetmint://` link shows the
+/// The system opened `urls` with the app: a link of its scheme shows the
 /// window. Google sign-in's page opens one, so the app comes back in front
 /// of the browser: the browser is the app in front, so the system lets it
 /// hand the focus over, which BudgetMint can't take for itself (macOS).
 pub fn link_opened(platform: &dyn Platform, urls: &[url::Url]) {
-    if urls.iter().any(|url| url.scheme() == SCHEME) {
+    if urls.iter().any(|url| url.scheme() == scheme()) {
         platform.show_main_window();
     }
 }
@@ -96,14 +100,27 @@ mod tests {
                 .map(|url| url::Url::parse(url).unwrap())
                 .collect()
         };
+        // (budgetmint-dev:// here: tests are a dev build)
+        assert_eq!(scheme(), "budgetmint-dev");
         let platform = with_tray();
-        link_opened(&platform, &urls(&["budgetmint://signed-in"]));
+        link_opened(&platform, &urls(&["budgetmint-dev://signed-in"]));
         assert_eq!(platform.recorded().windows_shown, 1);
         // Once, however many links came
-        link_opened(&platform, &urls(&["budgetmint://a", "budgetmint://b"]));
+        link_opened(
+            &platform,
+            &urls(&["budgetmint-dev://a", "budgetmint-dev://b"]),
+        );
         assert_eq!(platform.recorded().windows_shown, 2);
-        // Another scheme's links, or none, leave the window as it is
-        link_opened(&platform, &urls(&["https://example.com", "taskmint://x"]));
+        // Another scheme's links, the installed app's included, or none,
+        // leave the window as it is
+        link_opened(
+            &platform,
+            &urls(&[
+                "https://example.com",
+                "taskmint://x",
+                "budgetmint://signed-in",
+            ]),
+        );
         link_opened(&platform, &[]);
         assert_eq!(platform.recorded().windows_shown, 2);
     }

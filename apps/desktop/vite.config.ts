@@ -1,6 +1,7 @@
 // Adapted from TaskMint apps/desktop/vite.config.ts @ 1623bee.
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { budgetmintEnvironmentPlugin } from '../../scripts/environment.mjs';
 
 // `tauri android dev --host` (for a phone on the network) sets TAURI_DEV_HOST
 // to this computer's address there: the dev server then listens on it, and
@@ -9,9 +10,13 @@ import react from '@vitejs/plugin-react';
 // localhost.
 const host = process.env.TAURI_DEV_HOST;
 
+// BUDGETMINT_ENV picks the Firebase projects, dev unless it's production
+// (scripts/environment.mjs); the Tauri CLI passes it on from its own
+// environment, as it does to Cargo and Gradle. dist/environment.json says
+// which, for scripts/release.mjs's check.
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), budgetmintEnvironmentPlugin()],
   // Favicon and logos live with the shared client.
   publicDir: '../../packages/client/public',
   // .env (the Google sign-in client, the emulators) stays at the repo root.

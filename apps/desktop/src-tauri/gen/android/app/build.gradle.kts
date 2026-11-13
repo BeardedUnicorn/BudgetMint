@@ -23,12 +23,35 @@ val tauriProperties = Properties().apply {
 val releaseKeystore: String? = System.getenv("BUDGETMINT_ANDROID_KEYSTORE")?.takeIf { it.isNotEmpty() }
 val releaseKeystorePassword: String? = System.getenv("BUDGETMINT_ANDROID_KEYSTORE_PASSWORD")?.takeIf { it.isNotEmpty() }
 
+// BudgetMint (adapted from TaskMint's @ 8b486ac): which BudgetMint this is
+// (scripts/environment.mjs, ADR 0005). BUDGETMINT_ENV is "production" for a
+// release and "dev" (also when unset) for any other build, the same variable
+// that picks the webview's Firebase projects. A dev build installs beside the
+// real app: com.budgetmint.android.dev, "BudgetMint Dev", on the dev Firebase
+// project, with Analytics off.
+val budgetmintEnv: String = System.getenv("BUDGETMINT_ENV")?.takeIf { it.isNotEmpty() } ?: "dev"
+require(budgetmintEnv == "production" || budgetmintEnv == "dev") {
+    "BUDGETMINT_ENV is \"$budgetmintEnv\", but it can only be \"production\" or \"dev\" (unset means \"dev\")."
+}
+val production = budgetmintEnv == "production"
+val appLabel = if (production) "BudgetMint" else "BudgetMint Dev"
+// The google-services plugin reads app/google-services.json, so the
+// environment's copy goes there before the plugin looks (it's gitignored)
+file("firebase/google-services.$budgetmintEnv.json").copyTo(file("google-services.json"), overwrite = true)
+
 android {
     compileSdk = 37
     namespace = "com.budgetmint.android"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.budgetmint.android"
+        // BudgetMint: the package is only the installed name: the code's
+        // stays com.budgetmint.android (namespace), which the Rust side's JNI
+        // needs
+        if (!production) applicationIdSuffix = ".dev"
+        resValue("string", "app_name", appLabel)
+        resValue("string", "main_activity_title", appLabel)
+        manifestPlaceholders["analyticsDeactivated"] = (!production).toString()
         minSdk = 24
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
@@ -78,6 +101,8 @@ android {
     }
     buildFeatures {
         buildConfig = true
+        // BudgetMint: the app's label is a resValue (BUDGETMINT_ENV above)
+        resValues = true
     }
 }
 

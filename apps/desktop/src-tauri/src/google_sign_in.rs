@@ -54,9 +54,10 @@ const FAVICON: &[u8] = include_bytes!("../../../../packages/client/public/favico
 const CHECK: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>"#;
 const ALERT: &str = r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 6.5v7"/><path d="M12 17.5v.01"/></svg>"#;
 
-/// A `budgetmint://` link, which brings the app forward (window.rs).
+/// A `budgetmint://` link (`budgetmint-dev://` from a dev build), which
+/// brings the app forward (window.rs).
 fn app_link(path: &str) -> String {
-    format!("{}://{}", crate::window::SCHEME, path)
+    format!("{}://{}", crate::window::scheme(), path)
 }
 
 /// What the browser shows once it's back, signed in to Google or not. (The
@@ -373,7 +374,10 @@ mod tests {
             let page = come_back(&url, &format!("code=the-code&state={}", state));
             assert!(page.contains("Google's part is done"));
             // It opens the app, which comes forward from behind the browser
-            assert!(page.contains(r#"<script>location.href = "budgetmint://signed-in";</script>"#));
+            // (budgetmint-dev:// here: tests are a dev build)
+            assert!(
+                page.contains(r#"<script>location.href = "budgetmint-dev://signed-in";</script>"#)
+            );
             // Not kept, and loading nothing with the code in the address
             let page = page.to_lowercase();
             assert!(page.contains("content-type: text/html; charset=utf-8"));
@@ -411,14 +415,15 @@ mod tests {
         }
         let done = done_page(true);
         assert!(done.contains(r#"<div class="card done">"#));
-        assert!(
-            done.contains(r#"<a class="button" href="budgetmint://signed-in">Open BudgetMint</a>"#)
-        );
+        assert!(done.contains(
+            r#"<a class="button" href="budgetmint-dev://signed-in">Open BudgetMint</a>"#
+        ));
         // Failed, the button goes back to the app, which isn't opened for it
         let failed = done_page(false);
         assert!(failed.contains(r#"<div class="card failed">"#));
-        assert!(failed
-            .contains(r#"<a class="button" href="budgetmint://sign-in">Back to BudgetMint</a>"#));
+        assert!(failed.contains(
+            r#"<a class="button" href="budgetmint-dev://sign-in">Back to BudgetMint</a>"#
+        ));
         assert!(!failed.contains("<script"));
     }
 

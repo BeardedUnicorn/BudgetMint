@@ -321,7 +321,8 @@ export function buildTargets({ targets = [], windows = false, platform, arch }) 
 // a build also makes each desktop target's update (createUpdaterArtifacts):
 // on macOS the app as a .app.tar.gz, on Windows the installer itself, each
 // with a .sig. The release adds latest.json, which the app reads from the
-// latest release (plugins.updater in tauri.conf.json).
+// latest release (plugins.updater in tauri.conf.json, with the feed from
+// tauri.production.conf.json).
 
 /** The file the app's updater reads, in the latest GitHub release. */
 export const UPDATE_MANIFEST = 'latest.json';
@@ -356,6 +357,17 @@ export function updateBundlePaths(product, version, target, plan) {
   if (!UPDATES[target].suffix) return { file: installer, signature: `${installer}.sig` };
   const file = installer.replace(/\/bundle\/[^/]+\/[^/]+$/, `/bundle/macos/${product}.app.tar.gz`);
   return { file, signature: `${file}.sig` };
+}
+
+/**
+ * The Info.plist of the app a macOS installer was built from (relative to
+ * the repository root): Tauri leaves the .app beside the .dmg's folder.
+ */
+export function macAppInfoPlist(product, version, target, plan) {
+  requireDesktop(target);
+  if (DESKTOP[target].platform !== 'darwin') throw new Error(`${target} isn't a macOS build`);
+  const installer = bundlePath(product, version, target, plan);
+  return installer.replace(/\/bundle\/[^/]+\/[^/]+$/, `/bundle/macos/${product}.app/Contents/Info.plist`);
 }
 
 /** Where a release's files download from. */
@@ -446,6 +458,19 @@ export function verifyApkSigner({ output, digest }) {
   if (found.length > 1) throw new Error(`The APK has ${found.length} signers; a release has one`);
   if (found[0] !== digest.toLowerCase()) {
     throw new Error(`The APK is signed with certificate ${found[0]}, but releases are signed with ${digest}`);
+  }
+}
+
+/**
+ * Checks that `aapt2 dump badging` (its `output`) names the package `name`:
+ * a release APK has to be the real app, not a dev build
+ * (com.budgetmint.android.dev). Throws saying what's wrong.
+ */
+export function verifyApkPackage({ output, name }) {
+  const found = /^package: name='([^']+)'/m.exec(output)?.[1];
+  if (!found) throw new Error('aapt2 found no package name in the APK');
+  if (found !== name) {
+    throw new Error(`The APK is ${found}, but a release is ${name}: build it with BUDGETMINT_ENV=production`);
   }
 }
 

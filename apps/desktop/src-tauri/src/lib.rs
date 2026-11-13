@@ -7,6 +7,7 @@
 
 mod app;
 pub mod dispatch;
+pub mod environment;
 pub mod events;
 pub mod files;
 pub mod google_sign_in;

@@ -18,6 +18,7 @@
     "build:wasm": "node scripts/build-wasm.mjs",
     "brand": "node scripts/brand/render.mjs",
     "firebase": "npx --yes firebase-tools@15.35.0",
+    "deploy:dev": "pnpm build:wasm && pnpm test:emulator && pnpm --filter @budgetmint/web build && pnpm firebase deploy --project dev --only firestore:rules,hosting --non-interactive",
     "dev": "pnpm --filter @budgetmint/desktop dev",
     "tauri": "pnpm --filter @budgetmint/desktop tauri",
     "check:coverage-policy": "node scripts/check-coverage-policy.mjs",

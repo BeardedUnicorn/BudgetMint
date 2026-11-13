@@ -34,6 +34,8 @@ export function defineBudgetmintConfig({ packageDir, environment, plugins, setup
       // (scripts/test-emulator.sh sets BUDGETMINT_EMULATOR)
       include: emulator ? ['src/**/*.emulator.test.ts'] : ['src/**/*.{test,spec}.{ts,tsx}'],
       exclude: emulator ? ['**/node_modules/**'] : ['**/node_modules/**', 'src/**/*.emulator.test.ts'],
+      // Tests run as a dev build (scripts/environment.mjs)
+      env: { BUDGETMINT_ENV: 'dev' },
       testTimeout: 10000,
       hookTimeout: 10000,
       reporters: ['verbose'],

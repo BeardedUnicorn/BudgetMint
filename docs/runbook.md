@@ -3,12 +3,15 @@
 How to deploy, watch, recover and lock down BudgetMint's data and web app, in
 its own Firebase project `budgetmint`. The design is
 [ADR 0001](adr/0001-cloud-first-core-in-wasm.md),
-[ADR 0002](adr/0002-taskmint-forecast-and-shared-project.md) and
-[ADR 0003](adr/0003-own-firebase-project.md). TaskMint's own runbook covers
+[ADR 0002](adr/0002-taskmint-forecast-and-shared-project.md),
+[ADR 0003](adr/0003-own-firebase-project.md) and
+[ADR 0005](adr/0005-dev-environment.md) (the dev project, below). TaskMint's own runbook covers
 TaskMint's project `taskmint-f9a05`, which BudgetMint only reads the forecast
 from. Commands run from the repository root. `pnpm firebase` is
 firebase-tools at the pinned version, and needs `pnpm firebase login` once
 (`pnpm firebase login --reauth` when it says the login has run out).
+`.firebaserc`'s default project is the dev one, `budgetmint-dev`, so every
+production command here names `--project budgetmint`.
 
 ## Who owns what
 
@@ -24,6 +27,8 @@ firebase-tools at the pinned version, and needs `pnpm firebase login` once
   `users/{uid}/published/payoutForecast` with TaskMint's uid, and writes
   nothing there.
 - **The data:** BudgetMint's is under `budgetmint/{uid}` in `budgetmint`.
+- **The dev pair, `budgetmint-dev` and `taskmint-dev`:** every build but a
+  release (below). TaskMint's is TaskMint's, as production's is.
 
 ## Health
 
@@ -68,6 +73,34 @@ curl -sI https://budgetmint.web.app/ https://budgetmint.web.app/privacy https://
 The web app's service worker (`apps/web/src/offline/`) keeps each release's
 files in a cache of its own: an open tab goes on with the release it started
 with, and the next one takes over once every BudgetMint tab has closed.
+
+## The dev project
+
+`budgetmint-dev` is where every build that isn't a release syncs: `pnpm tauri
+dev`, a plain `pnpm tauri build` ("BudgetMint Dev"), Android builds
+(`com.budgetmint.android.dev`), and the web app at
+https://budgetmint-dev.web.app (the README's "Dev environment"). Those
+builds read the forecast from TaskMint's dev project, `taskmint-dev`. It's
+on Spark with billing off, with quotas of its own, and nothing in it
+matters: sign up with any account.
+
+It mirrors production's setup (the README's "Firebase setup"). A setting
+changed in production's Authentication is worth changing here too.
+
+Nothing deploys to it automatically. From your Mac, the rules and the web
+app (after the emulator tests):
+
+```bash
+pnpm deploy:dev
+```
+
+Hosting's predeploy refuses a `dist` built for the other project, either
+way. To start dev over, delete its data (Authentication → Users can delete
+the accounts):
+
+```bash
+pnpm firebase firestore:delete --all-collections --project budgetmint-dev
+```
 
 ## Rolling back
 
@@ -155,13 +188,16 @@ scheduled backups (Blaze plan) is the fix if that ever matters.
   `plugins.updater.pubkey`, and release (the README's "Desktop updates").
 - **A lost or leaked Android release key:** make a new one, replace
   `ANDROID_KEYSTORE`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_SIGNER_SHA256`,
-  register its fingerprints on the Firebase Android app and download
-  `google-services.json` again (the README's "Android signing"). Phones
+  register its fingerprints on both projects' Firebase Android apps and
+  download both `app/firebase/google-services.*.json` again (the README's
+  "Android signing"). Phones
   can't install the new APK over the old one: each uninstalls first.
 - **Usage statistics stop arriving** (Analytics in the `budgetmint`
   console): on the web, check the CSP in `firebase.json` still lets Google's
   tag in and `apps/web/src/firebaseConfig.ts` has the `measurementId`; on
-  Android, that `google-services.json` is the "BudgetMint Android" app's.
+  Android, that `app/firebase/google-services.production.json` is the
+  "BudgetMint Android" app's in `budgetmint`, and that the APK is
+  `com.budgetmint.android` (a dev build's Analytics is off).
 - **A leaked Google desktop client secret:** Google treats it as public
   (PKCE protects the flow); to rotate it anyway, reset the secret in Google
   Cloud console → Credentials → BudgetMint desktop, and update `.env` and the

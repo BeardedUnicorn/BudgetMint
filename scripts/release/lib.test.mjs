@@ -19,6 +19,7 @@ import {
   isoDate,
   isTarget,
   isVersion,
+  macAppInfoPlist,
   missingAssets,
   packageJsonVersion,
   parseNote,
@@ -34,6 +35,7 @@ import {
   updateAssetNames,
   updateBundlePaths,
   updateManifest,
+  verifyApkPackage,
   verifyApkSigner,
   verifyUpdateSignature,
 } from './lib.mjs';
@@ -578,5 +580,44 @@ describe('checksums', () => {
         'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  latest.json\n'
     );
     assert.equal(sha256Sums([]), '');
+  });
+});
+
+describe('verifyApkPackage', () => {
+  const badging = name => `package: name='${name}' versionCode='2003002' versionName='2.3.2'\nsdkVersion:'24'\n`;
+
+  it('passes the real app', () => {
+    assert.doesNotThrow(() =>
+      verifyApkPackage({ output: badging('com.budgetmint.android'), name: 'com.budgetmint.android' })
+    );
+  });
+
+  it('refuses a dev build, or output with no package', () => {
+    assert.throws(
+      () => verifyApkPackage({ output: badging('com.budgetmint.android.dev'), name: 'com.budgetmint.android' }),
+      /is com\.budgetmint\.android\.dev, but a release is com\.budgetmint\.android: build it with BUDGETMINT_ENV=production/
+    );
+    assert.throws(() => verifyApkPackage({ output: 'ERROR', name: 'com.budgetmint.android' }), /no package name/);
+  });
+});
+
+describe('macAppInfoPlist', () => {
+  it('finds the app beside a macOS installer, cross-compiled or not', () => {
+    assert.equal(
+      macAppInfoPlist('BudgetMint', '2.3.2', 'macos-arm64', { kind: 'tauri', triple: null }),
+      'target/release/bundle/macos/BudgetMint.app/Contents/Info.plist'
+    );
+    assert.equal(
+      macAppInfoPlist('BudgetMint', '2.3.2', 'macos-x64', { kind: 'tauri', triple: 'x86_64-apple-darwin' }),
+      'target/x86_64-apple-darwin/release/bundle/macos/BudgetMint.app/Contents/Info.plist'
+    );
+  });
+
+  it('has none for another platform', () => {
+    assert.throws(
+      () => macAppInfoPlist('BudgetMint', '2.3.2', 'windows-x64', { kind: 'xwin', triple: 'x86_64-pc-windows-msvc' }),
+      /isn't a macOS build/
+    );
+    assert.throws(() => macAppInfoPlist('BudgetMint', '2.3.2', 'android-arm64', { kind: 'android' }), /has no updates/);
   });
 });

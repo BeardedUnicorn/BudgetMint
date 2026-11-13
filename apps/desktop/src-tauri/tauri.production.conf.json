@@ -1,0 +1,15 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "BudgetMint",
+  "identifier": "com.budgetmint.desktop",
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["budgetmint"]
+      }
+    },
+    "updater": {
+      "endpoints": ["https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json"]
+    }
+  }
+}

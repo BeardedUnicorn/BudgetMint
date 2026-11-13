@@ -1,5 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "BudgetMint",
   "identifier": "com.budgetmint.android",
   "app": {
     "security": {
