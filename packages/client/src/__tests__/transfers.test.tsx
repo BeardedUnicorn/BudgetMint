@@ -124,7 +124,7 @@ describe('money moved between accounts', () => {
     expect(row('To savings')).toHaveTextContent(/Savings\$100\.00/);
     expect(row('Back again')).toHaveTextContent('Savings → Main account');
     expect(within(row('Back again')).getByText('Automatic')).toBeInTheDocument();
-    // Late, it's owed where it leaves, and listed once
+    // Late, it still counts on both sides, and is listed once
     const overdue = section('Overdue and late');
     expect(within(overdue).getAllByRole('listitem')).toHaveLength(1);
     expect(within(overdue).getByText('Overdue')).toBeInTheDocument();
@@ -149,7 +149,8 @@ describe('money moved between accounts', () => {
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getAllByText('To savings (moved)')).toHaveLength(2);
     expect(screen.getAllByText('Back again (automatic)')).toHaveLength(2);
-    expect(screen.getByText('Forgotten (overdue)')).toBeInTheDocument();
+    // Still to make, it counts on both sides too
+    expect(screen.getAllByText('Forgotten (overdue)')).toHaveLength(2);
 
     // Edited, one that goes to the main account still does
     await user.click(screen.getByRole('button', { name: 'Bills' }));
