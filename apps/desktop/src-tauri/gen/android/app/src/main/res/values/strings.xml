@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">"BudgetMint"</string>
-    <string name="main_activity_title">"BudgetMint"</string>
+    <!-- app_name and main_activity_title come from app/build.gradle.kts:
+         "BudgetMint", or "BudgetMint Dev" for a dev build -->
 </resources>

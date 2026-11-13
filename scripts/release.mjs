@@ -18,6 +18,11 @@
  * README's "Android signing"). github-release adds SHA256SUMS, the
  * checksums of every file the release ships.
  *
+ * Every build it makes is production (BUDGETMINT_ENV=production and
+ * tauri.production.conf.json): any other build is a dev build, on the dev
+ * Firebase projects and installed beside the real app
+ * (scripts/environment.mjs, ADR 0005). It checks each one is the real app.
+ *
  * Run it in the main checkout, on main: `pnpm release --help`.
  */
 
@@ -42,6 +47,7 @@ import {
   insertSection,
   isoDate,
   isTarget,
+  macAppInfoPlist,
   missingAssets,
   packageJsonVersion,
   parseNote,
@@ -57,9 +63,11 @@ import {
   updateAssetNames,
   updateBundlePaths,
   updateManifest,
+  verifyApkPackage,
   verifyApkSigner,
   verifyUpdateSignature,
 } from './release/lib.mjs';
+import { MARKER_FILE, readEnvironmentMarker } from './environment.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -80,6 +88,14 @@ const CHANGELOG = 'CHANGELOG.md';
 const CHANGES = 'changes';
 const RELEASES = 'releases';
 const TAURI_CONF = 'apps/desktop/src-tauri/tauri.conf.json';
+/** Makes a desktop build the real app, not a dev build (scripts/environment.mjs). */
+const TAURI_PRODUCTION_CONF = 'apps/desktop/src-tauri/tauri.production.conf.json';
+/** The same, relative to apps/desktop, where Tauri runs. */
+const PRODUCTION_CONFIG = 'src-tauri/tauri.production.conf.json';
+/** Android's identifier (the real app's package; a dev build's adds .dev). */
+const TAURI_ANDROID_CONF = 'apps/desktop/src-tauri/tauri.android.conf.json';
+/** Where the webview's build says which environment it was made for. */
+const DESKTOP_DIST_MARKER = `apps/desktop/dist/${MARKER_FILE}`;
 /** Merged into tauri.conf.json for a build that makes updates (relative to apps/desktop, where Tauri runs). */
 const UPDATER_CONFIG = 'src-tauri/tauri.updater.conf.json';
 const RELEASE_WORKFLOW = 'release.yml';
@@ -214,7 +230,8 @@ function changeNotes() {
 
 const tagOf = version => `v${version}`;
 const tagExists = tag => succeeds('git', ['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`]);
-const productName = () => JSON.parse(read(TAURI_CONF)).productName;
+/** The real app's name (tauri.conf.json's is the dev build's). */
+const productName = () => JSON.parse(read(TAURI_PRODUCTION_CONF)).productName;
 /** The key installed apps check an update's signature with. */
 const updaterPublicKey = () => JSON.parse(read(TAURI_CONF)).plugins.updater.pubkey;
 /** Tauri signs updates with this key, so a build can make them. */
@@ -305,6 +322,8 @@ function build(version, plans) {
   if (!updates && plans.some(plan => plan.kind === 'tauri' || plan.kind === 'xwin')) {
     console.log("\nTAURI_SIGNING_PRIVATE_KEY isn't set, so the desktop builds make no updates.");
   }
+  // Every tool a build runs (Vite, Cargo, Gradle) reads it (scripts/environment.mjs)
+  process.env.BUDGETMINT_ENV = 'production';
   // Every app runs core in its webview, so its wasm comes first (the
   // client's build imports it)
   run('pnpm', ['build:wasm']);
@@ -322,12 +341,27 @@ function build(version, plans) {
 /** Builds a desktop installer with Tauri (and its update, with `updates`); returns where Tauri left it. */
 function buildInstaller(version, plan, updates) {
   if (plan.triple) run('rustup', ['target', 'add', plan.triple]);
-  const config = updates ? ['--config', UPDATER_CONFIG] : [];
+  const config = ['--config', PRODUCTION_CONFIG, ...(updates ? ['--config', UPDATER_CONFIG] : [])];
   const cross = plan.triple ? ['--target', plan.triple] : [];
   // (cargo-xwin cross-compiles the Windows installer on a Mac)
   const runner = plan.kind === 'xwin' ? ['--runner', 'cargo-xwin'] : [];
   run('pnpm', ['--filter', '@budgetmint/desktop', 'tauri', 'build', ...cross, ...runner, ...config]);
+  requireProductionWebview();
+  if (plan.target.startsWith('macos-')) {
+    const plist = join(root, macAppInfoPlist(productName(), version, plan.target, plan));
+    const identifier = output('plutil', ['-extract', 'CFBundleIdentifier', 'raw', plist]);
+    const expected = JSON.parse(read(TAURI_PRODUCTION_CONF)).identifier;
+    if (identifier !== expected) stop(`The app is ${identifier}, but a release is ${expected}.`);
+  }
   return bundlePath(productName(), version, plan.target, plan);
+}
+
+/** Stops unless the webview the build just bundled is production's. */
+function requireProductionWebview() {
+  const marker = checked(() => readEnvironmentMarker(join(root, DESKTOP_DIST_MARKER)));
+  if (marker.environment !== 'production') {
+    stop(`The webview was built for ${marker.environment} (${marker.projectId}), not production.`);
+  }
 }
 
 /**
@@ -357,22 +391,30 @@ function buildApk(version, plan) {
     stop(`apksigner says the APK isn't signed properly:\n${(output.stderr || output.stdout).trim()}`);
   }
   checked(() => verifyApkSigner({ output: output.stdout, digest: ANDROID_SIGNER_SHA256 }));
+  const badging = spawnSync(buildTool('aapt2'), ['dump', 'badging', join(root, apk)], { encoding: 'utf8' });
+  if (badging.error) stop(`aapt2: ${badging.error.message}`);
+  const name = JSON.parse(read(TAURI_ANDROID_CONF)).identifier;
+  checked(() => verifyApkPackage({ output: badging.stdout, name }));
+  requireProductionWebview();
   return apk;
 }
 
 /** The newest released Build-Tools' apksigner in the Android SDK. */
-function apksigner() {
+const apksigner = () => buildTool('apksigner');
+
+/** The newest released Build-Tools' `name` (apksigner, aapt2) in the Android SDK. */
+function buildTool(name) {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) stop("ANDROID_HOME (the Android SDK) isn't set.");
   const dir = join(sdk, 'build-tools');
   const byVersion = (a, b) => b.localeCompare(a, 'en', { numeric: true });
   // (not a preview like 36.0.0-rc5)
-  const versions = existsSync(dir) ? readdirSync(dir).filter(name => /^[\d.]+$/.test(name)) : [];
+  const versions = existsSync(dir) ? readdirSync(dir).filter(version => /^[\d.]+$/.test(version)) : [];
   const tool = versions
     .sort(byVersion)
-    .map(version => join(dir, version, 'apksigner'))
+    .map(version => join(dir, version, name))
     .find(path => existsSync(path));
-  if (!tool) stop(`There's no apksigner in ${dir}: install Build-Tools with the SDK Manager.`);
+  if (!tool) stop(`There's no ${name} in ${dir}: install Build-Tools with the SDK Manager.`);
   return tool;
 }
 

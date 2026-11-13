@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "budgetmint"
+    "default": "budgetmint-dev",
+    "dev": "budgetmint-dev",
+    "production": "budgetmint"
   }
 }

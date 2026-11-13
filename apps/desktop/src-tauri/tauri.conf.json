@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
-  "productName": "BudgetMint",
+  "productName": "BudgetMint Dev",
   "version": "../package.json",
-  "identifier": "com.budgetmint.desktop",
+  "identifier": "com.budgetmint.desktop.dev",
   "build": {
     "beforeBuildCommand": "pnpm build",
     "beforeDevCommand": "pnpm dev",
@@ -54,15 +54,13 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "budgetmint"
+          "budgetmint-dev"
         ]
       }
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGNkMwQkQ1QTNDMzhDNzEKUldSeGpNT2oxUXRzZjVDeTZDU2FUR2NTNy8rUFRiQ1d2eUxMVUZHLzVQV0tNVHhRSVpBUDEyMk0K",
-      "endpoints": [
-        "https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json"
-      ],
+      "endpoints": [],
       "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"

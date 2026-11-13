@@ -6,6 +6,9 @@
   consequence
 - **Scope:** BudgetMint's Firebase project, how it signs in to TaskMint's for
   the forecast, and who owns what
+- **See also:** [ADR 0005](0005-dev-environment.md): every build but a
+  release uses the dev pair, `budgetmint-dev` and TaskMint's `taskmint-dev`,
+  set up the same way
 
 ## Context
 

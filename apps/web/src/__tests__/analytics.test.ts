@@ -62,10 +62,12 @@ describe('web analytics', () => {
   });
 
   it('come only with a Google Analytics stream, and never on the emulators', () => {
-    const cloud = webCloud({ DEV: false });
+    const cloud = webCloud({ DEV: false, BUDGETMINT_ENV: 'production' });
     const withStream = { ...cloud, firebase: { ...cloud.firebase, measurementId: 'G-TEST' } };
     expect(webAnalytics(withStream)).toBeDefined();
     expect(webAnalytics({ ...withStream, emulatorHost: 'localhost' })).toBeUndefined();
     expect(webAnalytics({ ...cloud, firebase: { ...cloud.firebase, measurementId: undefined } })).toBeUndefined();
+    // The dev project has no stream, so a dev build counts nothing
+    expect(webAnalytics(webCloud({ DEV: false, BUDGETMINT_ENV: 'dev' }))).toBeUndefined();
   });
 });

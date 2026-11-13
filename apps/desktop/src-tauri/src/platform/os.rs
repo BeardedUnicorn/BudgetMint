@@ -400,7 +400,14 @@ mod desktop {
         }
 
         pub fn check_update(&self, app: &AppHandle) -> Result<Option<AvailableUpdate>, String> {
-            let updater = app.updater().map_err(text)?;
+            // A dev build has no update feed (tauri.conf.json): it never
+            // updates itself into the real app
+            let updater = app.updater().map_err(|error| match error {
+                tauri_plugin_updater::Error::EmptyEndpoints => {
+                    "Dev builds don't update: install a release to try updates.".to_string()
+                }
+                error => text(error),
+            })?;
             let found = finish(updater.check()).map_err(text)?;
             let available = found.as_ref().map(|update| AvailableUpdate {
                 version: update.version.clone(),

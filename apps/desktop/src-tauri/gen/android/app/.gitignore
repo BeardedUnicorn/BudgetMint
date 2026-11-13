@@ -4,3 +4,5 @@
 /tauri.build.gradle.kts
 /proguard-tauri.pro
 /tauri.properties
+# The environment's copy of firebase/google-services.<env>.json (build.gradle.kts)
+/google-services.json

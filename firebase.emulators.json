@@ -1,10 +1,9 @@
 {
-  "$comment": "The emulators for development and scripts/test-emulator.sh: `pnpm firebase --config firebase.emulators.json emulators:start --project budgetmint`. The same ports as TaskMint's, so one emulator suite serves both apps, each in its own project: the rules here are BudgetMint's, loaded for the project started with. Auth keeps one set of accounts for every project (the emulator's way), so one account signs in to both apps.",
+  "$comment": "The emulators for development and scripts/test-emulator.sh: `pnpm firebase --config firebase.emulators.json emulators:start`, as the dev project budgetmint-dev (.firebaserc's default), which a development build names. The same ports as TaskMint's, so one emulator suite serves both apps, each in its own project: the rules here are BudgetMint's, loaded for the project started with. Auth keeps one set of accounts for every project (the emulator's way), so one account signs in to both apps.",
   "firestore": {
     "rules": "rules/firestore.rules"
   },
   "hosting": {
-    "site": "budgetmint",
     "public": "apps/web/dist",
     "rewrites": [{ "source": "**", "destination": "/index.html" }]
   },

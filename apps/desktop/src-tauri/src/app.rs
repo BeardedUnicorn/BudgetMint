@@ -8,6 +8,10 @@
 //! On Android and iOS (Tauri's `mobile` cfg) there's no second instance,
 //! tray, menu bar, hide-on-close, saved window place, budgetmint:// link or
 //! updater, and the system keeps the reminders.
+//!
+//! A dev build (environment.rs) is "BudgetMint Dev", an app of its own beside
+//! the installed one; it refuses to start as the installed app, and a
+//! production build refuses to start as anything else.
 
 use crate::dispatch;
 use crate::platform::os::TauriPlatform;
@@ -47,8 +51,9 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
         show_window(app)
     }));
-    // budgetmint:// links (tauri.conf.json's plugins.deep-link): Google
-    // sign-in's page opens one to bring the app back (start_desktop)
+    // budgetmint:// links (budgetmint-dev:// in a dev build; plugins.deep-link
+    // in tauri.conf.json and tauri.production.conf.json): Google sign-in's
+    // page opens one to bring the app back (start_desktop)
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_deep_link::init());
     let builder = builder
@@ -74,8 +79,9 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_fs::init());
     #[cfg(desktop)]
     let builder = builder
-        // Updates from GitHub's latest release (plugins.updater in
-        // tauri.conf.json); the webview asks before installing one
+        // Updates from GitHub's latest release (plugins.updater: the feed is
+        // in tauri.production.conf.json, so a dev build has none); the
+        // webview asks before installing one
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Open at login, as a launch agent on macOS (the webview turns it on)
         .plugin(tauri_plugin_autostart::init(
@@ -116,11 +122,19 @@ pub fn run() {
             });
             app.manage(state.clone());
 
-            // The main window ("create": false in tauri.conf.json). On a
+            // A production build runs only as the installed app, and a dev
+            // build never as it (environment.rs)
+            #[cfg(desktop)]
+            crate::environment::Environment::current()
+                .check_identifier(&app.config().identifier)?;
+
+            // The main window ("create": false in tauri.conf.json), titled
+            // as the build is named ("BudgetMint Dev" for a dev build). On a
             // desktop it's built hidden: the window-state plugin puts it
             // back where it was, and window.rs shows it once the tray is up
             let window = app.config().app.windows[0].clone();
-            let builder = WebviewWindowBuilder::from_config(app.handle(), &window)?;
+            let builder = WebviewWindowBuilder::from_config(app.handle(), &window)?
+                .title(&app.package_info().name);
             #[cfg(desktop)]
             let builder = builder.visible(false);
             builder.build()?;
@@ -173,14 +187,15 @@ fn start_desktop(app: &tauri::App, state: &Arc<AppState>) {
     let started_at_login = std::env::args().any(|arg| arg == STARTED_AT_LOGIN);
     window::at_launch(state.platform.as_ref(), started_at_login);
 
-    // budgetmint:// links bring the window forward (window.rs). The macOS
-    // app's Info.plist and the Windows installer register the scheme; this
-    // registers it for Linux and Windows development builds. (A macOS
+    // budgetmint:// links (budgetmint-dev:// in a dev build) bring the
+    // window forward (window.rs). The macOS app's Info.plist and the Windows
+    // installer register the scheme; this registers it for Linux and Windows
+    // development builds. (A macOS
     // development build gets no links: only a built .app can.) A link that
     // starts the app needs nothing more: the window shows at launch.
     #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
     if let Err(e) = app.deep_link().register_all() {
-        log::error!("Failed to register the budgetmint:// links: {}", e);
+        log::error!("Failed to register the app's links: {}", e);
     }
     // Links opened while running (macOS's Apple events; on Windows and
     // Linux, a second launch's, forwarded by the single-instance plugin)

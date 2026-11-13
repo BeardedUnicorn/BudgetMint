@@ -69,6 +69,8 @@ signs in to TaskMint's project, `taskmint-f9a05`, with the same email and
 password or Google account, only to read TaskMint's forecast. When the two
 accounts differ, Settings → TaskMint signs in to TaskMint alone. BudgetMint
 never makes a TaskMint account, and writes nothing in TaskMint's project.
+Every build but a release uses the dev pair instead, `budgetmint-dev` and
+TaskMint's `taskmint-dev` ([Dev environment](#dev-environment)).
 
 BudgetMint's Firestore rules are its own (`rules/firestore.rules`), deployed
 by its release. TaskMint owns its parts, and BudgetMint keeps pinned copies
@@ -123,16 +125,21 @@ pnpm --filter @budgetmint/web dev
 ```
 
 The desktop's dev server is on port 1430 and the web app's on 1431, clear of
-TaskMint's. A development build can keep its storage apart from the installed
-app's with `BUDGETMINT_DATA_DIR=/some/folder pnpm tauri dev`.
+TaskMint's. Both are dev builds, on the dev projects
+([Dev environment](#dev-environment)), and the desktop's is BudgetMint Dev, an
+app of its own beside the installed one. It can keep its storage in a folder
+of your choosing too, with `BUDGETMINT_DATA_DIR=/some/folder pnpm tauri dev`.
 
 **Emulators.** Copy `.env.example` to `.env` and set
 `VITE_FIREBASE_EMULATOR_HOST=127.0.0.1`, then start the Auth and Firestore
 emulators (the same ports as TaskMint's, so one set serves both apps' projects,
-and one account signs in to both):
+and one account signs in to both). They run as the dev project,
+`.firebaserc`'s default, which is the one a development build names. Only a
+development build (`pnpm tauri dev`, the web dev server) uses them; any built
+app ignores the variable.
 
 ```bash
-pnpm firebase --config firebase.emulators.json emulators:start --project budgetmint
+pnpm firebase --config firebase.emulators.json emulators:start
 ```
 
 **Gates.** `pnpm verify` runs every check CI does: the coverage policy,
@@ -145,6 +152,57 @@ shell. Exclusions are listed only in `coverage-policy.json`.
 **Contracts.** `packages/contracts/src/generated` is generated from core's
 Rust types (`crates/budgetmint-core/tests/contracts.rs`); after changing
 them, run `scripts/check-contracts.sh` and commit the result.
+
+### Dev environment
+
+`BUDGETMINT_ENV` says which BudgetMint a build is: `production` for a
+release, `dev` (also when it's unset) for every other build
+([ADR 0005](docs/adr/0005-dev-environment.md)). Vite, Cargo and Gradle all
+read it ([scripts/environment.mjs](scripts/environment.mjs)), so
+`pnpm tauri dev`, a plain `pnpm tauri build` (`--debug` too), an Android
+build and the web dev server are all dev builds. Only the release
+([Releases](#releases)) sets `production`. Any other value stops the build.
+
+| | Production (releases) | Dev (every other build) |
+|---|---|---|
+| BudgetMint's Firebase project | `budgetmint` | `budgetmint-dev` |
+| TaskMint's, for the forecast | `taskmint-f9a05` | `taskmint-dev` |
+| Web app | https://budgetmint.web.app | https://budgetmint-dev.web.app |
+| Desktop app | BudgetMint, `com.budgetmint.desktop` | BudgetMint Dev, `com.budgetmint.desktop.dev` |
+| Desktop links | `budgetmint://` | `budgetmint-dev://` |
+| Desktop updates | from the latest GitHub release | none |
+| Android app | BudgetMint, `com.budgetmint.android` | BudgetMint Dev, `com.budgetmint.android.dev` |
+| Usage analytics | on, with the off switch | none |
+
+A dev build is a separate app: its own data folder, webview storage (the
+device's settings, the Firebase sign-in and cache), single-instance lock and
+link scheme, so it runs beside the installed BudgetMint and never touches its
+data. `tauri.conf.json` is the dev build, and `tauri.production.conf.json`
+makes a build the real app. A desktop build whose identifier and
+environment don't match refuses to start (`src-tauri/src/environment.rs`).
+On Android, Gradle copies `app/firebase/google-services.<env>.json` into
+place, adds `.dev` to the package and turns Analytics off.
+
+**Building production yourself:** both halves, or it won't start. (A release
+is `pnpm release --rebuild`, which does this and checks the result.)
+
+```bash
+cd apps/desktop && BUDGETMINT_ENV=production pnpm tauri build --config src-tauri/tauri.production.conf.json
+```
+
+**The dev projects.** `budgetmint-dev` mirrors production
+([Firebase setup](#firebase-setup)), and nothing in it matters: sign up with
+any account. For the forecast, sign in to TaskMint Dev (a TaskMint build that
+isn't a release) with the same email and password, and it publishes there.
+`.firebaserc` makes `budgetmint-dev` the default project, so a bare
+`pnpm firebase` command works on dev; production needs `--project budgetmint`
+(or `production`).
+
+Deploy the rules and the web app to dev (it runs the emulator tests first):
+
+```bash
+pnpm deploy:dev
+```
 
 ### App icons
 
@@ -245,8 +303,11 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   `BUDGETMINT_ANDROID_KEYSTORE` and `BUDGETMINT_ANDROID_KEYSTORE_PASSWORD`
   are set ([Android signing](#android-signing)). Without them a release
   build is unsigned.
-- Firebase: `app/google-services.json` (the "BudgetMint Android" app's
-  public config, in the `budgetmint` project), the `google-services` Gradle
+- Firebase: `app/firebase/google-services.production.json` and
+  `google-services.dev.json` (the "BudgetMint Android" app's public config
+  in `budgetmint` and in `budgetmint-dev`), which `app/build.gradle.kts`
+  copies to the gitignored `app/google-services.json` by `BUDGETMINT_ENV`
+  ([Dev environment](#dev-environment)); the `google-services` Gradle
   plugin (in the root `build.gradle.kts`, applied in `app/build.gradle.kts`),
   and the Firebase BoM with Analytics, Credential Manager and googleid as
   dependencies. Firebase and googleid need Kotlin 2.3, which the root
@@ -304,19 +365,22 @@ cd apps/desktop && pnpm tauri android build --debug --apk --target aarch64
 
 For a phone on the network, `pnpm tauri android dev --host` serves Vite on
 this computer's network address (`vite.config.ts` reads `TAURI_DEV_HOST`;
-`tauri.android.conf.json` lets live reload connect to it). With the
-emulators, set `VITE_FIREBASE_EMULATOR_HOST=10.0.2.2`: the Android
-emulator's address for this computer.
+`tauri.android.conf.json` lets live reload connect to it). These are dev
+builds: BudgetMint Dev, `com.budgetmint.android.dev`, on the dev projects,
+installed beside the real app. With the emulators, set
+`VITE_FIREBASE_EMULATOR_HOST=10.0.2.2`: the Android emulator's address for
+this computer.
 
 On Android the Rust side reports the runtime `mobile` (`get_capabilities`).
 The app has the budget, reminders as system alarms (they come with the app
 closed), Google sign-in and usage analytics. Google sign-in needs Google
 Play services, and the build's signing certificate registered on the
 "BudgetMint Android" app (Firebase console → Project settings → Your apps):
-the debug key's and the release key's SHA-1 and SHA-256 are. A new key needs
-its own, and `google-services.json` downloaded again. The ID token is for
-`budgetmint`'s web client, which TaskMint's project safelists, so it signs
-in to both. The parts only a desktop has are left out, in the Rust
+the debug key's and the release key's SHA-1 and SHA-256 are, in `budgetmint`,
+and their SHA-1s in `budgetmint-dev`. A new key needs its own in both, and
+both `google-services` files downloaded again. The ID token is for the
+project's own web client, which TaskMint's project of the same environment
+safelists, so it signs in to both. The parts only a desktop has are left out, in the Rust
 (`#[cfg(desktop)]`, and those crates are desktop-only dependencies) and in
 the webview (`tauriShell.ts`, `extensions.tsx`): the tray, opening at login
 and updates. Settings → Your data's backup and spreadsheet are saved through
@@ -357,7 +421,8 @@ BUDGETMINT_ANDROID_KEYSTORE=~/.android/budgetmint-release.p12 BUDGETMINT_ANDROID
   `keytool -genkeypair -storetype PKCS12 -alias budgetmint -keyalg RSA -keysize 4096 -validity 36500 -dname "CN=BudgetMint" -keystore <file>`,
   then replace both secrets, set `ANDROID_SIGNER_SHA256` to its SHA-256
   (`keytool -list -v`, without the colons), register its SHA-1 and SHA-256
-  on the Firebase Android app and download `google-services.json` again.
+  on both projects' Firebase Android apps and download both
+  `app/firebase/google-services.*.json` again.
   Installed apps can't take an APK signed with the new key: each phone
   uninstalls BudgetMint and installs the new one (the budget is in the
   cloud, so nothing is lost but the device's own settings).
@@ -366,7 +431,10 @@ BUDGETMINT_ANDROID_KEYSTORE=~/.android/budgetmint-release.p12 BUDGETMINT_ANDROID
 
 Change notes go in `changes/` ([changes/README.md](changes/README.md));
 `pnpm release` turns them into the next CHANGELOG section and version,
-commits and tags. Pushing the `vX.Y.Z` tag runs the Release workflow, which
+commits and tags. Everything a release builds is production
+(`BUDGETMINT_ENV=production` and `tauri.production.conf.json`), and
+`pnpm release --rebuild` checks each build is the real app: the webview's
+`dist/environment.json`, the Mac app's identifier and the APK's package. Pushing the `vX.Y.Z` tag runs the Release workflow, which
 builds the macOS and Windows apps with their signed updates and
 `latest.json`, the Android APK, and the web app, then creates the GitHub
 release with `SHA256SUMS`, every file's checksum (`sha256sum -c
@@ -405,6 +473,17 @@ site `budgetmint` and Google Analytics, and:
   in a release. A build without them hides Continue with Google (a
   development build says so in the console), and a release tag's build
   stops.
+- **Dev:** `budgetmint-dev` (Spark, no Analytics) mirrors it, with its own
+  "BudgetMint web", "BudgetMint desktop" and "BudgetMint Android"
+  (`com.budgetmint.android.dev`, with the debug and release keys' SHA-1s)
+  apps, Firestore in nam5 and the Hosting site `budgetmint-dev`. Its Auth has
+  Email/Password and Google with email enumeration protection, and its
+  Google provider safelists the "BudgetMint desktop" client. TaskMint's dev
+  project, `taskmint-dev`, safelists `budgetmint-dev`'s web client and the
+  "BudgetMint desktop" client, and its authorized domains include
+  `budgetmint-dev.web.app` and `budgetmint-dev.firebaseapp.com`. A setting
+  changed in production's Authentication is worth changing here too.
+  Nothing deploys to it automatically: `pnpm deploy:dev`.
 - **Deploys:** the Workload Identity pool `github`, with the provider
   `budgetmint-releases`. It takes only GitHub's tokens for this repository
   (by its id), on a `v*` tag, from `release.yml`. It can act as
@@ -427,7 +506,7 @@ rules/                      BudgetMint's Firestore rules and their tests
 firebase/                   TaskMint's rules, pinned (UPSTREAM.json), for the tests
 docs/                       ADRs, and TaskMint's forecast contract (pinned)
 assets/brand/               the icon, mark, wordmark and tray icon masters
-scripts/                    verify, wasm build, contracts, upstream pin, brand, release
+scripts/                    verify, wasm build, contracts, upstream pin, brand, release, the build's environment
 ```
 
 ## License

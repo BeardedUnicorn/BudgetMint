@@ -2,20 +2,25 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { budgetmintEnvironmentPlugin } from '../../scripts/environment.mjs';
 import { webBuild } from './src/build/plugin';
 
 // The web app: built into dist/, which Firebase Hosting serves
-// (firebase.json). In development it syncs with the real project, or with
-// the emulators when VITE_FIREBASE_EMULATOR_HOST is set (.env).
+// (firebase.json). It syncs with the dev projects unless BUDGETMINT_ENV is
+// production (scripts/environment.mjs), or with the emulators when a
+// development build sets VITE_FIREBASE_EMULATOR_HOST (.env).
 export default defineConfig({
   plugins: [
     react(),
+    // The build's environment, and dist/environment.json saying which
+    budgetmintEnvironmentPlugin(),
     // public/ (the manifest and icons, robots.txt, the privacy and terms
-    // pages) beside the client's, and the service worker, /sw.js
+    // pages) beside the client's, and the service worker, /sw.js. The
+    // environment marker is for the deploy's check, not the page.
     webBuild({
       publicDir: fileURLToPath(new URL('./public', import.meta.url)),
       worker: fileURLToPath(new URL('./src/offline/worker.ts', import.meta.url)),
-      notOffline: ['robots.txt', 'social.png'],
+      notOffline: ['robots.txt', 'social.png', 'environment.json'],
     }),
   ],
   // Favicon and logos live with the shared client.

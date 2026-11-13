@@ -15,12 +15,16 @@ Tauri or plugin versions, or to the `Platform` trait they implement.
 | `apps/desktop/src-tauri/src/app.rs` | the Tauri builder: plugins, setup, the window and its saved place, the macOS menu bar, the menus' clicks, the reminders' thread, the run loop | [Startup and wiring](#startup-and-wiring-apprs), [The menus](#the-menus-apprs-platformosrs) |
 | `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the save dialog, the window and the Dock icon, the menus and the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs) |
 | `apps/desktop/src-tauri/src/main.rs` | calls `budgetmint_lib::run`; no console window on Windows | [Windows](#windows) |
-| BudgetMint against the real Firebase project | the tested store and session, on Google's servers and in real webviews | [The cloud](#the-cloud) |
+| BudgetMint against the real Firebase projects | the tested store and session, on Google's servers and in real webviews | [The cloud](#the-cloud) |
+| `app/build.gradle.kts`, `tauri.production.conf.json` | which BudgetMint a build is: dev or production (ADR 0005) | [Dev and production builds](#dev-and-production-builds) |
 
 ## Before you start
 
-- **Quit the installed BudgetMint.** A development build shares its
-  single-instance lock and its webview storage.
+- **A dev build is BudgetMint Dev** (`com.budgetmint.desktop.dev`): its own
+  single-instance lock and webview storage, beside the installed BudgetMint,
+  on the dev projects (`budgetmint-dev`, `taskmint-dev`). Sign in there with
+  a dev account. The paths below are a release's; a dev build's have
+  `com.budgetmint.desktop.dev` in their place.
 - **Use a dev build with its own storage for most of this:**
   `BUDGETMINT_DATA_DIR=$HOME/tmp/budgetmint-qa pnpm tauri dev`.
 - **Google sign-in needs BudgetMint's desktop OAuth client** in `.env`
@@ -82,12 +86,13 @@ Note anything that fails with the build, the OS version and what you saw.
       appears. Allowing them again in System Settings brings the next test
       through.
 - [ ] **Google sign-in.** On macOS this needs a built app, since only a
-      `.app` gets `budgetmint://` links: `pnpm tauri build --debug --bundles
-      app`, then open `target/debug/bundle/macos/BudgetMint.app`. Continue
+      `.app` gets its links (`budgetmint-dev://` for a dev build):
+      `pnpm tauri build --debug --bundles app`, then open
+      `target/debug/bundle/macos/BudgetMint Dev.app`. Continue
       with Google opens the system browser on Google's page. After choosing
       an account the browser shows BudgetMint's page: the wordmark over a
       card with a green check and "Google's part is done", in the system's
-      light or dark colors. The browser asks to open BudgetMint; allowing it
+      light or dark colors. The browser asks to open BudgetMint Dev; allowing it
       brings the window forward over the browser, signed in. Turning that
       down leaves the page, and its Open BudgetMint button asks again.
       Cancelling on Google's page shows "Signing in didn't finish" with a
@@ -97,7 +102,9 @@ Note anything that fails with the build, the OS version and what you saw.
       error. Settings → TaskMint's Google sign-in does the same.
 - [ ] **BudgetMint links.** With the window hidden in the tray, `open
       budgetmint://` (on Windows, `start budgetmint://`) brings it forward.
-      With BudgetMint quit, the same starts it.
+      With BudgetMint quit, the same starts it. A dev build answers
+      `budgetmint-dev://` the same way, and `budgetmint://` goes to the
+      installed app, not to it.
 - [ ] **Window focus.** Open BudgetMint from the tray while another app is in
       front: the window comes forward and has the focus. Again with the
       window minimized: it comes back unminimized.
@@ -244,6 +251,9 @@ leaves CI). Every file goes in one scratch folder, `$S`:
       check finds the update, an OS notification says it's available.
 - [ ] **Development build.** In `pnpm tauri dev`, Download and install says a
       development build can't install updates.
+- [ ] **A dev build has no feed.** In BudgetMint Dev (`pnpm tauri build
+      --debug`), Check for Updates… says "Dev builds don't update: install a
+      release to try updates", and the launch check shows nothing.
 - [ ] **A real release.** After a release, an install of the version before
       it finds and installs it from GitHub.
 
@@ -286,7 +296,36 @@ folder), as NSIS installers:
       same account and syncing, BudgetMint's Settings → TaskMint says the
       forecast is there, with TaskMint's version, and the next withdrawal
       matches TaskMint's Payouts (policy "as soon as open", no assumed
-      earnings).
+      earnings). For a dev build, the same with TaskMint Dev (4.4.1 or later)
+      and an account in the dev projects.
+
+## Dev and production builds
+
+Which BudgetMint a build is (ADR 0005): `BUDGETMINT_ENV`, read by Vite,
+Cargo (`environment.rs`, tested) and Gradle (`app/build.gradle.kts`, not).
+
+- [ ] **Beside the installed app.** With the installed BudgetMint running,
+      `pnpm tauri build --debug --bundles app` and open
+      `target/debug/bundle/macos/BudgetMint Dev.app`: it starts as a second
+      app, BudgetMint Dev in the menu bar, the Dock and the window's title,
+      signed out. Its Info.plist's `CFBundleIdentifier` is
+      `com.budgetmint.desktop.dev`. The installed app's account and window
+      are left alone.
+- [ ] **The dev projects.** In its inspector's Network tab, signing in goes
+      to `budgetmint-dev` and `taskmint-dev`; `apps/desktop/dist/environment.json`
+      says `dev`.
+- [ ] **A mixed build refuses to start.** `BUDGETMINT_ENV=production pnpm
+      tauri build --debug --bundles app` (no production config) builds an app
+      that quits at launch, its error naming `tauri.production.conf.json`.
+- [ ] **Android.** `pnpm tauri android build --debug --apk --target aarch64`
+      installs as BudgetMint Dev (`aapt2 dump badging`: `package:
+      name='com.budgetmint.android.dev'`) beside the release APK, signs in to
+      the dev projects, and sends no Analytics (DebugView with
+      `adb shell setprop debug.firebase.analytics.app com.budgetmint.android.dev`
+      stays empty). Google sign-in works too: both keys' SHA-1s are on the
+      dev Android app.
+- [ ] **A release.** `pnpm release --rebuild` builds BudgetMint
+      (`com.budgetmint.desktop`, `com.budgetmint.android`) and checks each.
 
 ## Android
 

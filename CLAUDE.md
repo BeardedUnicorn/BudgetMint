@@ -4,15 +4,21 @@
   BudgetMint's own, `budgetmint`, holds its accounts and data under its rules
   (`rules/firestore.rules`, deployed by its release). TaskMint's,
   `taskmint-f9a05`, is signed in to alongside for the forecast only.
+- **Dev builds use the dev pair** ([ADR 0005](docs/adr/0005-dev-environment.md)):
+  `budgetmint-dev` and TaskMint's `taskmint-dev`. `BUDGETMINT_ENV` is
+  `production` only in a release (`scripts/release.mjs`, the release
+  workflow); unset is dev. `.firebaserc`'s default is `budgetmint-dev`, so
+  production commands name `--project budgetmint`. `pnpm deploy:dev` deploys
+  to dev.
 - **TaskMint owns its parts.** Its Firestore rules and the payout forecast
   contract live in TaskMint (`~/code/taskmint-app`). `firebase/`,
   `docs/taskmint/` and core's TaskMint fixtures are pinned copies
   (`firebase/UPSTREAM.json`): never edit them here. Change them in TaskMint,
   then `pnpm upstream:pull`.
-- **Write nothing in TaskMint's project.** BudgetMint writes only
-  `budgetmint/{uid}` and its `data/` documents, in its own project, and only
-  reads TaskMint's `users/{uid}/published/payoutForecast`. Never make a
-  TaskMint account. `scripts/test-emulator.sh` checks this against both
+- **Write nothing in TaskMint's project** (`taskmint-dev` either). BudgetMint
+  writes only `budgetmint/{uid}` and its `data/` documents, in its own
+  project, and only reads TaskMint's `users/{uid}/published/payoutForecast`.
+  Never make a TaskMint account. `scripts/test-emulator.sh` checks this against both
   projects' rules.
 - **Rules live in core.** Every budget rule (recurrence, settlement, the
   withdrawal series, reminders) belongs in `crates/budgetmint-core`, which

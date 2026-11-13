@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "598380315327",
+    "project_id": "budgetmint-dev",
+    "storage_bucket": "budgetmint-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:598380315327:android:6ba23661d3c50c73b73c0a",
+        "android_client_info": {
+          "package_name": "com.budgetmint.android.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "598380315327-mpj4tosjb5ni2e6b1gbl89lap5ibjn41.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.budgetmint.android.dev",
+            "certificate_hash": "e4305d1f99521801bbef8b4c10e6c92695074da1"
+          }
+        },
+        {
+          "client_id": "598380315327-v3bate61e71up7eckfs0rbnscn1rtfri.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.budgetmint.android.dev",
+            "certificate_hash": "ae533a684780ccd04c7280ca321483191f8a5df1"
+          }
+        },
+        {
+          "client_id": "598380315327-nsb4304g45b9d01d1jv4r2bue1ejd8tj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHBtyA0NS5CElGdnko0ll96a87UOjzL7A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "598380315327-nsb4304g45b9d01d1jv4r2bue1ejd8tj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
