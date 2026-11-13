@@ -220,7 +220,7 @@ pub struct Overview {
     pub next_withdrawal: Option<ProjectedWithdrawal>,
     /// The next bill still to pay, within the upcoming days (the tray names it).
     pub next_bill: Option<OccurrenceView>,
-    /// Bills past due, still owed.
+    /// Bills (and money to move between accounts) past due, still owed. Before today: what's due today is in `upcoming`.
     pub overdue: Vec<OccurrenceView>,
     /// Income past due, not yet in.
     pub late_income: Vec<OccurrenceView>,
@@ -328,6 +328,12 @@ fn late_views(
                 .map(|occurrence| occurrence_view(occurrence, today, settleds))
         })
         .collect()
+}
+
+/// The ones due before `today`: one due today and still open (the balance is
+/// today's, so it's owed all the same) is listed with today, not as late.
+fn before(late: Vec<OccurrenceView>, today: NaiveDate) -> Vec<OccurrenceView> {
+    late.into_iter().filter(|late| late.due < today).collect()
 }
 
 /// The first day `flow`'s balance goes below `mark`, from today on.
@@ -523,8 +529,14 @@ pub fn overview_of(
             .flat_map(|day| &day.occurrences)
             .find(|o| o.kind == ItemKind::Bill && o.status == OccStatus::Open)
             .cloned(),
-        overdue: late_views(snapshot, &projection.overdue, today, &settleds),
-        late_income: late_views(snapshot, &projection.late_income, today, &settleds),
+        overdue: before(
+            late_views(snapshot, &projection.overdue, today, &settleds),
+            today,
+        ),
+        late_income: before(
+            late_views(snapshot, &projection.late_income, today, &settleds),
+            today,
+        ),
         needs_amount: occurrences(
             snapshot,
             today - Duration::days(NEEDS_AMOUNT_DAYS),
@@ -578,6 +590,8 @@ pub struct CalendarDay {
     pub bills_cents: Cents,
     /// What its income comes to, likewise.
     pub income_cents: Cents,
+    /// What's moved between the user's accounts that day, likewise: neither a bill nor income.
+    pub moved_cents: Cents,
     /// TaskMint's money reaching the bank (recorded or projected).
     pub withdrawal_cents: Cents,
     pub withdrawal_uncertain_cents: Cents,
@@ -665,7 +679,7 @@ pub fn month(
             .filter(|occurrence| !occurrence.item.archived || occurrence.status != OccStatus::Open)
             .map(|occurrence| occurrence_view(occurrence, today, &settleds))
             .collect();
-        let (mut bills_cents, mut income_cents) = (0, 0);
+        let (mut bills_cents, mut income_cents, mut moved_cents) = (0, 0, 0);
         for occurrence in occurrences
             .iter()
             .filter(|o| o.status != OccStatus::Skipped)
@@ -678,7 +692,7 @@ pub fn month(
                 ItemKind::Bill => bills_cents += cents,
                 ItemKind::Income => income_cents += cents,
                 // Moved, not spent or earned
-                ItemKind::Transfer => {}
+                ItemKind::Transfer => moved_cents += cents,
             }
         }
         view.bills_cents += bills_cents;
@@ -704,6 +718,7 @@ pub fn month(
             occurrences,
             bills_cents,
             income_cents,
+            moved_cents,
             withdrawal_cents,
             withdrawal_uncertain_cents: withdrawals.iter().map(|flow| flow.uncertain_cents).sum(),
             withdrawal_projected: withdrawals
@@ -1625,6 +1640,15 @@ mod tests {
             ]
         );
         assert_eq!(counted(9), vec![("before".to_string(), false)]);
+        // The one by hand is still owed today, and listed with today: it isn't overdue yet
+        let view = overview(&s, None, &TaskMint::default().status, &ctx());
+        assert_eq!(view.today_cents, 9_900);
+        assert!(view.overdue.is_empty());
+        assert_eq!(view.upcoming[0].date, d(2026, 11, 10));
+        assert!(view.upcoming[0]
+            .occurrences
+            .iter()
+            .any(|o| o.item_id == "hand" && !o.late));
     }
 
     #[test]
@@ -1804,6 +1828,11 @@ mod tests {
         let twelfth = &november.days[11];
         assert_eq!(twelfth.occurrences.len(), 2);
         assert_eq!((twelfth.bills_cents, twelfth.income_cents), (20_000, 0));
+        // What's moved is said by itself
+        assert_eq!(
+            (twelfth.moved_cents, november.days[12].moved_cents),
+            (10_000, 4_000)
+        );
         assert_eq!(
             (november.bills_cents, november.income_cents),
             (21_000, 30_000)

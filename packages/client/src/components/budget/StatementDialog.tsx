@@ -28,7 +28,7 @@ import {
 } from '@mui/material';
 import type { CsvColumns, PaidInput, RecordInput, StatementView } from '@budgetmint/contracts';
 import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
-import { useBudget, useBudgetChange } from '../../data/BudgetContext';
+import { useAccounts, useBudget, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay, formatDayInYear } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
 import { useBackDismiss } from '../../contexts/NavigationContext';
@@ -115,6 +115,9 @@ export function StatementDialog({
   const [view, setView] = useState(first);
   /** Whose statement it is (the first read took it as the main account's). */
   const [accountId, setAccountId] = useState<string>(MAIN_ACCOUNT);
+  const { several } = useAccounts();
+  /** With several accounts it's asked first: taken as the main one's, a savings statement would set the wrong balance. */
+  const [picked, setPicked] = useState(!several);
   /** The matches left unticked, by transaction. */
   const [unticked, setUnticked] = useState<number[]>([]);
   const [takeBalance, setTakeBalance] = useState(view.balance !== null);
@@ -135,6 +138,7 @@ export function StatementDialog({
   /** Another account's: read again against what's in that one, with nothing chosen yet. */
   const choose = (account: string) => {
     setAccountId(account);
+    setPicked(true);
     setUnticked([]);
     setLeft({});
     read(view.columns, account);
@@ -176,7 +180,7 @@ export function StatementDialog({
   /** Which way an open one's money goes in this account: a transfer, by which end it is. */
   const wayOf = (open: StatementView['open'][number]) =>
     open.kind === 'bill' || (open.kind === 'transfer' && open.accountId === accountId) ? 'out' : 'in';
-  const nothing = chosen.length === 0 && balance === null && byHand.length === 0 && recorded.length === 0;
+  const nothing = !picked || (chosen.length === 0 && balance === null && byHand.length === 0 && recorded.length === 0);
   const dates = view.transactions.map(transaction => transaction.date).sort();
 
   const save = () => {
@@ -229,8 +233,14 @@ export function StatementDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {problem && <Alert severity="error">{problem}</Alert>}
-          <AccountField label="Whose statement" value={accountId} onChange={choose} size="small" />
-          {view.columns === null && view.format === 'csv' ? (
+          <AccountField
+            label="Whose statement"
+            value={picked ? accountId : ''}
+            onChange={choose}
+            helperText={picked ? undefined : 'Which account is this statement from?'}
+            size="small"
+          />
+          {!picked ? null : view.columns === null && view.format === 'csv' ? (
             <ColumnChooser headers={view.headers} onRead={read} />
           ) : (
             <>
@@ -278,7 +288,8 @@ export function StatementDialog({
                 <Typography variant="caption" color="text.secondary">
                   {[
                     view.already.length > 0 && `${view.already.length} marked paid already`,
-                    others > 0 && `${others} that aren’t bills or income in BudgetMint`,
+                    others > 0 &&
+                      `${others} that ${others === 1 ? 'isn’t a bill' : 'aren’t bills'} or income in BudgetMint`,
                   ]
                     .filter(Boolean)
                     .join('; ')}

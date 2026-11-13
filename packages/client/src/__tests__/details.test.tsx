@@ -45,6 +45,7 @@ const day = (changes: Partial<CalendarDay>): CalendarDay => ({
   occurrences: [],
   billsCents: 0,
   incomeCents: 0,
+  movedCents: 0,
   withdrawalCents: 0,
   withdrawalUncertainCents: 0,
   withdrawalProjected: false,

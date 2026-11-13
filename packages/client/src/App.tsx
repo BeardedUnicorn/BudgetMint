@@ -26,7 +26,7 @@ import { OverviewPage } from './components/pages/overview/OverviewPage';
 import { ReportsPage } from './components/pages/reports/ReportsPage';
 import { SavingsPage } from './components/pages/savings/SavingsPage';
 import { SettingsPage } from './components/pages/settings/SettingsPage';
-import { AppDialogsProvider, useAppDialogs } from './contexts/AppDialogsContext';
+import { AppDialogsHost, AppDialogsProvider, useAppDialogs } from './contexts/AppDialogsContext';
 import { activeViewKey, NavigationProvider, useBackDismiss, useNavigation } from './contexts/NavigationContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -217,6 +217,8 @@ function AppShell() {
   return (
     <>
       <BackgroundJobs />
+      {/* Inside the navigation: Back closes About, Sign out and the shortcuts */}
+      <AppDialogsHost />
       {/* dvh: a phone's browser bars and keyboard don't hide the bottom. On a phone the page is
           above the bottom bar; the sidebar slides in over both */}
       <Box

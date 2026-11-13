@@ -152,8 +152,18 @@ describe('money moved between accounts', () => {
     // Still to make, it counts on both sides too
     expect(screen.getAllByText('Forgotten (overdue)')).toHaveLength(2);
 
+    // The calendar marks the day money moves, by itself
+    await user.click(screen.getByRole('button', { name: 'Calendar' }));
+    expect(
+      await screen.findByRole('button', { name: /November 12, 2026: \$100\.00 moved between accounts/ })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Moved between accounts')).toBeInTheDocument();
+
     // Edited, one that goes to the main account still does
     await user.click(screen.getByRole('button', { name: 'Bills' }));
+    // (Listed with where each goes, not only where it leaves)
+    expect(screen.getAllByText('Main account → Savings').length).toBeGreaterThan(0);
+    expect(screen.getByText('Savings → Main account')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Edit Back again' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit Back again' });
     expect(within(dialog).getByLabelText('From')).toHaveTextContent('Savings');
@@ -232,6 +242,7 @@ describe('money moved between accounts', () => {
     const statement = await screen.findByRole('dialog', { name: 'Bank statement' });
     const line = () => within(statement).getByLabelText('ONLINE XFER: +$123.00 on Nov 6');
     // Into the main account, it isn't this transfer out of it
+    await pick(user, statement, 'Whose statement', 'Main account');
     await user.click(line());
     // (Left to come after the balance just set: it's due the day after)
     expect(screen.queryByRole('option', { name: 'More, due Nov 11' })).not.toBeInTheDocument();

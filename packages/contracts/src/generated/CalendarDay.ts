@@ -18,6 +18,10 @@ billsCents: number,
  */
 incomeCents: number, 
 /**
+ * What's moved between the user's accounts that day, likewise: neither a bill nor income.
+ */
+movedCents: number, 
+/**
  * TaskMint's money reaching the bank (recorded or projected).
  */
 withdrawalCents: number, withdrawalUncertainCents: number, 

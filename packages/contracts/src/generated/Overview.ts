@@ -44,7 +44,7 @@ incomeAheadCents: number, nextWithdrawal: ProjectedWithdrawal | null,
  */
 nextBill: OccurrenceView | null, 
 /**
- * Bills past due, still owed.
+ * Bills (and money to move between accounts) past due, still owed. Before today: what's due today is in `upcoming`.
  */
 overdue: Array<OccurrenceView>, 
 /**

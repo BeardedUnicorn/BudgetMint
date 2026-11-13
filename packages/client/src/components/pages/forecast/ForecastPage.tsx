@@ -44,7 +44,9 @@ const MONO = '"Roboto Mono", monospace';
 /**
  * The days money moves besides the everyday spending (each day has that),
  * each with the spending of the days since the one listed before it: the
- * balance has fallen by all of them, so the lines add up to it.
+ * balance has fallen by all of them, so the lines add up to it. The last
+ * day is listed too when spending follows the last of them, so the table
+ * ends on the balance the forecast does.
  */
 export function movingDays(days: ForecastView['days']): { day: ForecastView['days'][number]; spendingDays: number }[] {
   const moving: { day: ForecastView['days'][number]; spendingDays: number }[] = [];
@@ -53,8 +55,9 @@ export function movingDays(days: ForecastView['days']): { day: ForecastView['day
   for (const day of days) {
     const spending = day.flows.find(flow => flow.kind === 'spending');
     spent += spending?.amountCents ?? 0;
-    count += 1;
-    if (day.flows.some(flow => flow.kind !== 'spending')) {
+    // (The balance's own day has none: it's in the balance already)
+    count += spending ? 1 : 0;
+    if (day.flows.some(flow => flow.kind !== 'spending') || (count > 0 && day === days[days.length - 1])) {
       const flows = day.flows.map(flow => (flow === spending ? { ...flow, amountCents: spent } : flow));
       moving.push({ day: { ...day, flows }, spendingDays: count });
       spent = 0;

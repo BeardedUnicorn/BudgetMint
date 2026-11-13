@@ -374,6 +374,23 @@ describe('the app', () => {
     expect(topBar()).toHaveTextContent('Offline');
   });
 
+  it('closes About and Sign out on Back, and stays on the page', async () => {
+    const { user } = await startBudget();
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument();
+    for (const [item, title] of [
+      ['About BudgetMint', 'About BudgetMint'],
+      ['Sign out…', 'Sign out of BudgetMint?'],
+    ]) {
+      await user.click(screen.getByRole('button', { name: /^Account: / }));
+      await user.click(await screen.findByRole('menuitem', { name: item }));
+      expect(await screen.findByRole('dialog', { name: title })).toBeInTheDocument();
+      act(() => window.history.back());
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(screen.getByRole('heading', { name: 'Bills' })).toBeInTheDocument();
+    }
+  });
+
   it('says when it can’t start, and offers to try again', async () => {
     const reload = vi.fn();
     vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload });
