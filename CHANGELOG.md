@@ -8,6 +8,62 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.4.0 – 2026-11-13
+
+### Added
+
+- About BudgetMint (in the BudgetMint menu, the tray, Settings → About and the account menu) shows the version, whether it's the newest (with Check for Updates on the desktop), what's new in it, and links to the release notes, reporting a problem, the privacy policy, the terms and the source. Copy version info puts the version and system on the clipboard, for a bug report.
+- More than one bank account. Add savings or a second checking account in Settings → Bank accounts, each with its own balance and low mark. Bills, income and one-offs say which account they're paid from or into, and each account gets its own forecast: low and below-zero days, safe to spend and the low-balance reminder are per account, and the total is the accounts added up.
+- The Overview shows each account at a glance and can be of all accounts or one, as can the Forecast. Bills and Income show each one's account and can be narrowed to one, and the sidebar's balance is all accounts together, with each a tap away.
+- Updating a balance, and importing a bank statement, are for one account at a time: the others stay as they are. An account with no balance yet, or one older than 45 days, is left out of the total until it's updated, and its card says so.
+- With one account nothing changes: no account is asked for anywhere, and nothing new is saved.
+- An older BudgetMint (the Android app doesn't update itself: install the new one) sees only the main account. What's in other accounts, and money moved between accounts, isn't there, so it forecasts the main account without any transfers into or out of it. It can still update the main balance and its own bills, and says some of the budget is from a newer BudgetMint.
+- On macOS, the menu bar has File (New Bill ⌘N, New Income ⇧⌘N, Update Balance… ⌘B, Import Bank Statement…, Download Backup… and Download Spreadsheet…), Go (each page, ⌘1 to ⌘7), View (Show or Hide Sidebar ⌃⌘S) and Help (Keyboard Shortcuts, Release Notes, Report a Problem…, Open Logs Folder, Privacy Policy and Terms of Use) menus, and Sign Out… in the BudgetMint menu. The budget's items are greyed out until you've signed in.
+- ⇧⌘N (Ctrl+Shift+N) adds income and ⌘B (Ctrl+B) updates your balance, from any page, on the desktop.
+- The tray's menu has About BudgetMint, and Sign Out… while you're signed in.
+- Money moved between your bank accounts. With more than one account, Bills has "Money moved between accounts": schedule a transfer (to savings each month, to pay off a card) with From and To, and each account's forecast counts it, out of the one and into the other. A one-off move is recorded from the Overview's Add, or as "I moved" when recording a one-off.
+- A transfer is marked moved the way a bill is marked paid, can be skipped, moved to another day or reminded of, and is never counted as a bill due, as income, or in Reports. Marked on a balance's own day, it can move both accounts' balances with it. One that's past its day and not marked yet still counts in both accounts, so what they hold together doesn't change.
+- A balance update and a bank statement ask about a transfer in the account they're for: coming in to the one, going out of the other.
+- An older BudgetMint (the Android app doesn't update itself: install the new one) sees only the main account and none of the transfers, so its forecast of the main account is off by whatever is moved into or out of it.
+
+### Changed
+
+- Cancel on a form you've changed asks before throwing the change away, as Escape and Back do. Cancel and Save stay in view however long the form is.
+- Bills and Income have Mark paid (or Mark received) on each row, for the next one still open.
+- The Forecast's "Day by day" counts the everyday spending of the days in between ("Everyday spending, 4 days"), so each day's lines add up to its balance.
+- Savings lists archived goals, to bring one back from there.
+- Wording: "1 transaction" and "1 line" on a bank statement, income is "expected" on a day rather than "due", "Rent brought back", and the Forecast says how long a TaskMint withdrawal takes the way Settings does.
+- The Reports chart's axis is in your currency, and a TaskMint sign-out that fails says so.
+- Who's signed in shows at the foot of the sidebar (and the phone's menu), with a menu to the account's settings, About and Sign out….
+- Signing out asks first, and erases this device's copy of your budget, which stays in your account for the next sign-in. Deleting the account erases it too.
+- The BudgetMint name at the top of the sidebar goes to the Overview.
+
+### Fixed
+
+- An amount typed with a decimal comma is read as it's meant everywhere: "135,50" in a bill is $135.50, as it already was in the balance, instead of $13,550.00. A comma before three digits still groups thousands ("1,820").
+- An amount field writes the amount out in full when you leave it ("13,550.00"), so a slip shows before it's saved.
+- The amounts in Settings say Saved when they save, and say so when what was typed isn't an amount instead of quietly keeping the old one.
+- Going back to the pay step while setting up no longer adds your pay a second time: it's there as you saved it, and Next changes that one.
+- Setting up, each common bill starts due on the 1st instead of today's day of the month, ticking a bill no longer moves the ones below it, and a payday or bill on or before the balance's day says it's taken as already in the balance.
+- The first step says which currency amounts are in, and lets you change it there.
+- The notice that the browser hasn't allowed notifications shows once instead of at every launch. Settings → Reminders keeps a line with the Allow button.
+- On a phone, the bottom bar's five buttons fit the screen: Overview is no longer cut off at the left edge.
+- The phone calendar keeps a day shown under the month when you change month (the 1st, or today in this month).
+- A payment's date and amount sit one under the other on a phone, instead of squeezed side by side.
+- The Overview's list marks a day that ends low or below zero with a sign as well as a colour.
+- A bill due on the same day as your balance, and not marked paid, is now counted as still owed, and the next balance update asks about it. Before, the forecast left it out for good, so it showed money that was about to go.
+- What your balance already counts on its own day (a bill on autopay, or one you marked paid that day) says "In your balance already", so the day's lines add up.
+- Moving a bill's day after paying it no longer asks for the same month twice: paid on the 12th and moved to the 20th, this month's 20th is skipped, with a note saying why.
+- The Forecast says how much income is due but not marked received, since that isn't counted until it is.
+- Archiving a bill that's still overdue asks first, since the forecast lets the overdue amount go.
+- Back closes About, Sign out and the keyboard shortcuts instead of changing the page under them.
+- Forecast's "Day by day" counts the days of everyday spending rightly when your balance is from today (it said one too many), and lists the last day too, so it ends on the balance the heading gives.
+- The calendar marks the days money moves between your accounts, with what's moved.
+- With more than one bank account, importing a statement asks whose it is first. Before, it was taken as the main account's, and a savings statement could set the main account's balance.
+- Bills lists a transfer with where it goes, not only where it leaves. On a phone, each bill's next date is under its name, where the column was off the screen's edge.
+- A bill or transfer due today is listed with today, not under "Overdue and late" as well. On a phone, Reports keeps the month and its arrows on one line. A statement says "1 that isn't a bill or income".
+- The Forecast no longer calls a bill or transfer due today "overdue": it is still counted today.
+
 ## 2.3.2 – 2026-11-12
 
 ### Fixed

@@ -1,6 +1,6 @@
 [package]
 name = "budgetmint"
-version = "2.3.2"
+version = "2.4.0"
 description = "BudgetMint for the desktop and Android"
 authors = ["Mike Herold"]
 license = "MIT"
