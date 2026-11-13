@@ -149,7 +149,8 @@ describe('money moved between accounts', () => {
     await user.click(screen.getByRole('button', { name: 'Forecast' }));
     expect(screen.getAllByText('To savings (moved)')).toHaveLength(2);
     expect(screen.getAllByText('Back again (automatic)')).toHaveLength(2);
-    expect(screen.getByText('Forgotten (overdue)')).toBeInTheDocument();
+    // Still to make, it counts on both sides too
+    expect(screen.getAllByText('Forgotten (overdue)')).toHaveLength(2);
 
     // Edited, one that goes to the main account still does
     await user.click(screen.getByRole('button', { name: 'Bills' }));
