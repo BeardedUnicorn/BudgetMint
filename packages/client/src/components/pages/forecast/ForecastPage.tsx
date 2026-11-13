@@ -20,12 +20,13 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import { AccountScopeSelect } from '../../budget/AccountScopeSelect';
 import { BalanceFlag } from '../../budget/BalanceFlag';
 import { delayLabel } from '../settings/TaskMintSection';
 import { useTheme } from '@mui/material/styles';
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { ForecastView, Flow } from '@budgetmint/contracts';
-import { useCoreQuery } from '../../../data/BudgetContext';
+import { useForecast, useOverview } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useTaskMint } from '../../../hooks/useTaskMint';
@@ -125,7 +126,7 @@ function BalanceChart({ view }: { view: ForecastView }) {
   }));
   const setAside = view.days.some(day => day.setAsideCents > 0);
   // The picture in words, for those who can't see it: where it starts, its lowest point, where it ends
-  const { lowest } = useCoreQuery('get_overview');
+  const { lowest } = useOverview();
   const last = view.days[view.days.length - 1];
   const label = `The balance day by day: ${formatCents(view.days[0].closingCents)} today, lowest ${formatCents(lowest.cents)} on ${formatWeekday(lowest.date)}, ${formatCents(last.closingCents)} on ${formatDay(last.date)}`;
   return (
@@ -186,7 +187,7 @@ function BalanceChart({ view }: { view: ForecastView }) {
 }
 
 export function ForecastPage() {
-  const view = useCoreQuery('get_forecast');
+  const view = useForecast();
   const { navigate } = useNavigation();
   const { shown: taskmintShown } = useTaskMint();
   const compact = useCompactLayout();
@@ -201,9 +202,12 @@ export function ForecastPage() {
         title="Forecast"
         subtitle={`The next ${view.days.length - 1} days: ${formatCents(view.days[0].closingCents)} today, ${formatCents(last.closingCents)} on ${formatDay(last.date)}.`}
         actions={
-          <Button variant="outlined" onClick={() => navigate('settings', { section: 'forecast' })}>
-            Assumptions
-          </Button>
+          <>
+            <AccountScopeSelect />
+            <Button variant="outlined" onClick={() => navigate('settings', { section: 'forecast' })}>
+              Assumptions
+            </Button>
+          </>
         }
       />
 

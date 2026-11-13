@@ -13,7 +13,7 @@
 import { useRef, useState } from 'react';
 import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
 import type { FormField, ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
-import { LIMITS } from '@budgetmint/contracts';
+import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { CoreRefusal } from '../../core';
 import { useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
@@ -23,6 +23,7 @@ import { ordinal, WEEKS_OF_MONTH, weekdayName } from '../../utils/describe';
 import { centsToInput, formatCents, parseDollars } from '../../utils/money';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { AccountField } from './AccountField';
 import { type Every, RepeatField } from './RepeatField';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -121,7 +122,8 @@ type Field =
   | 'category'
   | 'note'
   | 'reminder'
-  | 'saved';
+  | 'saved'
+  | 'account';
 
 export interface ItemDialogProps {
   kind: ItemKind;
@@ -171,6 +173,8 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   /** After how many payments it ends, as typed. */
   const [payments, setPayments] = useState('');
   const [category, setCategory] = useState(item?.category ?? '');
+  // The bank account it's in: kept as it is when the form doesn't show it (one account in use)
+  const [accountId, setAccountId] = useState(item?.accountId ?? MAIN_ACCOUNT);
   const [autopay, setAutopay] = useState(item?.autopay ?? false);
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
   const [leads, setLeads] = useState<number[]>(item?.reminder?.leadDays ?? [defaultLeadDays]);
@@ -200,6 +204,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     endsOn,
     payments,
     category,
+    accountId,
     autopay,
     reminded,
     leads,
@@ -219,6 +224,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     note: useRef<HTMLInputElement>(null),
     reminder: useRef<HTMLInputElement>(null),
     saved: useRef<HTMLInputElement>(null),
+    account: useRef<HTMLInputElement>(null),
   };
   const refuse = (field: Field, message: string) => {
     setProblem(null);
@@ -263,9 +269,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const due = kind === 'bill' ? 'due' : 'comes';
 
   /** The form's field for core's (a start date, once started, is the change's). */
-  const fieldOf = (field: FormField): Field =>
-    // (The form names no account yet, so core refuses none: 'account' never comes)
-    field === 'dates' && started ? 'changeFrom' : (field as Field);
+  const fieldOf = (field: FormField): Field => (field === 'dates' && started ? 'changeFrom' : field);
 
   const submit = () => {
     if (cents === null) {
@@ -289,6 +293,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
       kind,
       name,
       category: category || null,
+      accountId,
       autopay: autopay && !isGoal,
       // None chosen: no reminder (core's)
       reminder: reminded ? { leadDays: leads } : null,
@@ -364,6 +369,14 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           error={wrong?.field === 'amount'}
           helperText={wrongAt('amount')}
           inputRef={inputs.amount}
+        />
+        <AccountField
+          label={kind === 'bill' ? 'Paid from' : 'Paid into'}
+          value={accountId}
+          onChange={setAccountId}
+          inputRef={inputs.account}
+          error={wrong?.field === 'account'}
+          helperText={wrongAt('account')}
         />
         <RepeatField
           every={every}

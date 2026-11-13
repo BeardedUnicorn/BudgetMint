@@ -6,13 +6,15 @@
  * have gone after the balance was set, so there it's taken off (or added)
  * unless the user unticks it: a wrong tick only shows less money than
  * there is, a wrong untick shows money that's gone. Core's from_balance
- * moves it, in the same change.
+ * moves it, in the same change. The balance is the one of the account the
+ * money is in, named when there's more than one account.
  */
 
 import { useState } from 'react';
 import { Box, Checkbox, FormControlLabel, Typography } from '@mui/material';
 import type { Balance, ItemKind } from '@budgetmint/contracts';
-import { useCoreQuery } from '../../data/BudgetContext';
+import { MAIN_ACCOUNT } from '@budgetmint/contracts';
+import { accountBalance, useAccounts } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { formatCents } from '../../utils/money';
 
@@ -28,16 +30,20 @@ export interface FromBalance {
   choose: (checked: boolean) => void;
   /** The balance (null: none set, so it never applies). */
   balance: Balance | null;
+  /** Whose balance, in words: "your", or "the Savings" (the account's name) when there are several. */
+  whose: string;
+  /** The same, to start a sentence with. */
+  Whose: string;
 }
 
 /**
  * The choice for money paid on `on` (a day, or null while it isn't paid).
  * On autopay it went by itself on its day, so the balance is taken to have
- * it unless the user says otherwise.
+ * it unless the user says otherwise. The balance is `accountId`'s.
  */
-export function useFromBalance(on: string | null, autopay = false): FromBalance {
-  const { settings } = useCoreQuery('get_settings');
-  const balance = settings.balance;
+export function useFromBalance(on: string | null, autopay = false, accountId: string = MAIN_ACCOUNT): FromBalance {
+  const { all, several, nameOf } = useAccounts();
+  const balance = accountBalance(all, accountId);
   const [chosen, setChosen] = useState<boolean | null>(null);
   const applies = balance !== null && on !== null && DAY.test(on) && on <= balance.asOf;
   return {
@@ -46,6 +52,8 @@ export function useFromBalance(on: string | null, autopay = false): FromBalance 
     checked: applies && (chosen ?? (on === balance.asOf && !autopay)),
     choose: setChosen,
     balance,
+    whose: several ? `the ${nameOf(accountId)}` : 'your',
+    Whose: several ? `The ${nameOf(accountId)}` : 'Your',
   };
 }
 
@@ -71,12 +79,12 @@ export function FromBalanceField({
     <Box>
       <FormControlLabel
         control={<Checkbox checked={state.checked} onChange={event => state.choose(event.target.checked)} />}
-        label={`${bill ? 'Take it off your balance' : 'Add it to your balance'}: ${formatCents(cents)}${moved === null ? '' : ` → ${formatCents(moved)}`}`}
+        label={`${bill ? 'Take it off' : 'Add it to'} ${state.whose} balance: ${formatCents(cents)}${moved === null ? '' : ` → ${formatCents(moved)}`}`}
       />
       <Typography variant="caption" color="text.secondary" component="p">
         {on === asOf
-          ? `Your balance is from the same day, ${formatDay(asOf)}. Untick this if it counts it already.`
-          : `It’s before your balance’s day, ${formatDay(asOf)}: the balance likely counts it already.`}
+          ? `${state.Whose} balance is from the same day, ${formatDay(asOf)}. Untick this if it counts it already.`
+          : `It’s before ${state.whose} balance’s day, ${formatDay(asOf)}: the balance likely counts it already.`}
       </Typography>
     </Box>
   );

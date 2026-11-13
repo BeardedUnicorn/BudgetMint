@@ -14,6 +14,7 @@ import { getShell } from '../../../shell';
 import { APP_VERSION } from '../../../utils/appVersion';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { AccountSection } from './AccountSection';
+import { BankAccountsSection } from './BankAccountsSection';
 import { DataSection } from './DataSection';
 import { ForecastSection } from './ForecastSection';
 import { PrivacySection } from './PrivacySection';
@@ -45,6 +46,9 @@ export function SettingsPage() {
       </Box>
       <Box id="settings-forecast">
         <ForecastSection />
+      </Box>
+      <Box id="settings-accounts">
+        <BankAccountsSection />
       </Box>
       <Box id="settings-taskmint">
         <TaskMintSection />

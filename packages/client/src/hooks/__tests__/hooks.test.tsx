@@ -158,6 +158,13 @@ describe('reminders', () => {
       title: 'Your balance goes below zero',
       body: 'It’s -$8.00 on Tue, Dec 1.',
     });
+    // Another bank account's: by its name
+    expect(
+      reminderText(reminder({ kind: 'lowBalance', name: 'Savings', accountId: 'savings', amountCents: 800 })).title
+    ).toBe('Savings gets low');
+    expect(
+      reminderText(reminder({ kind: 'lowBalance', name: 'Savings', accountId: 'savings', short: true })).title
+    ).toBe('Savings goes below zero');
     expect(scheduled([reminder({})])).toEqual([
       { id: 7, atMs: 1, title: 'Rent is due in 3 days', body: '$1,200.00, Tue, Dec 1.' },
     ]);

@@ -39,7 +39,7 @@ import {
   Unarchive as UnarchiveIcon,
 } from '@mui/icons-material';
 import type { ItemKind, ItemView } from '@budgetmint/contracts';
-import { useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
+import { useAccounts, useBudgetChange, useCoreQuery } from '../../../data/BudgetContext';
 import { useNotification } from '../../../contexts/NotificationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useTaskMint } from '../../../hooks/useTaskMint';
@@ -57,7 +57,15 @@ import { VISUALLY_HIDDEN } from '../../ui/visuallyHidden';
 import { SECTION } from '../overview/OverviewPage';
 import { OccurrenceDialog } from '../../budget/OccurrenceDialog';
 import { HistoryDialog } from './HistoryDialog';
-import { ALL_ITEMS, CategoryTotals, categoriesOf, findItems, ItemFilters, type ItemQuery } from './ItemFilters';
+import {
+  accountOf,
+  ALL_ITEMS,
+  CategoryTotals,
+  categoriesOf,
+  findItems,
+  ItemFilters,
+  type ItemQuery,
+} from './ItemFilters';
 
 const MONO = '"Roboto Mono", monospace';
 
@@ -139,6 +147,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
   const change = useBudgetChange();
   const { showError } = useNotification();
   const compact = useCompactLayout();
+  const { several, nameOf } = useAccounts();
   const archive = (view: ItemView, archived: boolean) => {
     try {
       change(
@@ -250,6 +259,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
                       {item.name}
                     </Typography>
+                    {several && <Chip size="small" variant="outlined" label={nameOf(accountOf(view))} />}
                     {item.category && <Chip size="small" label={item.category} />}
                     {item.autopay && (
                       <Chip
@@ -335,8 +345,13 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
   const unarchived = views.filter(view => !view.item.archived);
   const monthly = unarchived.reduce((sum, view) => sum + view.monthlyCents, 0);
   const categories = categoriesOf(views);
-  // A category no longer used by any (renamed, deleted) filters nothing out
-  const asked = categories.includes(query.category) ? query : { ...query, category: '' };
+  const { live, several } = useAccounts();
+  // A category no longer used by any (renamed, deleted) filters nothing out; nor does an account no longer in use
+  const asked = {
+    ...query,
+    category: categories.includes(query.category) ? query.category : '',
+    account: several && live.some(account => account.id === query.account) ? query.account : '',
+  };
   const found = findItems(views, asked);
   // Finished (a one-off done, a schedule ended) leaves the list, and stays a click away
   const active = found.filter(view => !view.item.archived && !view.finished);
@@ -387,7 +402,9 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
       ) : (
         <>
           <Paper sx={SECTION}>
-            {views.length > 1 && <ItemFilters query={asked} categories={categories} onChange={setQuery} />}
+            {views.length > 1 && (
+              <ItemFilters query={asked} categories={categories} accounts={several ? live : []} onChange={setQuery} />
+            )}
             {active.length > 0 ? (
               <>
                 <ItemsTable views={active} today={today} onOpen={setDialog} />

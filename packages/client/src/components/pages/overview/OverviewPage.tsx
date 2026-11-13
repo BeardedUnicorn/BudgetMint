@@ -3,7 +3,8 @@
  * spend and the lowest it gets, what's overdue, what's due this week and
  * coming in, TaskMint's next withdrawal when TaskMint is connected (and,
  * when the balance goes short, what more TaskMint work would cover it), and
- * the next two weeks day by day.
+ * the next two weeks day by day. With more than one bank account: each
+ * one at a glance, and the page of all of them together or of one.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,13 +16,15 @@ import {
   Savings as WithdrawalIcon,
 } from '@mui/icons-material';
 import type { EarnToCover, Overview, UpcomingDay } from '@budgetmint/contracts';
-import { useCoreQuery } from '../../../data/BudgetContext';
+import { MAIN_ACCOUNT } from '@budgetmint/contracts';
+import { useAccounts, useAccountScope, useCoreQuery, useOverview } from '../../../data/BudgetContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { PHONE } from '../../../theme/media';
 import { formatDay, formatMoment, formatRelativeDay, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
 import { importIsStale, WITHDRAWALS_NOTE } from '../../../utils/taskmint';
+import { AccountScopeSelect } from '../../budget/AccountScopeSelect';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { RecordDialog } from '../../budget/RecordDialog';
@@ -31,6 +34,7 @@ import { OccurrenceList } from '../../budget/OccurrenceList';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { EmptyState } from '../../ui/display/EmptyState';
 import { StatsCard } from '../../ui/display/StatsCard';
+import { AccountCards } from './AccountCards';
 
 const MONO = '"Roboto Mono", monospace';
 
@@ -78,9 +82,10 @@ function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
   );
 }
 
-/** What safe to spend leaves room for, in words. */
-function safeLine(overview: Overview): string {
+/** What safe to spend leaves room for, in words (`together`: of several accounts, each by its own mark). */
+function safeLine(overview: Overview, together: boolean): string {
   const { safeToSpend: safe, setAsideCents } = overview;
+  if (together) return 'What each account can spare, added up: one account’s money doesn’t cover another’s.';
   const mark = Math.max(overview.lowBalanceCents, 0);
   const kept = [
     safe.spendingWeeklyCents > 0 && `${formatCents(safe.spendingWeeklyCents)} a week of everyday spending`,
@@ -107,7 +112,13 @@ function coverLine(cover: EarnToCover): string {
 }
 
 export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
-  const overview = useCoreQuery('get_overview');
+  const overview = useOverview();
+  const [scope] = useAccountScope();
+  const { several, nameOf } = useAccounts();
+  /** Every account together, when there's more than one. */
+  const together = several && scope === null;
+  /** The one account's balance the page speaks of, in words ("Savings balance"; none: yours). */
+  const named = scope ? `${nameOf(scope)} balance` : null;
   const { settings } = useCoreQuery('get_settings');
   const items = useCoreQuery('get_items');
   const { navigate, params, clearParams } = useNavigation();
@@ -146,9 +157,11 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
       <PageHeader
         title="Overview"
         subtitle={
-          balance
-            ? `From your balance of ${formatCents(balance.cents)} at the end of ${formatDay(balance.asOf)}`
-            : 'Set your balance to see where it goes'
+          together
+            ? 'Your accounts together'
+            : balance
+              ? `From ${named ? `the ${named}` : 'your balance'} of ${formatCents(balance.cents)} at the end of ${formatDay(balance.asOf)}`
+              : 'Set your balance to see where it goes'
         }
         actions={
           <>
@@ -184,6 +197,14 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         }
       />
 
+      {several && (
+        <>
+          <Box sx={{ mb: 2 }}>
+            <AccountScopeSelect />
+          </Box>
+          <AccountCards accounts={overview.accounts} />
+        </>
+      )}
       {/* A column on a phone, so the cards can go after what's due */}
       <Box sx={{ [PHONE]: { display: 'flex', flexDirection: 'column' } }}>
         {!balance && (
@@ -201,15 +222,18 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         )}
         {firstShort ? (
           <Alert severity="error" sx={{ mb: 3 }}>
-            Your balance goes below zero on {formatWeekday(firstShort.date)}, to {formatCents(firstShort.cents)}.
+            {together ? 'One of your accounts' : named ? `The ${named}` : 'Your balance'} goes below zero on{' '}
+            {formatWeekday(firstShort.date)}, to {formatCents(firstShort.cents)}.
             {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
           </Alert>
         ) : (
           // Not short: a low day is below a mark above zero
           firstLow && (
             <Alert severity="warning" sx={{ mb: 3 }}>
-              Your balance goes below {formatCents(overview.lowBalanceCents)} on {formatWeekday(firstLow.date)}, to{' '}
-              {formatCents(firstLow.cents)}.
+              {together
+                ? 'One of your accounts goes below its low mark'
+                : `${named ? `The ${named}` : 'Your balance'} goes below ${formatCents(overview.lowBalanceCents)}`}{' '}
+              on {formatWeekday(firstLow.date)}, to {formatCents(firstLow.cents)}.
               {overview.earnToCover && <Box sx={{ mt: 0.5 }}>{coverLine(overview.earnToCover)}</Box>}
             </Alert>
           )
@@ -252,7 +276,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
                 {formatCents(overview.safeToSpend.cents)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {safeLine(overview)}
+                {safeLine(overview, together)}
               </Typography>
               {overview.safeToSpend.spendingWeeklyCents === 0 && (
                 // Without it, all of the balance but the bills looks free to spend
@@ -353,7 +377,9 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         )}
       </Box>
 
-      {dialog === 'balance' && <BalanceDialog balance={balance} today={today} onClose={() => setDialog(null)} />}
+      {dialog === 'balance' && (
+        <BalanceDialog accountId={scope ?? MAIN_ACCOUNT} today={today} onClose={() => setDialog(null)} />
+      )}
       {(dialog === 'bill' || dialog === 'income') && (
         <ItemDialog
           kind={dialog}

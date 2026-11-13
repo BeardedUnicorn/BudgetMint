@@ -62,7 +62,11 @@ export function OccurrenceDialog({
   const paidInput = useRef<HTMLInputElement>(null);
   const expectedInput = useRef<HTMLInputElement>(null);
   // Paid just now (not before): it may move the balance
-  const fromBalance = useFromBalance(state === 'done' && status.state !== 'done' ? paidOn : null, occurrence.autopay);
+  const fromBalance = useFromBalance(
+    state === 'done' && status.state !== 'done' ? paidOn : null,
+    occurrence.autopay,
+    occurrence.accountId
+  );
   const dirty = useDirty([state, paidOn, paid, expected, usual, due, note, fromBalance.checked]);
 
   const submit = () => {

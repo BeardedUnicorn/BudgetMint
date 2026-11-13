@@ -4,14 +4,15 @@
  * rest. One whose amount varies asks what it came to instead (its estimate
  * isn't what was paid), and so does one on autopay once it's due; on the
  * balance's own day, Mark paid opens it too, to ask whether the balance
- * has it already (FromBalance). Used by the overview and the calendar's day.
+ * has it already (FromBalance). With more than one bank account, each says
+ * which it's in. Used by the overview and the calendar's day.
  */
 
 import { useState } from 'react';
 import { Box, Button, Chip, IconButton, List, ListItem, Tooltip, Typography } from '@mui/material';
 import { CheckCircleOutlined as PaidIcon, MoreHoriz as MoreIcon } from '@mui/icons-material';
 import type { OccurrenceView } from '@budgetmint/contracts';
-import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { accountBalance, useAccounts, useBudgetChange } from '../../data/BudgetContext';
 import { formatDay } from '../../utils/dates';
 import { occurrenceLabel } from '../../utils/describe';
 import { formatCents, formatMaybeCents } from '../../utils/money';
@@ -35,8 +36,9 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
   const change = useBudgetChange();
   const { showError } = useNotification();
   const [open, setOpen] = useState<{ occurrence: OccurrenceView; askAmount?: boolean; paying?: boolean } | null>(null);
-  // Set today, the balance may or may not have what's paid now: Mark paid asks
-  const balanceToday = useCoreQuery('get_settings').settings.balance?.asOf === today;
+  const { all, several, nameOf } = useAccounts();
+  // Its account's balance set today may or may not have what's paid now: Mark paid asks
+  const balanceToday = (occurrence: OccurrenceView) => accountBalance(all, occurrence.accountId)?.asOf === today;
 
   const markDone = (occurrence: OccurrenceView) => {
     try {
@@ -97,6 +99,11 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     {occurrence.note}
                   </Typography>
                 )}
+                {several && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    {nameOf(occurrence.accountId)}
+                  </Typography>
+                )}
                 {/* Its amount doesn't move the day's balance: say why */}
                 {occurrence.inBalance && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -139,7 +146,7 @@ export function OccurrenceList({ occurrences, today }: { occurrences: Occurrence
                     onClick={() =>
                       occurrence.varies
                         ? setOpen({ occurrence, askAmount: true })
-                        : balanceToday
+                        : balanceToday(occurrence)
                           ? setOpen({ occurrence, paying: true })
                           : markDone(occurrence)
                     }

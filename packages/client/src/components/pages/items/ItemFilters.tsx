@@ -1,11 +1,13 @@
 /**
  * Finding a bill (or income) in a long list: search by name or category,
  * one category only, and an order other than core's (next due first). And
- * what each category comes to a month.
+ * what each category comes to a month. With more than one bank account,
+ * one account's only.
  */
 
 import { MenuItem, Stack, TextField, Typography } from '@mui/material';
-import type { ItemView } from '@budgetmint/contracts';
+import type { AccountView, ItemView } from '@budgetmint/contracts';
+import { MAIN_ACCOUNT } from '@budgetmint/contracts';
 import { formatCents } from '../../../utils/money';
 
 export type ItemOrder = 'next' | 'name' | 'amount' | 'monthly';
@@ -14,10 +16,15 @@ export interface ItemQuery {
   search: string;
   /** '' for every category. */
   category: string;
+  /** '' for every bank account. */
+  account: string;
   order: ItemOrder;
 }
 
-export const ALL_ITEMS: ItemQuery = { search: '', category: '', order: 'next' };
+export const ALL_ITEMS: ItemQuery = { search: '', category: '', account: '', order: 'next' };
+
+/** The bank account an item is in (the main one, when it names none). */
+export const accountOf = (view: ItemView) => view.item.accountId ?? MAIN_ACCOUNT;
 
 const ORDERS: Record<ItemOrder, string> = {
   next: 'Next date',
@@ -41,9 +48,10 @@ export const categoriesOf = (views: ItemView[]) =>
 export function findItems(views: ItemView[], query: ItemQuery): ItemView[] {
   const words = query.search.trim().toLocaleLowerCase();
   const found = views.filter(
-    ({ item }) =>
-      (query.category === '' || sameCategory(item.category, query.category)) &&
-      (words === '' || `${item.name} ${item.category ?? ''}`.toLocaleLowerCase().includes(words))
+    view =>
+      (query.category === '' || sameCategory(view.item.category, query.category)) &&
+      (query.account === '' || accountOf(view) === query.account) &&
+      (words === '' || `${view.item.name} ${view.item.category ?? ''}`.toLocaleLowerCase().includes(words))
   );
   const by: Record<ItemOrder, ((a: ItemView, b: ItemView) => number) | null> = {
     next: null,
@@ -59,10 +67,13 @@ export function findItems(views: ItemView[], query: ItemQuery): ItemView[] {
 export function ItemFilters({
   query,
   categories,
+  accounts,
   onChange,
 }: {
   query: ItemQuery;
   categories: string[];
+  /** The bank accounts to choose among: none, with only one in use. */
+  accounts: AccountView[];
   onChange: (query: ItemQuery) => void;
 }) {
   return (
@@ -89,6 +100,23 @@ export function ItemFilters({
           {categories.map(category => (
             <MenuItem key={category} value={category}>
               {category}
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
+      {accounts.length > 0 && (
+        <TextField
+          select
+          size="small"
+          label="Account"
+          value={query.account}
+          onChange={event => onChange({ ...query, account: event.target.value })}
+          sx={{ flex: 1, minWidth: 0 }}
+        >
+          <MenuItem value="">Every account</MenuItem>
+          {accounts.map(account => (
+            <MenuItem key={account.id} value={account.id}>
+              {account.name}
             </MenuItem>
           ))}
         </TextField>

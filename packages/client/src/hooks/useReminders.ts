@@ -69,10 +69,13 @@ export function reminderText(reminder: Reminder): { title: string; body: string 
             : `${reminder.name}: move it ${when(reminder.daysLeft)}`,
         body: reminder.autopay ? `${amount} moves by itself, ${day}.` : `${amount}, ${day}.`,
       };
-    case 'lowBalance':
+    case 'lowBalance': {
+      // Which account, when it isn't the main one
+      const whose = reminder.accountId ? reminder.name : 'Your balance';
       return reminder.short
-        ? { title: 'Your balance goes below zero', body: `It’s ${amount} on ${day}.` }
-        : { title: 'Your balance gets low', body: `It’s ${amount} on ${day}.` };
+        ? { title: `${whose} goes below zero`, body: `It’s ${amount} on ${day}.` }
+        : { title: `${whose} gets low`, body: `It’s ${amount} on ${day}.` };
+    }
   }
 }
 

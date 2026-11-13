@@ -9,7 +9,7 @@
 import { useRef, useState } from 'react';
 import { Alert, Autocomplete, Stack, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import type { ItemKind } from '@budgetmint/contracts';
-import { LIMITS } from '@budgetmint/contracts';
+import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { CoreRefusal } from '../../core';
 import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
@@ -17,9 +17,10 @@ import { parseDollars } from '../../utils/money';
 import { categoriesOf } from '../pages/items/ItemFilters';
 import { FormDialog } from '../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../ui/forms/CurrencyInput';
+import { AccountField } from './AccountField';
 import { FromBalanceField, savedSaying, useFromBalance } from './FromBalance';
 
-type Wrong = 'amount' | 'name' | 'on' | 'category';
+type Wrong = 'amount' | 'name' | 'on' | 'category' | 'account';
 
 export function RecordDialog({ today, onClose }: { today: string; onClose: () => void }) {
   const change = useBudgetChange();
@@ -29,16 +30,18 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
   const [name, setName] = useState('');
   const [on, setOn] = useState(today);
   const [category, setCategory] = useState('');
+  const [accountId, setAccountId] = useState<string>(MAIN_ACCOUNT);
   const [wrong, setWrong] = useState<{ field: Wrong; message: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // Dated today or before, it's paid: by the balance's day, it may move the balance
-  const fromBalance = useFromBalance(on <= today ? on : null);
-  const dirty = useDirty([kind, amount, name, on, category, fromBalance.checked]);
+  const fromBalance = useFromBalance(on <= today ? on : null, false, accountId);
+  const dirty = useDirty([kind, amount, name, on, category, accountId, fromBalance.checked]);
   const inputs: Record<Wrong, React.RefObject<HTMLInputElement | null>> = {
     amount: useRef<HTMLInputElement>(null),
     name: useRef<HTMLInputElement>(null),
     on: useRef<HTMLInputElement>(null),
     category: useRef<HTMLInputElement>(null),
+    account: useRef<HTMLInputElement>(null),
   };
   const refuse = (field: Wrong, message: string) => {
     setProblem(null);
@@ -65,6 +68,7 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
             on,
             category: category || null,
             note: null,
+            accountId,
           },
           fromBalance: fromBalance.checked,
         },
@@ -121,6 +125,14 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
           error={wrong?.field === 'on'}
           helperText={wrongAt('on') ?? (on > today ? 'Still to come: it counts in the forecast' : undefined)}
           slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <AccountField
+          label={kind === 'bill' ? 'From' : 'Into'}
+          value={accountId}
+          onChange={setAccountId}
+          inputRef={inputs.account}
+          error={wrong?.field === 'account'}
+          helperText={wrongAt('account')}
         />
         <FromBalanceField kind={kind} amountCents={parseDollars(amount)} on={on} state={fromBalance} />
         <Autocomplete
