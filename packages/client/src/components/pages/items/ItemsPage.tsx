@@ -46,6 +46,7 @@ import { useTaskMint } from '../../../hooks/useTaskMint';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { formatRelativeDay } from '../../../utils/dates';
 import { describeEnd, describeRepeat, describeWeekends, occurrenceLabel } from '../../../utils/describe';
+import { KIND_WORDS } from '../../../utils/kinds';
 import { formatCents } from '../../../utils/money';
 import { ItemDialog } from '../../budget/ItemDialog';
 import { StatementImport } from '../../budget/StatementImport';
@@ -94,7 +95,7 @@ const WORDS: Record<ItemKind, { title: string; one: string; subtitle: string; em
 };
 
 type Dialog =
-  | { type: 'edit'; view: ItemView | null }
+  | { type: 'edit'; view: ItemView | null; transfer?: boolean }
   | { type: 'history' | 'delete' | 'archive' | 'pay'; view: ItemView };
 
 interface Action {
@@ -196,9 +197,9 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
           ...(view.next && !item.autopay
             ? [
                 {
-                  title: item.kind === 'bill' ? 'Mark the next one paid' : 'Mark the next one received',
-                  short: item.kind === 'bill' ? 'Mark paid' : 'Mark received',
-                  name: `Mark ${item.name} ${item.kind === 'bill' ? 'paid' : 'received'}`,
+                  title: KIND_WORDS[item.kind].markNext,
+                  short: KIND_WORDS[item.kind].mark,
+                  name: `Mark ${item.name} ${KIND_WORDS[item.kind].verb}`,
                   icon: <PaidIcon fontSize="small" />,
                   run: () => onOpen({ type: 'pay', view }),
                 },
@@ -262,12 +263,7 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                     {several && <Chip size="small" variant="outlined" label={nameOf(accountOf(view))} />}
                     {item.category && <Chip size="small" label={item.category} />}
                     {item.autopay && (
-                      <Chip
-                        size="small"
-                        label={item.kind === 'bill' ? 'Autopay' : 'Automatic'}
-                        variant="outlined"
-                        color="info"
-                      />
+                      <Chip size="small" label={KIND_WORDS[item.kind].auto} variant="outlined" color="info" />
                     )}
                     {item.saveUp && <Chip size="small" label="Setting aside" variant="outlined" color="secondary" />}
                     {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
@@ -342,6 +338,8 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
     kind === 'income' && taskmintShown ? 'Money coming in besides TaskMint’s withdrawals.' : words.subtitle;
   const [showFinished, setShowFinished] = useState(false);
   const views = all.filter(view => view.item.kind === kind);
+  // Money moved between accounts: listed with the bills, once there's more than one account
+  const transfers = all.filter(view => view.item.kind === 'transfer');
   const unarchived = views.filter(view => !view.item.archived);
   const monthly = unarchived.reduce((sum, view) => sum + view.monthlyCents, 0);
   const categories = categoriesOf(views);
@@ -448,9 +446,29 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
         </>
       )}
 
+      {kind === 'bill' && (several || transfers.length > 0) && (
+        <Paper component="section" aria-labelledby="transfers-title" sx={SECTION}>
+          <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 1 }}>
+            <Typography id="transfers-title" variant="h6" component="h2">
+              Money moved between accounts
+            </Typography>
+            {several && (
+              <Button onClick={() => setDialog({ type: 'edit', view: null, transfer: true })}>Add a transfer</Button>
+            )}
+          </Stack>
+          {transfers.length > 0 ? (
+            <ItemsTable views={transfers} today={today} onOpen={setDialog} />
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              To savings each month, to pay off a card: schedule it here, and each account’s forecast counts it.
+            </Typography>
+          )}
+        </Paper>
+      )}
+
       {dialog?.type === 'edit' && (
         <ItemDialog
-          kind={kind}
+          kind={dialog.view?.item.kind ?? (dialog.transfer ? 'transfer' : kind)}
           view={dialog.view ?? undefined}
           today={today}
           defaultLeadDays={settings.reminders.leadDays}

@@ -3,7 +3,9 @@
  * in, how much, and when (today unless said otherwise; a day ahead is still
  * to come). Core's record makes it a one-off bill or income, already paid
  * when its day has come, with one Undo; once done, it leaves the Bills and
- * Income lists for their Finished part, and still counts in Reports.
+ * Income lists for their Finished part, and still counts in Reports. With
+ * more than one bank account, money moved from one to another is recorded
+ * here too.
  */
 
 import { useRef, useState } from 'react';
@@ -11,7 +13,7 @@ import { Alert, Autocomplete, Stack, TextField, ToggleButton, ToggleButtonGroup 
 import type { ItemKind } from '@budgetmint/contracts';
 import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { CoreRefusal } from '../../core';
-import { useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
+import { otherAccount, useAccounts, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
 import { useDirty } from '../../hooks/useDirty';
 import { parseDollars } from '../../utils/money';
 import { categoriesOf } from '../pages/items/ItemFilters';
@@ -22,10 +24,29 @@ import { FromBalanceField, savedSaying, useFromBalance } from './FromBalance';
 
 type Wrong = 'amount' | 'name' | 'on' | 'category' | 'account';
 
-export function RecordDialog({ today, onClose }: { today: string; onClose: () => void }) {
+/** What's asked of each kind. */
+const WORDS: Record<ItemKind, { name: string; such: string; account: string }> = {
+  bill: { name: 'On what', such: 'A car repair, a gift', account: 'From' },
+  income: { name: 'From what', such: 'A side job, a refund', account: 'Into' },
+  transfer: { name: 'What for', such: 'Savings, a card payment', account: 'From' },
+};
+
+export function RecordDialog({
+  today,
+  kind: opened = 'bill',
+  onClose,
+}: {
+  today: string;
+  /** What it opens to record (something spent, unless given). */
+  kind?: ItemKind;
+  onClose: () => void;
+}) {
   const change = useBudgetChange();
   const categories = categoriesOf(useCoreQuery('get_items'));
-  const [kind, setKind] = useState<ItemKind>('bill');
+  const { live, several } = useAccounts();
+  const [kind, setKind] = useState<ItemKind>(opened);
+  /** Where money moved goes, as chosen. */
+  const [wanted, setWanted] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [name, setName] = useState('');
   const [on, setOn] = useState(today);
@@ -34,8 +55,10 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
   const [wrong, setWrong] = useState<{ field: Wrong; message: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // Dated today or before, it's paid: by the balance's day, it may move the balance
-  const fromBalance = useFromBalance(on <= today ? on : null, false, accountId);
-  const dirty = useDirty([kind, amount, name, on, category, accountId, fromBalance.checked]);
+  // Another account than it comes from
+  const toAccountId = otherAccount(live, accountId, wanted);
+  const fromBalance = useFromBalance(on <= today ? on : null, { kind, accountId, toAccountId });
+  const dirty = useDirty([kind, amount, name, on, category, accountId, wanted, fromBalance.checked]);
   const inputs: Record<Wrong, React.RefObject<HTMLInputElement | null>> = {
     amount: useRef<HTMLInputElement>(null),
     name: useRef<HTMLInputElement>(null),
@@ -69,6 +92,7 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
             category: category || null,
             note: null,
             accountId,
+            toAccountId: toAccountId ?? undefined,
           },
           fromBalance: fromBalance.checked,
         },
@@ -97,6 +121,7 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
         >
           <ToggleButton value="bill">I spent</ToggleButton>
           <ToggleButton value="income">I got</ToggleButton>
+          {several && <ToggleButton value="transfer">I moved</ToggleButton>}
         </ToggleButtonGroup>
         <CurrencyInput
           label="Amount"
@@ -108,12 +133,12 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
           autoFocus
         />
         <TextField
-          label={kind === 'bill' ? 'On what' : 'From what'}
+          label={WORDS[kind].name}
           value={name}
           onChange={event => setName(event.target.value)}
           inputRef={inputs.name}
           error={wrong?.field === 'name'}
-          helperText={wrongAt('name') ?? (kind === 'bill' ? 'A car repair, a gift' : 'A side job, a refund')}
+          helperText={wrongAt('name') ?? WORDS[kind].such}
           slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NAME } }}
         />
         <TextField
@@ -127,13 +152,16 @@ export function RecordDialog({ today, onClose }: { today: string; onClose: () =>
           slotProps={{ inputLabel: { shrink: true } }}
         />
         <AccountField
-          label={kind === 'bill' ? 'From' : 'Into'}
+          label={WORDS[kind].account}
           value={accountId}
           onChange={setAccountId}
           inputRef={inputs.account}
           error={wrong?.field === 'account'}
           helperText={wrongAt('account')}
         />
+        {kind === 'transfer' && toAccountId && (
+          <AccountField label="To" value={toAccountId} onChange={setWanted} exclude={accountId} />
+        )}
         <FromBalanceField kind={kind} amountCents={parseDollars(amount)} on={on} state={fromBalance} />
         <Autocomplete
           freeSolo

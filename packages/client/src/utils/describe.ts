@@ -3,6 +3,7 @@
  */
 
 import type { OccurrenceView, Repeat, Weekends } from '@budgetmint/contracts';
+import { KIND_WORDS } from './kinds';
 import { formatDay, formatDayInYear, parseDay } from './dates';
 import { formattingLocale } from './locale';
 
@@ -70,10 +71,10 @@ export const describeEnd = (until: string | null) => (until ? `, until ${formatD
 /** What's become of an occurrence, for a chip: null for one still to come. */
 export function occurrenceLabel(occurrence: OccurrenceView): string | null {
   const status = occurrence.status;
-  if (status.state === 'done') return occurrence.kind === 'bill' ? 'Paid' : 'Received';
+  const words = KIND_WORDS[occurrence.kind];
+  if (status.state === 'done') return words.done;
   if (status.state === 'skipped') return 'Skipped';
-  if (occurrence.late) return occurrence.kind === 'bill' ? 'Overdue' : 'Late';
-  // Income that comes in on its own isn't "autopay": nothing is paid
-  if (occurrence.autopay) return occurrence.kind === 'bill' ? 'Autopay' : 'Automatic';
+  if (occurrence.late) return words.late;
+  if (occurrence.autopay) return words.auto;
   return null;
 }

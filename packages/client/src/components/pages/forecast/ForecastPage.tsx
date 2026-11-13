@@ -32,6 +32,7 @@ import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { formatDay, formatMoment, formatWeekday } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
+import { KIND_WORDS } from '../../../utils/kinds';
 import { LEFT_OUT } from '../../../utils/taskmint';
 import { formattingLocale } from '../../../utils/locale';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
@@ -68,11 +69,11 @@ function flowLabel(flow: Flow, days: number): string {
   if (flow.kind === 'spending') return days > 1 ? `Everyday spending, ${days} days` : 'Everyday spending';
   if (flow.kind === 'withdrawal')
     return flow.status === 'projected' ? 'TaskMint withdrawal (expected)' : 'TaskMint withdrawal';
-  const bill = flow.kind === 'bill';
+  const words = KIND_WORDS[flow.kind];
   const note = {
     overdue: ' (overdue)',
-    done: bill ? ' (paid)' : ' (received)',
-    autopay: bill ? ' (autopay)' : ' (automatic)',
+    done: ` (${words.verb})`,
+    autopay: words.autoNote,
   }[flow.status as 'overdue' | 'done' | 'autopay'];
   return `${flow.name}${note ?? ''}`;
 }

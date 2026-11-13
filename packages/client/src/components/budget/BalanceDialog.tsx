@@ -113,7 +113,8 @@ function BalanceCheck({
                       }}
                     />
                   }
-                  label={`${view.name}: ${view.kind === 'income' ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
+                  // Into this account: income, or money moved to it
+                  label={`${view.name}: ${view.kind === 'income' || view.toAccountId === accountId ? '+' : ''}${formatMaybeCents(view.expectedCents, view.estimated)}, due ${formatDay(view.due)}`}
                 />
                 {key in ticked && (
                   <CurrencyInput

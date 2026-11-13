@@ -173,6 +173,9 @@ export function StatementDialog({
       category: null,
       note: null,
     }));
+  /** Which way an open one's money goes in this account: a transfer, by which end it is. */
+  const wayOf = (open: StatementView['open'][number]) =>
+    open.kind === 'bill' || (open.kind === 'transfer' && open.accountId === accountId) ? 'out' : 'in';
   const nothing = chosen.length === 0 && balance === null && byHand.length === 0 && recorded.length === 0;
   const dates = view.transactions.map(transaction => transaction.date).sort();
 
@@ -305,7 +308,8 @@ export function StatementDialog({
                           {out ? 'A one-off spend: record it' : 'A one-off: record it'}
                         </MenuItem>
                         {view.open
-                          .filter(open => open.kind === (out ? 'bill' : 'income'))
+                          // The same way: a bill (or money moved out of this account) for a line out
+                          .filter(open => wayOf(open) === (out ? 'out' : 'in'))
                           .map(open => (
                             <MenuItem key={keyOf(open)} value={keyOf(open)}>
                               {`${open.name}, due ${formatDay(open.due)}`}

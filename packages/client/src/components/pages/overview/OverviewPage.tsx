@@ -48,7 +48,7 @@ export const STATS_GRID = {
 
 export const SECTION = { p: 3, mb: 4, [PHONE]: { p: 2, mb: 3 } } as const;
 
-function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
+function UpcomingDays({ days, today, scope }: { days: UpcomingDay[]; today: string; scope: string | null }) {
   return (
     <Stack spacing={2}>
       {days.map(day => (
@@ -65,7 +65,7 @@ function UpcomingDays({ days, today }: { days: UpcomingDay[]; today: string }) {
               Balance {formatCents(day.closingCents)}
             </Typography>
           </Stack>
-          <OccurrenceList occurrences={day.occurrences} today={today} />
+          <OccurrenceList occurrences={day.occurrences} today={today} scope={scope} />
           {day.withdrawalCents > 0 && (
             <Stack direction="row" sx={{ py: 0.5, justifyContent: 'space-between' }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -122,10 +122,10 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
   const { settings } = useCoreQuery('get_settings');
   const items = useCoreQuery('get_items');
   const { navigate, params, clearParams } = useNavigation();
-  const [dialog, setDialog] = useState<'balance' | 'bill' | 'income' | 'record' | null>(null);
+  const [dialog, setDialog] = useState<'balance' | 'bill' | 'income' | 'record' | 'move' | null>(null);
   /** The Add button's menu, while it's open. */
   const [adding, setAdding] = useState<HTMLElement | null>(null);
-  const add = (what: 'bill' | 'income' | 'record') => {
+  const add = (what: 'bill' | 'income' | 'record' | 'move') => {
     setAdding(null);
     setDialog(what);
   };
@@ -182,6 +182,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
                   <MenuItem onClick={() => add('bill')}>A bill</MenuItem>
                   <MenuItem onClick={() => add('income')}>Income</MenuItem>
                   <MenuItem onClick={() => add('record')}>A one-off spend or income</MenuItem>
+                  {several && <MenuItem onClick={() => add('move')}>Money moved between accounts</MenuItem>}
                   <MenuItem
                     onClick={() => {
                       setAdding(null);
@@ -323,7 +324,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             <Typography id="overdue-title" variant="h6" component="h2" sx={{ mb: 1 }}>
               Overdue and late
             </Typography>
-            <OccurrenceList occurrences={[...overview.overdue, ...overview.lateIncome]} today={today} />
+            <OccurrenceList occurrences={[...overview.overdue, ...overview.lateIncome]} today={today} scope={scope} />
           </Paper>
         )}
 
@@ -371,7 +372,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
                 Nothing due or coming in.
               </Typography>
             ) : (
-              <UpcomingDays days={overview.upcoming} today={today} />
+              <UpcomingDays days={overview.upcoming} today={today} scope={scope} />
             )}
           </Paper>
         )}
@@ -389,6 +390,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         />
       )}
       {dialog === 'record' && <RecordDialog today={today} onClose={() => setDialog(null)} />}
+      {dialog === 'move' && <RecordDialog today={today} kind="transfer" onClose={() => setDialog(null)} />}
     </PageContainer>
   );
 }

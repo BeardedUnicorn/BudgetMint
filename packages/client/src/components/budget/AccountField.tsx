@@ -11,6 +11,7 @@ export function AccountField({
   label,
   value,
   onChange,
+  exclude,
   error = false,
   helperText,
   inputRef,
@@ -21,6 +22,8 @@ export function AccountField({
   /** The account's id. */
   value: string;
   onChange: (accountId: string) => void;
+  /** An account it can't be (where a transfer comes from, for where it goes). */
+  exclude?: string;
   error?: boolean;
   helperText?: string;
   inputRef?: React.Ref<HTMLInputElement>;
@@ -41,11 +44,13 @@ export function AccountField({
       size={size}
       sx={sx}
     >
-      {live.map(account => (
-        <MenuItem key={account.id} value={account.id}>
-          {account.name}
-        </MenuItem>
-      ))}
+      {live
+        .filter(account => account.id !== exclude)
+        .map(account => (
+          <MenuItem key={account.id} value={account.id}>
+            {account.name}
+          </MenuItem>
+        ))}
     </TextField>
   );
 }

@@ -89,6 +89,14 @@ export const accountBalance = (accounts: AccountView[], id: string) =>
   accounts.find(account => account.id === id)?.balance ?? null;
 
 /**
+ * Where a transfer from `from` goes: `wanted` when it's another account in
+ * use, else the first that is (none, with only one account).
+ */
+export const otherAccount = (live: AccountView[], from: string, wanted: string | null) =>
+  (live.find(account => account.id !== from && account.id === wanted) ?? live.find(account => account.id !== from))
+    ?.id ?? null;
+
+/**
  * The bank accounts: all of them, the ones in use, and whether there's
  * more than the main one in use (with only it, nothing names an account).
  */
