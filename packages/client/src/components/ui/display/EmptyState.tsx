@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/components/ui/display/EmptyState.tsx @ 1623bee: keep the two in step.
+// Adapted from TaskMint packages/client/src/components/ui/display/EmptyState.tsx @ 1623bee: less padding on a phone, where the panel's 48px left its buttons no room.
 /**
  * Empty State Component
  *
@@ -9,6 +9,7 @@
 
 import { ReactNode } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
+import { PHONE } from '../../../theme/media';
 
 export interface EmptyStateProps {
   icon?: ReactNode;
@@ -23,7 +24,7 @@ export function EmptyState({ icon, title, description, action, plain = false }: 
   return (
     <Paper
       elevation={plain ? 0 : 1}
-      sx={{ p: plain ? 4 : 6, textAlign: 'center', ...(plain && { bgcolor: 'transparent' }) }}
+      sx={{ p: plain ? 4 : 6, textAlign: 'center', ...(plain && { bgcolor: 'transparent' }), [PHONE]: { p: 3 } }}
     >
       {icon && <Box sx={{ color: 'text.secondary', mb: 1, '& svg': { fontSize: 48 } }}>{icon}</Box>}
       <Typography variant="h6" sx={{ fontWeight: 600 }}>

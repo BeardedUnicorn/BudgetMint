@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import type { CalendarDay } from '@budgetmint/contracts';
 import { focusColor } from '../../../theme/components';
+import { MONO } from '../../../theme/layout';
 import { HOVER, PHONE } from '../../../theme/media';
 import { formatLongDay, parseDay } from '../../../utils/dates';
 import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
@@ -129,6 +130,7 @@ export function Dot({
     <Box
       data-dot={shape}
       sx={theme => ({
+        flexShrink: 0,
         width: 7,
         height: 7,
         ...DOT_SHAPES[shape],
@@ -188,9 +190,19 @@ export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }
           [PHONE]: { minHeight: 52, p: 0.5 },
         })}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.5 }}>
+        {/* On a phone's narrow cells the marks go under the date, on as many lines as they need, never out of the cell */}
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 0.5,
+            [PHONE]: { flexWrap: 'wrap', justifyContent: 'flex-start', columnGap: 0.25, rowGap: 0.5 },
+          }}
+        >
           <Box
             sx={{
+              flexShrink: 0,
               width: 24,
               height: 24,
               borderRadius: '50%',
@@ -211,7 +223,15 @@ export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }
             <BalanceFlag short={day.short} low={day.low} hidden />
           </Box>
           {/* Dots where there's no room for badges */}
-          <Box sx={{ display: 'flex', gap: 0.25, [WIDE]: { display: 'none' } }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.25,
+              [WIDE]: { display: 'none' },
+              [PHONE]: { flexBasis: '100%', flexWrap: 'wrap', gap: '3px', minHeight: 9 },
+            }}
+          >
             {bills > 0 && <Dot tone="error" />}
             {income > 0 && <Dot tone="success" />}
             {day.movedCents > 0 && <Dot tone="info" />}
@@ -249,7 +269,7 @@ export function DayCell({ day, isToday, selected, tabbable, onOpen, onFocusDay }
             component="div"
             sx={{
               mt: 'auto',
-              fontFamily: '"Roboto Mono", monospace',
+              fontFamily: MONO,
               fontWeight: 600,
               fontSize: '0.75rem',
               color: day.short ? 'error.main' : day.low ? 'warning.main' : 'text.secondary',

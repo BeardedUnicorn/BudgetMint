@@ -31,15 +31,13 @@ import { useNavigation } from '../../../contexts/NavigationContext';
 import { useCompactLayout } from '../../../hooks/useCompactLayout';
 import { useTaskMint } from '../../../hooks/useTaskMint';
 import { formatDay, formatMoment, formatWeekday } from '../../../utils/dates';
-import { formatCents, formatMaybeCents, formatWholeCents } from '../../../utils/money';
+import { formatAxisCents, formatCents, formatMaybeCents } from '../../../utils/money';
 import { KIND_WORDS } from '../../../utils/kinds';
 import { LEFT_OUT } from '../../../utils/taskmint';
 import { formattingLocale } from '../../../utils/locale';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
-import { SECTION } from '../overview/OverviewPage';
-
-const MONO = '"Roboto Mono", monospace';
+import { MONO, SECTION } from '../../../theme/layout';
 
 /**
  * The days money moves besides the everyday spending (each day has that),
@@ -113,7 +111,7 @@ export function spendingAssumption(view: ForecastView): string | null {
 }
 
 /** The chart's money on its axis (whole dollars), and in its tooltip. */
-export const axisMoney = (dollars: number) => formatWholeCents(dollars * 100);
+export const axisMoney = (dollars: number) => formatAxisCents(dollars * 100);
 export const tooltipMoney = (dollars: unknown, name?: unknown): [string, string] => [
   formatCents(Number(dollars) * 100),
   name === 'free' ? 'Besides what’s set aside' : 'Balance',
@@ -337,7 +335,7 @@ export function ForecastPage() {
                 {moving.flatMap(({ day, spendingDays }) =>
                   day.flows.map((flow, index) => (
                     <TableRow key={`${day.date} ${index}`}>
-                      <TableCell>{index === 0 ? formatWeekday(day.date) : ''}</TableCell>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>{index === 0 ? formatWeekday(day.date) : ''}</TableCell>
                       <TableCell>{flowLabel(flow, spendingDays)}</TableCell>
                       <TableCell
                         align="right"
@@ -351,6 +349,8 @@ export function ForecastPage() {
                         sx={{
                           fontFamily: MONO,
                           fontWeight: 600,
+                          // Its flag stays beside it
+                          whiteSpace: 'nowrap',
                           color: day.short ? 'error.main' : day.low ? 'warning.main' : undefined,
                         }}
                       >

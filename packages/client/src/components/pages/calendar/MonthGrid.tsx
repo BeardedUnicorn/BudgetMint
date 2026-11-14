@@ -117,7 +117,7 @@ export function MonthGrid({
                 fontWeight: 600,
                 textTransform: 'uppercase',
                 letterSpacing: '0.06em',
-                [PHONE]: { px: 0, letterSpacing: 0, textAlign: 'center', fontSize: '0.65rem' },
+                [PHONE]: { px: 0, letterSpacing: 0, textAlign: 'center', fontSize: '0.6875rem' },
               }}
             >
               {weekdayName(index, mondayFirst)}
