@@ -1,7 +1,8 @@
 /**
  * Bank accounts: the main one every budget has, and any others (savings, a
  * second checking account), each with its own balance and low mark. With
- * only the main one there's just the way to add another. An account is
+ * only the main one there's just the way to add another, unless it's been
+ * renamed: then it stays listed, so its name is seen (and can change). An account is
  * archived once nothing live is in it, and deleted only when nothing ever
  * was (core refuses otherwise, and says why).
  */
@@ -124,7 +125,7 @@ export function BankAccountsSection() {
   return (
     <SettingsSection title="Bank accounts" icon={<BankIcon />}>
       <Stack spacing={2} sx={{ maxWidth: 620 }}>
-        {all.length === 1 ? (
+        {all.length === 1 && !all[0].named ? (
           <Typography variant="body2" color="text.secondary">
             BudgetMint forecasts one bank account. If you have more (savings, a second checking account), add them: each
             gets its own balance and forecast.

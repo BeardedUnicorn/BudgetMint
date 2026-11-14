@@ -1120,12 +1120,20 @@ pub fn save_account(snapshot: &mut Snapshot, input: AccountInput) -> Result<Plan
     let name = text(Some(input.name), MAX_NAME, "name")
         .map_err(at(FormField::Name))?
         .ok_or_else(|| invalid_at(FormField::Name, "Give it a name"))?;
-    if snapshot
+    if let Some(other) = snapshot
         .all_accounts()
-        .iter()
-        .any(|other| other.id != input.id && other.name.to_lowercase() == name.to_lowercase())
+        .into_iter()
+        .find(|other| other.id != input.id && other.name.to_lowercase() == name.to_lowercase())
     {
-        return Err(invalid_at(FormField::Name, "Another account has that name"));
+        // The main one may be out of sight (Settings lists it alone only once renamed): say so
+        return Err(invalid_at(
+            FormField::Name,
+            if other.is_main() {
+                "Your main account has that name"
+            } else {
+                "Another account has that name"
+            },
+        ));
     }
     let low_balance_cents = cents(input.low_balance_cents, "low balance")?;
     let existing = snapshot.accounts.get(&input.id).cloned();
@@ -2443,10 +2451,14 @@ mod tests {
         // The next one comes after it
         save_account(&mut s, account_input("card", "Card", 0)).unwrap();
         assert_eq!(s.accounts["card"].order, 2);
-        // One name each, whatever its letters' case: the main account's too
-        for taken in ["savings", "MAIN ACCOUNT"] {
+        // One name each, whatever its letters' case: the main account's too,
+        // said as its (alone, it's the one account Settings may not list)
+        for (taken, why) in [
+            ("savings", "Another account has that name"),
+            ("MAIN ACCOUNT", "Your main account has that name"),
+        ] {
             let refused = save_account(&mut s, account_input("x", taken, 0)).unwrap_err();
-            assert_eq!(refused.to_string(), "Another account has that name");
+            assert_eq!(refused.to_string(), why);
             assert_eq!(refused.field(), Some(FormField::Name));
         }
         // Renamed, with another low mark: its place and balance stay
