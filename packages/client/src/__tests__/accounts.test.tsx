@@ -35,6 +35,12 @@ const once = (id: string, name: string, on: string, cents: number, more: Partial
 
 const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
+/** What adding Savings in Settings and naming the main account Checking leave: the tests after it start here. */
+const namedAccounts = [
+  account('main', 'Checking', { order: 0, balance: null }),
+  account('savings', 'Savings', { balance: { cents: 50_000, asOf: '2026-11-10' }, lowBalanceCents: 10_000 }),
+];
+
 describe('a budget with one bank account', () => {
   it('shows nothing of accounts but the way to add one, and writes nothing new', async () => {
     const { user, store } = await startBudget({
@@ -104,7 +110,7 @@ describe('a budget with one bank account', () => {
 });
 
 describe('several bank accounts', () => {
-  it('adds one in Settings with its balance, names the main one, and pays a bill from it', async () => {
+  it('adds one in Settings with its balance, and names the main one', async () => {
     const { user, store } = await startBudget({
       items: [monthly('rent', 'Rent', 15, 50_000), monthly('net', 'Internet', 20, 6_000)],
     });
@@ -166,11 +172,17 @@ describe('several bank accounts', () => {
     expect(await screen.findByText('Checking saved')).toBeInTheDocument();
     await closed();
     expect(docOf(store, 'account~main')).toMatchObject({ name: 'Checking', balance: null });
+  });
 
+  it('pays a bill from one, and lists each bill with its account', async () => {
+    const { user, store } = await startBudget({
+      accounts: namedAccounts,
+      items: [monthly('rent', 'Rent', 15, 50_000), monthly('net', 'Internet', 20, 6_000)],
+    });
     // A bill paid from savings: a newer document, with its account
     await user.click(screen.getByRole('button', { name: 'Bills' }));
     await user.click(screen.getAllByRole('button', { name: 'Add bill' })[0]);
-    dialog = screen.getByRole('dialog', { name: 'Add bill' });
+    let dialog = screen.getByRole('dialog', { name: 'Add bill' });
     expect(within(dialog).getByLabelText('Paid from')).toHaveTextContent('Checking');
     await pick(user, dialog, 'Paid from', 'Savings');
     await user.type(within(dialog).getByLabelText('Name'), 'Fee');
@@ -178,7 +190,7 @@ describe('several bank accounts', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await closed();
     const fee = named(store, 'Fee');
-    expect(fee.accountId).toBe(savings.id);
+    expect(fee.accountId).toBe('savings');
     expect(store.docs.get(`item~${fee.id}`)!.schema).toBe(4);
     // Each row says its account, and the list narrows to one
     const row = (bill: string) => screen.getByRole('cell', { name: new RegExp(`^${bill}`) }).closest('tr')!;
@@ -197,10 +209,34 @@ describe('several bank accounts', () => {
     await user.type(within(dialog).getByLabelText('Name'), 's');
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await closed();
-    expect(named(store, 'Fees').accountId).toBe(savings.id);
+    expect(named(store, 'Fees').accountId).toBe('savings');
+  });
 
+  it('shows each on the Overview, updates the balance of the one shown, and shares the choice with the Forecast', async () => {
+    const { user, store } = await startBudget({
+      accounts: namedAccounts,
+      items: [
+        monthly('rent', 'Rent', 15, 50_000),
+        monthly('net', 'Internet', 20, 6_000),
+        item({
+          id: 'fee',
+          kind: 'bill',
+          name: 'Fees',
+          accountId: 'savings',
+          schedule: [
+            {
+              from: '2026-11-10',
+              until: null,
+              repeat: { every: 'months', n: 1, day: 10 },
+              amountCents: 700,
+              weekends: 'keep',
+            },
+          ],
+        }),
+      ],
+    });
+    const page = screen.getByRole('main');
     // The Overview: each account at a glance, and the page of all or of one
-    await user.click(screen.getByRole('button', { name: 'Overview' }));
     const cards = screen.getByRole('region', { name: 'Your accounts' });
     expect(within(cards).getByRole('group', { name: 'Checking' })).toHaveTextContent('$1,000.00');
     // (The fee is due today, and savings' balance is from today: still owed, so it's off already)
@@ -210,7 +246,7 @@ describe('several bank accounts', () => {
     expect(screen.getByText('From the Savings balance of $500.00 at the end of Nov 10')).toBeInTheDocument();
     // Its balance is the one updated from here, unless another is chosen
     await user.click(screen.getByRole('button', { name: 'Update balance' }));
-    dialog = screen.getByRole('dialog', { name: 'Your balance' });
+    const dialog = screen.getByRole('dialog', { name: 'Your balance' });
     expect(within(dialog).getByLabelText('Account')).toHaveTextContent('Savings');
     expect(within(dialog).getByText('Last: $500.00, at the end of Nov 10')).toBeInTheDocument();
     await pick(user, dialog, 'Account', 'Checking');
