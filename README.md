@@ -374,18 +374,11 @@ installed beside the real app. With the emulators, set
 `VITE_FIREBASE_EMULATOR_HOST=10.0.2.2`: the Android emulator's address for
 this computer.
 
-`tauri android dev` installs the dev build and then fails to start it: it
-starts `com.budgetmint.android`, and a dev build is
-`com.budgetmint.android.dev`. Until that's put right, serve the page and
-start the app by hand:
-
-```bash
-VITE_FIREBASE_EMULATOR_HOST=10.0.2.2 pnpm --filter @budgetmint/desktop dev
-```
-
-```bash
-adb reverse tcp:1430 tcp:1430 && adb shell am start -n com.budgetmint.android.dev/com.budgetmint.android.MainActivity
-```
+The dev build's `.dev` is the debug build type's `applicationIdSuffix`
+(`app/build.gradle.kts`), a line the Tauri CLI keeps in step with
+`debugApplicationIdSuffix` in `tauri.android.conf.json`, which is also the
+name `tauri android dev` starts after installing. A dev environment's
+release build takes the suffix too; a production build has none.
 
 The page's text follows the system's font size up to 130%
 (`MainActivity.kt`'s `MAX_FONT_SCALE`): beyond it the bottom tabs' labels

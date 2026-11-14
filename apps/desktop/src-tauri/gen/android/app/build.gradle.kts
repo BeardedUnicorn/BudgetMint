@@ -44,11 +44,10 @@ android {
     namespace = "com.budgetmint.android"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // BudgetMint: a dev build adds .dev (buildTypes below). The package
+        // is only the installed name: the code's stays com.budgetmint.android
+        // (namespace), which the Rust side's JNI needs
         applicationId = "com.budgetmint.android"
-        // BudgetMint: the package is only the installed name: the code's
-        // stays com.budgetmint.android (namespace), which the Rust side's JNI
-        // needs
-        if (!production) applicationIdSuffix = ".dev"
         resValue("string", "app_name", appLabel)
         resValue("string", "main_activity_title", appLabel)
         manifestPlaceholders["analyticsDeactivated"] = (!production).toString()
@@ -71,6 +70,13 @@ android {
     }
     buildTypes {
         getByName("debug") {
+            // BudgetMint: a dev build is com.budgetmint.android.dev. The Tauri
+            // CLI writes this line from tauri.android.conf.json's
+            // debugApplicationIdSuffix, the name `tauri android dev` then
+            // starts, so the two stay the same. A production debug build
+            // keeps the real name. As TaskMint's (its 6ef8a51).
+            applicationIdSuffix = ".dev"
+            if (production) applicationIdSuffix = null
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
@@ -83,6 +89,8 @@ android {
             }
         }
         getByName("release") {
+            // BudgetMint: a release build of the dev environment is a dev build too
+            if (!production) applicationIdSuffix = ".dev"
             signingConfigs.findByName("release")?.let { signingConfig = it }
             optimization {
                enable = true
