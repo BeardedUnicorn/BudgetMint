@@ -8,6 +8,38 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.4.2 – 2026-11-14
+
+### Changed
+
+- Settings is a column to read instead of the window's whole width, its fields a set width with their explanations running on beside nothing, and each bank account's actions start in line with the one above.
+- Signing in has one wide button, with Create an account and Forgot password on a line under it and Google below.
+- A savings goal's Edit, Archive and Delete are at the bottom of its card.
+- A dialog's buttons end where its fields do.
+- The sidebar's name, the account menu and the phone's tabs show a ring when the keyboard is on them.
+
+### Fixed
+
+- Amounts line up down the Overview and each day's list, whatever the button beside them says, TaskMint's withdrawals included.
+- The tables on the Bills page (in use, finished, archived, transfers) share the same columns, and a name gets the room that's left.
+- A chart's axis shortens large amounts ("$12.5K", "-$1.4M") instead of cutting them off at the edge.
+- Stat cards are never left one to a row: three go side by side or two and one full width, four go two by two.
+- Bank account names keep to one line on the Overview's cards, so the balances under them line up.
+- The largest figures are in a true bold, where the browser used to thicken a lighter weight.
+- In light mode, the phone's selected tab is dark enough to read.
+- On Android, the app keeps clear of the status bar, the navigation bar and a camera cutout on every screen: a form's title no longer sits under the clock, and turned on its side the app no longer runs under the bars.
+- On Android, the keyboard no longer covers what's being typed in: a form stays above it with Save in view, signing in stays above it, and a field low on a page is brought into view.
+- On Android, turning the phone no longer leaves the page zoomed in with the bottom tabs off the screen.
+- On Android, the three navigation buttons follow the app's light or dark theme, as the status bar does, and both do on the sign-in screen too.
+- On Android, with the system's font size above 130% the app's text stops growing there, where the bottom tabs' labels used to run into each other.
+- On a phone, the Bills and Income lists show each amount beside its name again: a long name, its labels and its note wrap in their column instead of pushing everything else off the screen, and each row's menu stays at its top right.
+- On a phone, the calendar's marks stay inside their days, and the month's name stays on one line between its arrows.
+- Settings no longer scrolls sideways on a phone: its fields take the screen's width, and buttons that wrap onto a second line start at the edge like the first.
+- On a phone, a bill left unticked in the welcome steps takes one line, not the room of the fields it doesn't show.
+- With no bills yet, the Overview's two buttons no longer break onto two lines each, and the panel no longer touches the cards under it.
+- A toast's Undo and its close button are big enough to tap on a touch screen.
+- In a narrow window, the Bills page's search and filters wrap onto a second row instead of squeezing their labels.
+
 ## 2.4.1 – 2026-11-14
 
 ### Changed
