@@ -21,7 +21,8 @@ import { VIEWS, VIEW_LABELS, type SidebarView } from '../../navigation/views';
 import { getShell } from '../../shell';
 import { HOVER } from '../../theme/media';
 import { Wordmark } from '../ui/display/Wordmark';
-import { FOCUS_RING } from '../../theme/layout';
+import { FOCUS_RING, SAFE_BOTTOM_OVER_KEYBOARD, SAFE_TOP } from '../../theme/layout';
+import { SAFE_BOTTOM } from '../../theme/media';
 
 export type { SidebarView };
 
@@ -74,8 +75,8 @@ export function Sidebar({
                 sx: {
                   width: SIDEBAR_WIDTH,
                   maxWidth: 'calc(100vw - 56px)',
-                  pt: 'env(safe-area-inset-top)',
-                  pb: 'env(safe-area-inset-bottom)',
+                  pt: SAFE_TOP,
+                  pb: SAFE_BOTTOM,
                   backgroundColor: 'background.paper',
                 },
               },
@@ -88,6 +89,11 @@ export function Sidebar({
               '& .MuiDrawer-paper': {
                 width: isCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH,
                 boxSizing: 'border-box',
+                // In the frame's row, not fixed to the window's edge: clear of what's at the
+                // screen's left on a phone on its side, and of the bars above and below
+                position: 'relative',
+                pt: SAFE_TOP,
+                pb: SAFE_BOTTOM_OVER_KEYBOARD,
                 backgroundColor: 'background.paper',
                 borderRight: '1px solid',
                 borderColor: 'divider',

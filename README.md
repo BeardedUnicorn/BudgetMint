@@ -314,8 +314,11 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   `build.gradle.kts` and `buildSrc/build.gradle.kts` pin.
 - `MainActivity.kt` gives the webview four bridges (`tauriShell.ts` uses
   them): `BudgetMintSplash` (the launch screen stays until the app has
-  drawn), `BudgetMintSystemBars` (the status bar follows the app's theme),
-  `BudgetMintGoogleSignIn` (Credential Manager's Google sign-in) and
+  drawn), `BudgetMintSystemBars` (the status and navigation bars follow the
+  app's theme, and the page learns what they, a camera cutout and the
+  keyboard cover: the webview reports none of it, so `useSystemInsets.ts`
+  and `useKeyboardInset.ts` ask, and the app keeps its bars, tabs, dialogs
+  and the field being typed in clear of them), `BudgetMintGoogleSignIn` (Credential Manager's Google sign-in) and
   `BudgetMintAnalytics` (Firebase Analytics, and its off switch).
   `app/proguard-rules.pro` keeps them, and Credential Manager's Play
   services provider, through R8.
@@ -370,6 +373,25 @@ builds: BudgetMint Dev, `com.budgetmint.android.dev`, on the dev projects,
 installed beside the real app. With the emulators, set
 `VITE_FIREBASE_EMULATOR_HOST=10.0.2.2`: the Android emulator's address for
 this computer.
+
+`tauri android dev` installs the dev build and then fails to start it: it
+starts `com.budgetmint.android`, and a dev build is
+`com.budgetmint.android.dev`. Until that's put right, serve the page and
+start the app by hand:
+
+```bash
+VITE_FIREBASE_EMULATOR_HOST=10.0.2.2 pnpm --filter @budgetmint/desktop dev
+```
+
+```bash
+adb reverse tcp:1430 tcp:1430 && adb shell am start -n com.budgetmint.android.dev/com.budgetmint.android.MainActivity
+```
+
+The page's text follows the system's font size up to 130%
+(`MainActivity.kt`'s `MAX_FONT_SCALE`): beyond it the bottom tabs' labels
+overlap. The page can't be pinched larger (`apps/desktop/index.html`'s
+viewport): the webview kept, and grew, a zoom each time the phone was
+turned, which pushed the tabs off the screen.
 
 On Android the Rust side reports the runtime `mobile` (`get_capabilities`).
 The app has the budget, reminders as system alarms (they come with the app

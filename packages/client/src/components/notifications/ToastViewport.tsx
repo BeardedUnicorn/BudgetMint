@@ -16,7 +16,8 @@ import {
   InfoOutlined,
   WarningAmberOutlined,
 } from '@mui/icons-material';
-import { TOUCH } from '../../theme/media';
+import { KEYBOARD, SAFE_RIGHT } from '../../theme/layout';
+import { SAFE_BOTTOM, TOUCH } from '../../theme/media';
 
 export type Severity = 'success' | 'info' | 'warning' | 'error';
 
@@ -172,9 +173,9 @@ export function ToastViewport({ toasts, ...handlers }: ToastViewportProps) {
       spacing={0}
       sx={{
         position: 'fixed',
-        right: 16,
-        // Above the gesture bar on an edge-to-edge phone screen, and the bottom bar there (BottomNav)
-        bottom: 'calc(16px + var(--bottom-nav-height, 0px) + env(safe-area-inset-bottom))',
+        right: `calc(16px + ${SAFE_RIGHT})`,
+        // Above the gesture bar on an edge-to-edge phone screen (or the keyboard), and the bottom bar there (BottomNav)
+        bottom: `calc(16px + var(--bottom-nav-height, 0px) + max(${SAFE_BOTTOM}, ${KEYBOARD}))`,
         zIndex: theme => theme.zIndex.snackbar,
         alignItems: 'flex-end',
         // The empty area between toasts mustn't swallow clicks

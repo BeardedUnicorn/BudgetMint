@@ -5,7 +5,44 @@
 
 import type { Theme } from '@mui/material/styles';
 import { focusColor } from './components';
-import { PHONE } from './media';
+import { PHONE, SAFE_BOTTOM } from './media';
+
+/**
+ * The room to leave along the top and sides for a phone's status bar,
+ * navigation bar and camera cutout, which the app draws under: what the
+ * browser says, or what Android does where its webview says nothing
+ * (useSystemInsets). The bottom's is SAFE_BOTTOM (theme/media).
+ */
+export const SAFE_TOP = 'max(env(safe-area-inset-top, 0px), var(--system-top-inset, 0px))';
+export const SAFE_LEFT = 'max(env(safe-area-inset-left, 0px), var(--system-left-inset, 0px))';
+export const SAFE_RIGHT = 'max(env(safe-area-inset-right, 0px), var(--system-right-inset, 0px))';
+
+/** The room the on-screen keyboard takes from the bottom (useKeyboardInset). */
+export const KEYBOARD = 'var(--keyboard-bottom, 0px)';
+
+/**
+ * The bottom's room while the keyboard may be up: the keyboard's own inset
+ * is from the screen's edge, over the navigation bar, so what stands on the
+ * keyboard leaves no second gap for the bar under it.
+ */
+export const SAFE_BOTTOM_OVER_KEYBOARD = `max(0px, calc(${SAFE_BOTTOM} - ${KEYBOARD}))`;
+
+/**
+ * A page outside the app's frame (signing in, the welcome steps, loading):
+ * the screen's height with its card in the middle, clear of the system's
+ * bars, and of the keyboard, so a field under it can be scrolled into view.
+ */
+export const OUTSIDE_PAGE = {
+  boxSizing: 'border-box',
+  minHeight: '100vh',
+  '@supports (height: 100dvh)': { minHeight: '100dvh' },
+  display: 'grid',
+  placeItems: 'center',
+  pt: `calc(16px + ${SAFE_TOP})`,
+  pr: `calc(16px + ${SAFE_RIGHT})`,
+  pb: `calc(16px + max(${SAFE_BOTTOM}, ${KEYBOARD}))`,
+  pl: `calc(16px + ${SAFE_LEFT})`,
+} as const;
 
 /** Money is set in Roboto Mono, so figures line up digit under digit. */
 export const MONO = '"Roboto Mono", monospace';

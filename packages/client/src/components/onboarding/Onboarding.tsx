@@ -37,6 +37,7 @@ import { CurrencyInput } from '../ui/forms/CurrencyInput';
 import { Wordmark } from '../ui/display/Wordmark';
 import { CurrencyField, currencyPlural } from '../pages/settings/RegionSettings';
 import { DELAYS, delayLabel } from '../pages/settings/TaskMintSection';
+import { OUTSIDE_PAGE } from '../../theme/layout';
 
 type Step = 'balance' | 'pay' | 'spending' | 'bills';
 const STEPS: Step[] = ['balance', 'pay', 'spending', 'bills'];
@@ -260,7 +261,7 @@ export function Onboarding() {
   };
 
   return (
-    <Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
+    <Box component="main" sx={OUTSIDE_PAGE}>
       <Paper sx={{ width: '100%', maxWidth: 560, p: { xs: 3, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3, alignItems: 'center', textAlign: 'center' }}>
           <Wordmark height={44} />

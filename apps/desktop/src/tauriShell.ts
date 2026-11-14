@@ -50,9 +50,19 @@ export function subscribe<T>(event: string, handler: (payload: T) => void): () =
 
 /** What Android's MainActivity.kt adds to the webview, before the page loads. */
 interface AndroidSystemBars {
-  /** 'light' or 'dark': the status bar's icons then read on that theme. */
+  /** 'light' or 'dark': the bars' icons and buttons then read on that theme. */
   setTheme(theme: string): void;
+  /** What the bars, the gesture area and a camera cutout cover of an edge, in dp (CSS px). */
+  topInset(): number;
+  rightInset(): number;
+  bottomInset(): number;
+  leftInset(): number;
+  /** The keyboard's height from the screen's bottom, in dp (0 while it's down). */
+  keyboardInset(): number;
 }
+
+/** What listens for MainActivity's inset changes. */
+const insetListeners = new Set<() => void>();
 
 /** What Android's MainActivity.kt adds for its launch screen. */
 interface AndroidSplash {
@@ -77,6 +87,8 @@ type GoogleAnswer = { idToken: string } | { error: string };
 declare global {
   interface Window {
     __budgetmintGoogleSignIn?: (answer: GoogleAnswer) => void;
+    /** MainActivity calls it when the bars' insets or the keyboard's change. */
+    __budgetmintInsets?: () => void;
     BudgetMintSystemBars?: AndroidSystemBars;
     BudgetMintSplash?: AndroidSplash;
     BudgetMintGoogleSignIn?: AndroidGoogleSignIn;
@@ -99,7 +111,29 @@ function androidParts(): Pick<Platform, 'systemBars' | 'splashScreen' | 'analyti
   const { BudgetMintSystemBars: bars, BudgetMintSplash: splash, BudgetMintAnalytics: analytics } = window;
   return {
     // Called on the bridge itself: Android refuses a method taken off it
-    ...(bars ? { systemBars: { setDark: dark => bars.setTheme(dark ? 'dark' : 'light') } } : {}),
+    ...(bars
+      ? {
+          systemBars: {
+            setDark: dark => bars.setTheme(dark ? 'dark' : 'light'),
+            insets: () => ({
+              top: bars.topInset(),
+              right: bars.rightInset(),
+              bottom: bars.bottomInset(),
+              left: bars.leftInset(),
+            }),
+            keyboardInset: () => bars.keyboardInset(),
+            onInsetsChange: listener => {
+              insetListeners.add(listener);
+              window.__budgetmintInsets = () => {
+                for (const each of [...insetListeners]) each();
+              };
+              return () => {
+                insetListeners.delete(listener);
+              };
+            },
+          },
+        }
+      : {}),
     ...(splash ? { splashScreen: { hide: () => splash.hide() } } : {}),
     ...(analytics
       ? { analytics: { setEnabled: enabled => analytics.setEnabled(enabled), screen: name => analytics.screen(name) } }

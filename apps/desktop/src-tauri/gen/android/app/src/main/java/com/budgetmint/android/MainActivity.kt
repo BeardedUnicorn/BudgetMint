@@ -1,4 +1,4 @@
-// Adapted from TaskMint apps/desktop/src-tauri/gen/android/app/src/main/java/com/taskmint/android/MainActivity.kt @ ce9f22f.
+// Adapted from TaskMint apps/desktop/src-tauri/gen/android/app/src/main/java/com/taskmint/android/MainActivity.kt @ 5c802e7.
 package com.budgetmint.android
 
 import android.os.Bundle
@@ -33,11 +33,40 @@ class MainActivity : TauriActivity() {
   /** The theme the page last gave the status bar (SystemBars); light icons on the launch screen's teal until then. */
   private var barsTheme = "dark"
 
+  /**
+   * BudgetMint: what covers the app's edges, in dp (the page's CSS px): the
+   * status bar, the navigation bar or gesture area and a camera cutout (top,
+   * right, bottom, left), and the on-screen keyboard while it's up (from the
+   * screen's bottom edge, so over the navigation bar). The app draws under
+   * all of them (edge to edge), and the webview doesn't say so to the page
+   * (env(safe-area-inset-bottom) is 0, and older webviews don't shrink the
+   * visual viewport for the keyboard), so the page asks (SystemBars) and
+   * hears of each change (window.__budgetmintInsets). As TaskMint's, which
+   * keeps the bottom's alone.
+   */
+  @Volatile private var edgeInsetsDp = floatArrayOf(0f, 0f, 0f, 0f)
+  @Volatile private var keyboardInsetDp = 0f
+
   override fun onCreate(savedInstanceState: Bundle?) {
     val splashScreen = installSplashScreen()
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applyBarsTheme()
+    ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+      val density = resources.displayMetrics.density
+      val bars = insets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+      )
+      val edges = floatArrayOf(bars.top / density, bars.right / density, bars.bottom / density, bars.left / density)
+      val keyboard = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom / density
+      if (!edges.contentEquals(edgeInsetsDp) || keyboard != keyboardInsetDp) {
+        edgeInsetsDp = edges
+        keyboardInsetDp = keyboard
+        webView?.evaluateJavascript("window.__budgetmintInsets && window.__budgetmintInsets()", null)
+      }
+      // The decor view still lays itself and the webview out as before
+      ViewCompat.onApplyWindowInsets(view, insets)
+    }
 
     // The launch screen (Theme.budgetmint.Starting) would go with the first
     // frame, long before the webview has anything to show. It stays until the
@@ -71,14 +100,26 @@ class MainActivity : TauriActivity() {
 
   private fun applyBarsTheme() = setLightStatusBar(barsTheme == "light")
 
-  /** Dark clock and icons (for a light background) or light ones. */
+  /**
+   * Dark clock and icons (for a light background) or light ones. BudgetMint:
+   * the navigation bar's buttons too (three-button navigation), which sit
+   * over the app's own bottom bar and would otherwise follow the system's
+   * theme, not the app's.
+   */
   private fun setLightStatusBar(light: Boolean) {
-    WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = light
+    val bars = WindowCompat.getInsetsController(window, window.decorView)
+    bars.isAppearanceLightStatusBars = light
+    bars.isAppearanceLightNavigationBars = light
   }
 
   // Added before the page loads, so the webview has them from the start
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
+    // BudgetMint: the page's text follows the system's font size, up to 130%.
+    // Past that the bottom tabs' labels run into each other and figures are
+    // cut off in their cards (seen at 200%); to 130% every page holds.
+    webView.settings.textZoom =
+      (minOf(resources.configuration.fontScale, MAX_FONT_SCALE) * 100).toInt()
     webView.addJavascriptInterface(Splash(), "BudgetMintSplash")
     webView.addJavascriptInterface(SystemBars(), "BudgetMintSystemBars")
     webView.addJavascriptInterface(GoogleSignIn(), "BudgetMintGoogleSignIn")
@@ -122,9 +163,27 @@ class MainActivity : TauriActivity() {
    * follows the theme chosen in Settings → Appearance, which may differ from
    * the system's. The webview says which theme shows (useSystemBarsTheme.ts,
    * through tauriShell.ts), and the status bar's clock and icons follow it,
-   * once the launch screen is gone.
+   * once the launch screen is gone. BudgetMint: the page also asks what the
+   * bars and the keyboard cover (useSystemInsets.ts, useKeyboardInset.ts).
    */
   private inner class SystemBars {
+    /** What covers each edge, in CSS px, for the page to keep its bars, tabs and dialogs clear of. */
+    @JavascriptInterface
+    fun topInset(): Float = edgeInsetsDp[0]
+
+    @JavascriptInterface
+    fun rightInset(): Float = edgeInsetsDp[1]
+
+    @JavascriptInterface
+    fun bottomInset(): Float = edgeInsetsDp[2]
+
+    @JavascriptInterface
+    fun leftInset(): Float = edgeInsetsDp[3]
+
+    /** The keyboard's height from the screen's bottom, in CSS px (0 while it's down), for the page to sit above. */
+    @JavascriptInterface
+    fun keyboardInset(): Float = keyboardInsetDp
+
     @JavascriptInterface
     fun setTheme(theme: String) {
       // The bridge calls in on its own thread
@@ -216,5 +275,8 @@ class MainActivity : TauriActivity() {
         "if (field && field.matches('input, textarea, [contenteditable]')) field.blur(); })()"
     const val SPLASH_FADE_MS = 250L
     const val SPLASH_TIMEOUT_MS = 10_000L
+
+    /** BudgetMint: the largest system font size the page's text follows. */
+    const val MAX_FONT_SCALE = 1.3f
   }
 }

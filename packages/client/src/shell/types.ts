@@ -44,6 +44,31 @@ export interface AnalyticsPlatform {
   screen(name: string): void;
 }
 
+/** How much of each edge of the screen (CSS px) the system covers. */
+export interface SystemInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * Android's status and navigation bars. The app draws under them (edge to
+ * edge), so they follow its theme, and the app keeps what matters clear of
+ * them: Android's webview doesn't say how much they cover in
+ * env(safe-area-inset-*), nor shrink the page for the keyboard.
+ */
+export interface SystemBarsPlatform {
+  /** Their clock, icons and buttons read on a dark theme, or a light one. */
+  setDark(dark: boolean): void;
+  /** What the bars, the gesture area and a camera cutout cover of each edge. */
+  insets(): SystemInsets;
+  /** How much of the screen's bottom the on-screen keyboard covers, 0 while it's down. */
+  keyboardInset(): number;
+  /** Calls `listener` when any of those changes. Returns a function that stops it. */
+  onInsetsChange(listener: () => void): () => void;
+}
+
 export interface Platform {
   notifications: Notifications;
   /** A Google ID token, got the shell's own way (desktop, Android). */
@@ -52,8 +77,8 @@ export interface Platform {
   autostart?: { isEnabled(): Promise<boolean>; setEnabled(enabled: boolean): Promise<void> };
   /** The tray's lines (the desktop's menu-bar item). */
   tray?: { setStatus(lines: string[]): Promise<void> };
-  /** Android's status and navigation bars follow the theme. */
-  systemBars?: { setDark(dark: boolean): void };
+  /** Android's status and navigation bars. */
+  systemBars?: SystemBarsPlatform;
   /** Android's launch screen, held until the app has drawn. */
   splashScreen?: { hide(): void };
   /**
