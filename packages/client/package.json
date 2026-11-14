@@ -22,6 +22,7 @@
     "@budgetmint/contracts": "workspace:*",
     "@emotion/react": "catalog:",
     "@emotion/styled": "catalog:",
+    "@fontsource/google-sans": "catalog:",
     "@fontsource/inter": "catalog:",
     "@fontsource/roboto-mono": "catalog:",
     "@mui/icons-material": "catalog:",

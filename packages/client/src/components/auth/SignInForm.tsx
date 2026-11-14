@@ -19,8 +19,9 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { Google as GoogleIcon, Visibility as ShowIcon, VisibilityOff as HideIcon } from '@mui/icons-material';
+import { Visibility as ShowIcon, VisibilityOff as HideIcon } from '@mui/icons-material';
 import { cloudErrorMessage } from '../../cloud/errors';
+import { GoogleSignInButton } from './GoogleSignInButton';
 
 export type FormMode = 'signIn' | 'signUp' | 'reset';
 
@@ -221,9 +222,7 @@ export function SignInForm({
         </Stack>
         {engine.canUseGoogle && mode !== 'reset' && (
           <Box>
-            <Button variant="outlined" startIcon={<GoogleIcon />} disabled={busy} onClick={() => void google()}>
-              Continue with Google
-            </Button>
+            <GoogleSignInButton disabled={busy} onClick={() => void google()} />
             {googleAttempt !== null && (
               <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
                 <Typography variant="body2" color="text.secondary" role="status">
