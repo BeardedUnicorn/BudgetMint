@@ -8,7 +8,13 @@ export type AccountView = { id: string, name: string,
 /**
  * The one every budget has (its balance is the settings').
  */
-main: boolean, balance: Balance | null, lowBalanceCents: number, archived: boolean, 
+main: boolean, 
+/**
+ * Goes by a name the user gave it: the main one only once renamed
+ * (Settings lists it then, even alone, so the name is seen), the
+ * others always.
+ */
+named: boolean, balance: Balance | null, lowBalanceCents: number, archived: boolean, 
 /**
  * The bills, income and transfers in it (a transfer is in both its
  * accounts), archived ones too: with any, it can't be deleted.

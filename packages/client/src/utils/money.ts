@@ -26,6 +26,21 @@ export function formatWholeCents(cents: number): string {
   }).format(Math.round(cents / 100));
 }
 
+/**
+ * For a chart's axis: whole units, and from ten thousand up in short
+ * ("$12.5K", "-$1.4M"), so a tick fits the margin whatever the budget's size.
+ */
+export function formatAxisCents(cents: number): string {
+  const units = Math.round(cents / 100);
+  if (Math.abs(units) < 10_000) return formatWholeCents(cents);
+  return new Intl.NumberFormat(formattingLocale(), {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(units);
+}
+
 /** The currency's sign ("$", "€"), as an amount field starts with it. */
 export function currencySymbol(): string {
   return new Intl.NumberFormat(formattingLocale(), { style: 'currency', currency })

@@ -10,8 +10,7 @@ import { PHONE } from '../../../theme/media';
 import { formatDay, formatWeekday } from '../../../utils/dates';
 import { formatCents } from '../../../utils/money';
 import { BalanceFlag } from '../../budget/BalanceFlag';
-
-const MONO = '"Roboto Mono", monospace';
+import { MONO } from '../../../theme/layout';
 
 /** Why an account isn't in the total. */
 const leftOut = (card: AccountCard) =>
@@ -29,14 +28,33 @@ export function AccountCards({ accounts }: { accounts: AccountCard[] }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: 2,
         mb: 3,
-        [PHONE]: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' },
+        [PHONE]: {
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          // The odd one out takes the whole row
+          '& > :last-child:nth-child(odd)': { gridColumn: '1 / -1' },
+        },
       }}
     >
       {accounts.map(card => {
         const flagged = card.firstShort ?? card.firstLow;
         return (
           <Paper key={card.id} role="group" aria-label={card.name} sx={{ p: 2, minWidth: 0 }}>
-            <Typography variant="overline" color="text.secondary" sx={{ overflowWrap: 'anywhere', lineHeight: 1.4 }}>
+            {/* One line, so the figures under the names line up from card to card (two on a phone's narrow cards) */}
+            <Typography
+              variant="overline"
+              color="text.secondary"
+              title={card.name}
+              sx={{
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 1,
+                overflow: 'hidden',
+                overflowWrap: 'anywhere',
+                lineHeight: 1.4,
+                mb: 0.5,
+                [PHONE]: { WebkitLineClamp: 2 },
+              }}
+            >
               {card.name}
             </Typography>
             <Typography

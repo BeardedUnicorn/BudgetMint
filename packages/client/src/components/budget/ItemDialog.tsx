@@ -361,7 +361,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
       title={item ? `Edit ${item.name}` : goal ? 'Add a savings goal' : `Add ${NOUNS[kind]}`}
       onSubmit={submit}
     >
-      <Stack spacing={2}>
+      <Stack spacing={2} useFlexGap>
         {problem && <Alert severity="error">{problem}</Alert>}
         <TextField
           label="Name"
@@ -630,7 +630,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           </Alert>
         )}
         {/* One under the other on a phone */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap sx={{ alignItems: { sm: 'center' } }}>
           <FormControlLabel
             control={<Switch checked={reminded} onChange={event => setReminded(event.target.checked)} />}
             label="Remind me"

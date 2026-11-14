@@ -1,7 +1,8 @@
 /**
  * Bank accounts: the main one every budget has, and any others (savings, a
  * second checking account), each with its own balance and low mark. With
- * only the main one there's just the way to add another. An account is
+ * only the main one there's just the way to add another, unless it's been
+ * renamed: then it stays listed, so its name is seen (and can change). An account is
  * archived once nothing live is in it, and deleted only when nothing ever
  * was (core refuses otherwise, and says why).
  */
@@ -22,6 +23,7 @@ import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { FormDialog } from '../../ui/dialogs/FormDialog';
 import { CurrencyInput } from '../../ui/forms/CurrencyInput';
 import { SettingsSection } from './SettingsSection';
+import { PHONE } from '../../../theme/media';
 
 /** An account's name and low mark: a new one, or one there. */
 function AccountDialog({
@@ -123,8 +125,8 @@ export function BankAccountsSection() {
 
   return (
     <SettingsSection title="Bank accounts" icon={<BankIcon />}>
-      <Stack spacing={2} sx={{ maxWidth: 620 }}>
-        {all.length === 1 ? (
+      <Stack spacing={2}>
+        {all.length === 1 && !all[0].named ? (
           <Typography variant="body2" color="text.secondary">
             BudgetMint forecasts one bank account. If you have more (savings, a second checking account), add them: each
             gets its own balance and forecast.
@@ -135,10 +137,24 @@ export function BankAccountsSection() {
               <ListItem
                 key={one.id}
                 disableGutters
-                sx={{ flexWrap: 'wrap', gap: 1, justifyContent: 'space-between', opacity: one.archived ? 0.7 : 1 }}
+                sx={{
+                  // The actions in a column of their own, so each starts where the row above's does;
+                  // on a phone they go under the name, their words starting where it does
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) 300px',
+                  alignItems: 'center',
+                  gap: 1,
+                  opacity: one.archived ? 0.7 : 1,
+                  [PHONE]: { gridTemplateColumns: 'minmax(0, 1fr)', gap: 0, '& > :last-child': { ml: -1.25 } },
+                }}
               >
                 <Box sx={{ minWidth: 0 }}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}
+                  >
                     <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
                       {one.name}
                     </Typography>
@@ -151,7 +167,7 @@ export function BankAccountsSection() {
                       : 'No balance yet'}
                   </Typography>
                 </Box>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {one.archived ? (
                     <Button
                       size="small"

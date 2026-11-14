@@ -23,6 +23,7 @@ import { RemindersSection } from './RemindersSection';
 import { SettingsSection } from './SettingsSection';
 import { TaskMintSection } from './TaskMintSection';
 import { ThemeSelector } from './ThemeSelector';
+import { SETTINGS_WIDTH } from './fieldStyles';
 
 export function SettingsPage() {
   const { settingsSections = [] } = useAppExtensions();
@@ -38,53 +39,56 @@ export function SettingsPage() {
   return (
     <PageContainer>
       <PageHeader title="Settings" />
-      <Box id="settings-account">
-        <AccountSection />
-      </Box>
-      <Box id="settings-data">
-        <DataSection />
-      </Box>
-      <Box id="settings-forecast">
-        <ForecastSection />
-      </Box>
-      <Box id="settings-accounts">
-        <BankAccountsSection />
-      </Box>
-      <Box id="settings-taskmint">
-        <TaskMintSection />
-      </Box>
-      <Box id="settings-reminders">
-        <RemindersSection />
-      </Box>
-      <Box id="settings-appearance">
-        <SettingsSection title="Appearance" icon={<AppearanceIcon />}>
-          <ThemeSelector />
-          <RegionSettings />
-        </SettingsSection>
-      </Box>
-      {getShell().platform.analytics && (
-        <Box id="settings-privacy">
-          <PrivacySection />
+      {/* A column to read: full width, the sections were mostly empty to the right of their fields */}
+      <Box sx={{ maxWidth: SETTINGS_WIDTH }}>
+        <Box id="settings-account">
+          <AccountSection />
         </Box>
-      )}
-      {settingsSections.map(({ id, Section }) => (
-        <Box key={id} id={`settings-${id}`}>
-          <Section />
+        <Box id="settings-data">
+          <DataSection />
         </Box>
-      ))}
-      <Box id="settings-about">
-        <SettingsSection title="About" icon={<AboutIcon />}>
-          <Typography variant="body2">BudgetMint {APP_VERSION}: your bills, income and the balance ahead.</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Open source under the MIT license.{' '}
-            <Link href="https://github.com/BeardedUnicorn/BudgetMint" target="_blank" rel="noreferrer">
-              Source and releases
-            </Link>
-          </Typography>
-          <Button variant="outlined" sx={{ mt: 2 }} onClick={() => dialogs.open('about')}>
-            About BudgetMint…
-          </Button>
-        </SettingsSection>
+        <Box id="settings-forecast">
+          <ForecastSection />
+        </Box>
+        <Box id="settings-accounts">
+          <BankAccountsSection />
+        </Box>
+        <Box id="settings-taskmint">
+          <TaskMintSection />
+        </Box>
+        <Box id="settings-reminders">
+          <RemindersSection />
+        </Box>
+        <Box id="settings-appearance">
+          <SettingsSection title="Appearance" icon={<AppearanceIcon />}>
+            <ThemeSelector />
+            <RegionSettings />
+          </SettingsSection>
+        </Box>
+        {getShell().platform.analytics && (
+          <Box id="settings-privacy">
+            <PrivacySection />
+          </Box>
+        )}
+        {settingsSections.map(({ id, Section }) => (
+          <Box key={id} id={`settings-${id}`}>
+            <Section />
+          </Box>
+        ))}
+        <Box id="settings-about">
+          <SettingsSection title="About" icon={<AboutIcon />}>
+            <Typography variant="body2">BudgetMint {APP_VERSION}: your bills, income and the balance ahead.</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Open source under the MIT license.{' '}
+              <Link href="https://github.com/BeardedUnicorn/BudgetMint" target="_blank" rel="noreferrer">
+                Source and releases
+              </Link>
+            </Typography>
+            <Button variant="outlined" sx={{ mt: 2 }} onClick={() => dialogs.open('about')}>
+              About BudgetMint…
+            </Button>
+          </SettingsSection>
+        </Box>
       </Box>
     </PageContainer>
   );

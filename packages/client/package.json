@@ -1,7 +1,7 @@
 {
   "name": "@budgetmint/client",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.4.1",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -22,6 +22,7 @@
     "@budgetmint/contracts": "workspace:*",
     "@emotion/react": "catalog:",
     "@emotion/styled": "catalog:",
+    "@fontsource/google-sans": "catalog:",
     "@fontsource/inter": "catalog:",
     "@fontsource/roboto-mono": "catalog:",
     "@mui/icons-material": "catalog:",

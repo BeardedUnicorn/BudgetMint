@@ -33,6 +33,7 @@ import { importIsStale } from '../../../utils/taskmint';
 import { SignInForm } from '../../auth/SignInForm';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
+import { rowField, settingField } from './fieldStyles';
 
 /** How long a withdrawal may take to reach the bank (Settings and onboarding offer the same). */
 export const DELAYS = [0, 12, 24, 48, 72, 120];
@@ -133,7 +134,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
       }
     >
       {user && (
-        <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+        <Stack direction="row" spacing={1} useFlexGap sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <Typography variant="body2">
             Signed in to TaskMint as <strong>{user.email ?? 'you'}</strong>
             {user.providers.includes('google.com') ? ' with Google' : ''}.
@@ -180,7 +181,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
         </Typography>
       )}
 
-      <Stack spacing={2} sx={{ maxWidth: 520 }}>
+      <Stack spacing={2} useFlexGap>
         <FormControlLabel
           control={
             <Switch checked={plan.useForecast} onChange={event => setPlan({ useForecast: event.target.checked })} />
@@ -189,7 +190,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
         />
         {plan.useForecast && (
           <>
-            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
+            <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
               <TextField
                 select
                 label="You withdraw"
@@ -199,7 +200,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                     policy: (event.target.value === 'open' ? { kind: 'asSoonAsOpen' } : weekly) as WithdrawPolicy,
                   })
                 }
-                sx={{ minWidth: 220 }}
+                sx={rowField(220)}
               >
                 <MenuItem value="open">As soon as the site allows</MenuItem>
                 <MenuItem value="weekly">Once a week</MenuItem>
@@ -211,6 +212,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                     label="On"
                     value={weekly.weekday}
                     onChange={event => setPlan({ policy: { ...weekly, weekday: Number(event.target.value) } })}
+                    sx={rowField(120)}
                   >
                     {WEEKDAYS.map(day => (
                       <MenuItem key={day} value={day}>
@@ -223,6 +225,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                     label="At"
                     value={weekly.hour}
                     onChange={event => setPlan({ policy: { ...weekly, hour: Number(event.target.value) } })}
+                    sx={rowField(100)}
                   >
                     {HOURS.map(hour => (
                       <MenuItem key={hour} value={hour}>
@@ -238,7 +241,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
               label="It reaches the bank"
               value={plan.arrivalDelayHours}
               onChange={event => setPlan({ arrivalDelayHours: Number(event.target.value) })}
-              sx={{ maxWidth: 220 }}
+              sx={settingField(280)}
             >
               {DELAYS.map(hours => (
                 <MenuItem key={hours} value={hours}>
@@ -250,7 +253,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
               label="Wait until there’s at least"
               cents={plan.minWithdrawalCents}
               onSave={cents => setPlan({ minWithdrawalCents: cents })}
-              sx={{ maxWidth: 220 }}
+              sx={settingField(280)}
             />
             <FormControlLabel
               control={
@@ -270,7 +273,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
               }
               label="Count money still pending past its release"
             />
-            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2 }}>
+            <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
               <TextField
                 select
                 label="Earnings ahead"
@@ -282,7 +285,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                   });
                 }}
                 helperText="TaskMint knows only work already done. Beyond that, the forecast can assume more."
-                sx={{ minWidth: 260 }}
+                sx={rowField(300)}
               >
                 <MenuItem value="off">Only what TaskMint knows</MenuItem>
                 <MenuItem value="weekly">A set amount a week</MenuItem>
@@ -293,7 +296,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                   label="A week"
                   cents={future.cents}
                   onSave={cents => setPlan({ future: { kind: 'weekly', cents } })}
-                  sx={{ maxWidth: 180 }}
+                  sx={rowField(140)}
                 />
               )}
               {future.kind === 'trailing' && (
@@ -302,6 +305,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
                   label="Over the last"
                   value={future.weeks}
                   onChange={event => setPlan({ future: { kind: 'trailing', weeks: Number(event.target.value) } })}
+                  sx={rowField(140)}
                 >
                   {[1, 2, 4, 8, 12].map(weeks => (
                     <MenuItem key={weeks} value={weeks}>

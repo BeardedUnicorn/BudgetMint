@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/notifications/ToastViewport.tsx @ 1623bee.
+// Adapted from TaskMint packages/client/src/components/notifications/ToastViewport.tsx @ 1623bee: its buttons are a finger's size on a touch screen.
 /**
  * The toasts, stacked in the bottom-right corner (newest at the bottom).
  * Clicking elsewhere never dismisses one; Escape dismisses the toast that has
@@ -16,6 +16,8 @@ import {
   InfoOutlined,
   WarningAmberOutlined,
 } from '@mui/icons-material';
+import { KEYBOARD, SAFE_RIGHT } from '../../theme/layout';
+import { SAFE_BOTTOM, TOUCH } from '../../theme/media';
 
 export type Severity = 'success' | 'info' | 'warning' | 'error';
 
@@ -123,7 +125,8 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
                 key={action.label}
                 size="small"
                 onClick={() => onAction(action, toast.id)}
-                sx={{ color, minHeight: 28, py: 0.25, fontWeight: 600 }}
+                // Undo is what a toast is tapped for: a finger's size on a touch screen
+                sx={{ color, minHeight: 28, py: 0.25, fontWeight: 600, [TOUCH]: { minHeight: 44 } }}
               >
                 {action.label}
               </Button>
@@ -135,7 +138,13 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
         size="small"
         aria-label="Dismiss notification"
         onClick={() => onDismiss(toast.id)}
-        sx={{ minWidth: 32, minHeight: 32, mt: -0.5 }}
+        sx={{
+          minWidth: 32,
+          minHeight: 32,
+          mt: -0.5,
+          // A finger's size, drawn out into the card's padding so the cross stays where it was
+          [TOUCH]: { minWidth: 44, minHeight: 44, mt: -1.25, mr: -0.75 },
+        }}
       >
         <CloseIcon fontSize="small" />
       </IconButton>
@@ -164,9 +173,9 @@ export function ToastViewport({ toasts, ...handlers }: ToastViewportProps) {
       spacing={0}
       sx={{
         position: 'fixed',
-        right: 16,
-        // Above the gesture bar on an edge-to-edge phone screen, and the bottom bar there (BottomNav)
-        bottom: 'calc(16px + var(--bottom-nav-height, 0px) + env(safe-area-inset-bottom))',
+        right: `calc(16px + ${SAFE_RIGHT})`,
+        // Above the gesture bar on an edge-to-edge phone screen (or the keyboard), and the bottom bar there (BottomNav)
+        bottom: `calc(16px + var(--bottom-nav-height, 0px) + max(${SAFE_BOTTOM}, ${KEYBOARD}))`,
         zIndex: theme => theme.zIndex.snackbar,
         alignItems: 'flex-end',
         // The empty area between toasts mustn't swallow clicks

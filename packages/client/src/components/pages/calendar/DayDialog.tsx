@@ -23,8 +23,7 @@ import { formatLongDay } from '../../../utils/dates';
 import { formatCents, formatMaybeCents } from '../../../utils/money';
 import { BalanceFlag } from '../../budget/BalanceFlag';
 import { OccurrenceList } from '../../budget/OccurrenceList';
-
-const MONO = '"Roboto Mono", monospace';
+import { MONO } from '../../../theme/layout';
 
 /** A day's details: what's due, TaskMint's money, the everyday spending, and the balance it ends on. */
 export function DayAgenda({ day, today }: { day: CalendarDay; today: string }) {

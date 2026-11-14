@@ -77,7 +77,7 @@
           "name": "checking"
         }
       },
-      "error": "Another account has that name"
+      "error": "Your main account has that name"
     },
     {
       "call": "save_item",

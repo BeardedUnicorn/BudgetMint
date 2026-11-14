@@ -10,6 +10,7 @@ use crate::forecast::series::ProjectedWithdrawal;
 use crate::forecast::ForecastStatus;
 use crate::model::{
     Account, Balance, Cents, Item, ItemKind, OccStatus, Repeat, Segment, Settings, TaskMintPlan,
+    MAIN_ACCOUNT_NAME,
 };
 use crate::occur::{estimate, item_occurrences, occurrences, Estimate, Occurrence};
 use crate::project::{
@@ -977,6 +978,10 @@ pub struct AccountView {
     pub name: String,
     /// The one every budget has (its balance is the settings').
     pub main: bool,
+    /// Goes by a name the user gave it: the main one only once renamed
+    /// (Settings lists it then, even alone, so the name is seen), the
+    /// others always.
+    pub named: bool,
     pub balance: Option<Balance>,
     pub low_balance_cents: Cents,
     pub archived: bool,
@@ -999,6 +1004,7 @@ pub fn accounts(snapshot: &Snapshot) -> Vec<AccountView> {
                 .filter(|item| item.touches(&account.id));
             AccountView {
                 main: account.is_main(),
+                named: !account.is_main() || account.name != MAIN_ACCOUNT_NAME,
                 items: its.clone().count() as u32,
                 live_items: its.filter(|item| !item.archived).count() as u32,
                 id: account.id,
@@ -1846,6 +1852,18 @@ mod tests {
         let only = accounts(&s);
         assert_eq!(only.len(), 1);
         assert!(only[0].main && only[0].name == "Main account" && only[0].items == 0);
+        // Not named by the user until it is
+        assert!(!only[0].named);
+        crate::plan::save_account(
+            &mut s,
+            crate::plan::AccountInput {
+                id: crate::model::MAIN_ACCOUNT.into(),
+                name: "Venmo".into(),
+                low_balance_cents: 0,
+            },
+        )
+        .unwrap();
+        assert!(accounts(&s)[0].named);
         put_account(
             &mut s,
             "savings",
@@ -1877,9 +1895,12 @@ mod tests {
         let all = accounts(&s);
         let summary: Vec<_> = all
             .iter()
-            .map(|a| (a.id.as_str(), a.main, a.items, a.live_items))
+            .map(|a| (a.id.as_str(), a.main, a.named, a.items, a.live_items))
             .collect();
-        assert_eq!(summary, [("main", true, 2, 2), ("savings", false, 2, 1)]);
+        assert_eq!(
+            summary,
+            [("main", true, true, 2, 2), ("savings", false, true, 2, 1)]
+        );
         assert_eq!(all[1].balance.unwrap().cents, 900);
     }
 

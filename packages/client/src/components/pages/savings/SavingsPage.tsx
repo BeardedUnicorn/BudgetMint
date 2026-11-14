@@ -18,9 +18,8 @@ import { ItemDialog } from '../../budget/ItemDialog';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { EmptyState } from '../../ui/display/EmptyState';
-import { SECTION } from '../overview/OverviewPage';
-
-const MONO = '"Roboto Mono", monospace';
+import { MONO, SECTION } from '../../../theme/layout';
+import { PHONE } from '../../../theme/media';
 
 /** The next part, in words. */
 function nextLine(goal: GoalView): string {
@@ -43,33 +42,19 @@ function Goal({
 }) {
   const share = goal.targetCents > 0 ? Math.min(100, (goal.setAsideCents / goal.targetCents) * 100) : 100;
   return (
-    <Paper component="section" aria-label={goal.name} sx={{ p: 2.5 }}>
-      <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
-            {goal.name}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {goal.once ? 'On' : 'Next due'} {formatDayInYear(goal.due)}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={0.5}>
-          <Button size="small" onClick={onEdit} aria-label={`Edit ${goal.name}`}>
-            Edit
-          </Button>
-          <Button size="small" onClick={onArchive} aria-label={`Archive ${goal.name}`}>
-            Archive
-          </Button>
-          <Button size="small" color="error" onClick={onDelete} aria-label={`Delete ${goal.name}`}>
-            Delete
-          </Button>
-        </Stack>
-      </Stack>
+    // A column, so the cards on a row end with their actions level whatever each one says
+    <Paper component="section" aria-label={goal.name} sx={{ p: 2.5, display: 'flex', flexDirection: 'column' }}>
+      <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+        {goal.name}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {goal.once ? 'On' : 'Next due'} {formatDayInYear(goal.due)}
+      </Typography>
       <LinearProgress
         variant="determinate"
         value={share}
         aria-label={`${goal.name}: ${Math.round(share)}% set aside`}
-        sx={{ my: 1.5, height: 8, borderRadius: 4 }}
+        sx={{ my: 1.5, height: 8, borderRadius: 4, flexShrink: 0 }}
       />
       <Typography sx={{ fontFamily: MONO, fontWeight: 600 }}>
         {formatCents(goal.setAsideCents)} of {formatCents(goal.targetCents)}
@@ -77,6 +62,18 @@ function Goal({
       <Typography variant="body2" color="text.secondary">
         {nextLine(goal)}
       </Typography>
+      {/* Under what the goal says, pulled out so the buttons' text starts where the card's does */}
+      <Stack direction="row" spacing={0.5} useFlexGap sx={{ mt: 'auto', pt: 1.5, mx: -1.25, mb: -1, flexWrap: 'wrap' }}>
+        <Button size="small" onClick={onEdit} aria-label={`Edit ${goal.name}`}>
+          Edit
+        </Button>
+        <Button size="small" onClick={onArchive} aria-label={`Archive ${goal.name}`}>
+          Archive
+        </Button>
+        <Button size="small" color="error" onClick={onDelete} aria-label={`Delete ${goal.name}`}>
+          Delete
+        </Button>
+      </Stack>
     </Paper>
   );
 }
@@ -129,8 +126,9 @@ export function SavingsPage() {
       ) : (
         <Box
           sx={{
-            ...SECTION,
-            p: 0,
+            // A section's gap below, without its padding: the cards are the papers
+            mb: SECTION.mb,
+            [PHONE]: { mb: SECTION[PHONE].mb },
             display: 'grid',
             gap: 2,
             gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))',
@@ -159,11 +157,14 @@ export function SavingsPage() {
             <Stack
               key={item.id}
               direction="row"
-              sx={{ alignItems: 'center', justifyContent: 'space-between', py: 0.5 }}
+              sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1, py: 0.5 }}
             >
-              <Typography variant="body2">{item.name}</Typography>
+              <Typography variant="body2" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                {item.name}
+              </Typography>
               <Button
                 size="small"
+                sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
                 aria-label={`Bring back ${item.name}`}
                 onClick={() =>
                   act(() => change('archive_item', { itemId: item.id, archived: false }, `${item.name} brought back`))

@@ -15,6 +15,7 @@ afterEach(() => {
   delete window.BudgetMintGoogleSignIn;
   delete window.BudgetMintAnalytics;
   delete window.__budgetmintGoogleSignIn;
+  delete window.__budgetmintInsets;
 });
 
 describe('the Tauri shell', () => {
@@ -73,7 +74,14 @@ describe('the Tauri shell', () => {
   });
 
   it("on Android: the status bar, the launch screen, Google's account picker and analytics", async () => {
-    const bars = { setTheme: vi.fn() };
+    const bars = {
+      setTheme: vi.fn(),
+      topInset: vi.fn(() => 24),
+      rightInset: vi.fn(() => 0),
+      bottomInset: vi.fn(() => 16),
+      leftInset: vi.fn(() => 0),
+      keyboardInset: vi.fn(() => 0),
+    };
     const splash = { hide: vi.fn() };
     const analytics = { setEnabled: vi.fn(), screen: vi.fn() };
     const picker = { start: vi.fn(() => window.__budgetmintGoogleSignIn!({ idToken: 'android-token' })) };
@@ -85,6 +93,21 @@ describe('the Tauri shell', () => {
     platform.systemBars!.setDark(true);
     platform.systemBars!.setDark(false);
     expect(bars.setTheme.mock.calls).toEqual([['dark'], ['light']]);
+    // What the bars and the keyboard cover, which the webview doesn't tell the page
+    expect(platform.systemBars!.insets()).toEqual({ top: 24, right: 0, bottom: 16, left: 0 });
+    expect(platform.systemBars!.keyboardInset()).toBe(0);
+    // MainActivity says when they change, to every listener still listening
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = platform.systemBars!.onInsetsChange(first);
+    platform.systemBars!.onInsetsChange(second);
+    bars.keyboardInset.mockReturnValue(320);
+    window.__budgetmintInsets!();
+    expect(platform.systemBars!.keyboardInset()).toBe(320);
+    stopFirst();
+    window.__budgetmintInsets!();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(2);
     platform.splashScreen!.hide();
     expect(splash.hide).toHaveBeenCalled();
     platform.analytics!.setEnabled(false);

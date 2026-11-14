@@ -17,6 +17,7 @@ allowBuilds:
 catalog:
   "@emotion/react": ^11.14.0
   "@emotion/styled": ^11.14.1
+  "@fontsource/google-sans": ^5.3.2
   "@fontsource/inter": ^5.3.0
   "@fontsource/roboto-mono": ^5.3.0
   "@mui/icons-material": ^9.3.1

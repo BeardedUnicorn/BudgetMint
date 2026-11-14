@@ -17,6 +17,7 @@ import type { Platform } from '../../../shell/types';
 import { formattingLocale } from '../../../utils/locale';
 import { leadChoices, leadLabel } from '../../budget/ItemDialog';
 import { SettingsSection } from './SettingsSection';
+import { rowField } from './fieldStyles';
 
 const hourName = (hour: number) =>
   new Intl.DateTimeFormat(formattingLocale(), { hour: 'numeric' }).format(new Date(2026, 10, 2, hour));
@@ -103,7 +104,7 @@ export function RemindersSection() {
 
   return (
     <SettingsSection title="Reminders" icon={<RemindersIcon />}>
-      <Stack spacing={2} sx={{ maxWidth: 520 }}>
+      <Stack spacing={2} useFlexGap>
         <FormControlLabel
           control={<Switch checked={on} onChange={event => void toggle(event.target.checked)} />}
           label="Remind me on this device"
@@ -114,7 +115,7 @@ export function RemindersSection() {
           </Alert>
         )}
         {on && allowed === false && (
-          <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+          <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
             <Typography variant="body2" color="text.secondary">
               This browser hasn’t allowed BudgetMint’s notifications.
             </Typography>
@@ -131,7 +132,7 @@ export function RemindersSection() {
               : 'They come while BudgetMint is open in a tab.'}
         </Typography>
         {/* The app can't always tell that the system is hiding its notifications: a test shows it */}
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 1 }}>
           <Button variant="outlined" size="small" onClick={() => void test()}>
             Send a test reminder
           </Button>
@@ -144,13 +145,14 @@ export function RemindersSection() {
           )}
         </Stack>
         {autostart && <OpenAtLogin autostart={autostart} />}
-        <Stack direction="row" spacing={2}>
+        {/* Side by side where there's room; on a phone each takes the row */}
+        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
           <TextField
             select
             label="At"
             value={reminders.hour}
             onChange={event => setReminders({ hour: Number(event.target.value) })}
-            sx={{ minWidth: 140 }}
+            sx={rowField(140)}
           >
             {Array.from({ length: 24 }, (_, hour) => (
               <MenuItem key={hour} value={hour}>
@@ -163,7 +165,7 @@ export function RemindersSection() {
             label="New bills remind"
             value={reminders.leadDays}
             onChange={event => setReminders({ leadDays: Number(event.target.value) })}
-            sx={{ minWidth: 200 }}
+            sx={rowField(200)}
           >
             {leadChoices(reminders.leadDays).map(days => (
               <MenuItem key={days} value={days}>
