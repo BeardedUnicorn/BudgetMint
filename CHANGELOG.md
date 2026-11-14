@@ -8,6 +8,16 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.4.1 – 2026-11-14
+
+### Changed
+
+- Continue with Google now looks like Google's own sign-in button: the colour G on a white button, or a near-black one in the dark theme, in Google's font.
+
+### Fixed
+
+- A renamed main account stays listed in Settings when it's your only account, so deleting your other accounts no longer seems to delete it too, and its name can still be changed. A new account given the main one's name now says so.
+
 ## 2.4.0 – 2026-11-13
 
 ### Added
