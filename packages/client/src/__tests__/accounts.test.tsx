@@ -437,6 +437,51 @@ describe('several bank accounts', () => {
     expect(within(section('Bank accounts')).getByText(/BudgetMint forecasts one bank account/)).toBeInTheDocument();
   });
 
+  it('keeps the main account listed once it’s named, even alone, and says when a name is its', async () => {
+    const { user, store } = await startBudget({ accounts: [account('old', 'Old venmo', { balance: null })] });
+    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    const bank = section('Bank accounts');
+    await user.click(within(bank).getByRole('button', { name: 'Edit Main account' }));
+    let dialog = screen.getByRole('dialog', { name: 'Edit Main account' });
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), 'Venmo');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await closed();
+    await user.click(within(bank).getByRole('button', { name: 'Delete Old venmo' }));
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Delete Old venmo?' })).getByRole('button', { name: 'Delete' })
+    );
+    expect(await screen.findByText('Old venmo deleted')).toBeInTheDocument();
+    await closed();
+    expect(store.docs.has('account~old')).toBe(false);
+
+    // The one left is still there to see and rename: its name is the user's
+    const list = within(bank).getByRole('list', { name: 'Bank accounts' });
+    const rows = within(list).getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Venmo');
+    expect(within(rows[0]).getByText('Main')).toBeInTheDocument();
+    // So a new one can't quietly take its name
+    await user.click(within(bank).getByRole('button', { name: 'Add a bank account' }));
+    dialog = screen.getByRole('dialog', { name: 'Add a bank account' });
+    await user.type(within(dialog).getByLabelText('Name'), 'venmo');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Your main account has that name')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    await closed();
+
+    // Named back as it was, the budget is a one-account one again
+    await user.click(within(list).getByRole('button', { name: 'Edit Venmo' }));
+    dialog = screen.getByRole('dialog', { name: 'Edit Venmo' });
+    await user.clear(within(dialog).getByLabelText('Name'));
+    await user.type(within(dialog).getByLabelText('Name'), 'Main account');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await closed();
+    expect(within(bank).queryByRole('list')).not.toBeInTheDocument();
+    expect(within(bank).getByText(/BudgetMint forecasts one bank account/)).toBeInTheDocument();
+  });
+
   it('says why an account can’t be added, when it isn’t about its name', async () => {
     const { user } = await startBudget({
       accounts: Array.from({ length: 12 }, (_, at) => account(`a${at}`, `Account ${at}`, { order: at + 1 })),
