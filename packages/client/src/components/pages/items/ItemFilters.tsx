@@ -77,7 +77,8 @@ export function ItemFilters({
   onChange: (query: ItemQuery) => void;
 }) {
   return (
-    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+    // Side by side, each wide enough to read what it holds: in a narrow window they wrap onto a second row
+    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} useFlexGap sx={{ mb: 2, flexWrap: { sm: 'wrap' } }}>
       <TextField
         size="small"
         type="search"
@@ -85,7 +86,7 @@ export function ItemFilters({
         placeholder="Name or category"
         value={query.search}
         onChange={event => onChange({ ...query, search: event.target.value })}
-        sx={{ flex: 2 }}
+        sx={{ flex: { sm: '2 1 220px' } }}
       />
       {categories.length > 0 && (
         <TextField
@@ -94,7 +95,7 @@ export function ItemFilters({
           label="Category"
           value={query.category}
           onChange={event => onChange({ ...query, category: event.target.value })}
-          sx={{ flex: 1, minWidth: 0 }}
+          sx={{ flex: { sm: '1 1 150px' }, minWidth: 0 }}
         >
           <MenuItem value="">Every category</MenuItem>
           {categories.map(category => (
@@ -111,7 +112,7 @@ export function ItemFilters({
           label="Account"
           value={query.account}
           onChange={event => onChange({ ...query, account: event.target.value })}
-          sx={{ flex: 1, minWidth: 0 }}
+          sx={{ flex: { sm: '1 1 150px' }, minWidth: 0 }}
         >
           <MenuItem value="">Every account</MenuItem>
           {accounts.map(account => (
@@ -127,7 +128,7 @@ export function ItemFilters({
         label="Order"
         value={query.order}
         onChange={event => onChange({ ...query, order: event.target.value as ItemOrder })}
-        sx={{ flex: 1, minWidth: 0 }}
+        sx={{ flex: { sm: '1 1 150px' }, minWidth: 0 }}
       >
         {(Object.keys(ORDERS) as ItemOrder[]).map(order => (
           <MenuItem key={order} value={order}>

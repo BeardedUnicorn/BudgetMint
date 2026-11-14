@@ -17,3 +17,5 @@ type: Fixed
   lines each, and the panel no longer touches the cards under it.
 - A toast's Undo and its close button are big enough to tap on a touch
   screen.
+- In a narrow window, the Bills page's search and filters wrap onto a second
+  row instead of squeezing their labels.

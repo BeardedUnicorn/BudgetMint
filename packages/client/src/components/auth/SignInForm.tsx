@@ -194,7 +194,7 @@ export function SignInForm({
           />
         )}
         {/* The button the form is for, then the ways out of it on a line under it, their words at the fields' edges */}
-        <Stack spacing={0.5}>
+        <Stack spacing={0.5} useFlexGap>
           <Button
             type="submit"
             variant="contained"
