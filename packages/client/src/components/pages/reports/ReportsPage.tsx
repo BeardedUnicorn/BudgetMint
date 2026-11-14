@@ -28,7 +28,7 @@ import {
   ReceiptLong as BillsIcon,
   Savings as WithdrawalIcon,
 } from '@mui/icons-material';
-import { useTheme } from '@mui/material/styles';
+import { type SxProps, type Theme, useTheme } from '@mui/material/styles';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from 'recharts';
 import type { CategoryReport, MonthTotals } from '@budgetmint/contracts';
 import { useNotification } from '../../../contexts/NotificationContext';
@@ -42,12 +42,24 @@ import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { StatsCard } from '../../ui/display/StatsCard';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
 import { axisMoney } from '../forecast/ForecastPage';
-import { SECTION, STATS_GRID } from '../overview/OverviewPage';
-
-const MONO = '"Roboto Mono", monospace';
+import { MONO, SECTION, STATS_GRID } from '../../../theme/layout';
+import { PHONE } from '../../../theme/media';
 
 const categoryName = (row: CategoryReport) =>
   `${row.category ?? 'No category'}${row.kind === 'income' ? ' (income)' : ''}`;
+
+/**
+ * The month shown is tinted in the table of six; on a phone its first cell is
+ * pinned over the paper, so it takes the same tint on top.
+ */
+const SELECTED_TINT = 'rgba(var(--mui-palette-primary-mainChannel) / var(--mui-palette-action-selectedOpacity))';
+const SELECTED_ROW = {
+  [PHONE]: {
+    '& tbody tr.Mui-selected > :first-of-type': {
+      backgroundImage: `linear-gradient(${SELECTED_TINT}, ${SELECTED_TINT})`,
+    },
+  },
+} as const;
 
 /** The six months as bars: bills paid and money in, side by side (whole dollars on the axis). */
 function MonthsChart({ months, taskmint }: { months: MonthTotals[]; taskmint: boolean }) {
@@ -235,7 +247,7 @@ export function ReportsPage() {
         </Typography>
         <MonthsChart months={report.months} taskmint={taskmintShown} />
         <TableContainer>
-          <Table size="small" sx={PHONE_TABLE}>
+          <Table size="small" sx={[PHONE_TABLE, SELECTED_ROW] as SxProps<Theme>}>
             <TableHead>
               <TableRow>
                 <TableCell>Month</TableCell>

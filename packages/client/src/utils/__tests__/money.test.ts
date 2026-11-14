@@ -3,6 +3,7 @@ import { afterEach } from 'vitest';
 import {
   centsToInput,
   currencySymbol,
+  formatAxisCents,
   formatCents,
   formatMaybeCents,
   formatWholeCents,
@@ -19,6 +20,14 @@ describe('money', () => {
     expect(formatWholeCents(123456)).toBe('$1,235');
     expect(formatMaybeCents(500, true)).toBe('~$5.00');
     expect(formatMaybeCents(500, false)).toBe('$5.00');
+  });
+
+  it('is written short on a chart’s axis from ten thousand up, so a tick fits its margin', () => {
+    expect(formatAxisCents(250_000)).toBe('$2,500');
+    expect(formatAxisCents(-999_900)).toBe('-$9,999');
+    expect(formatAxisCents(1_250_000)).toBe('$12.5K');
+    expect(formatAxisCents(-45_000_000)).toBe('-$450K');
+    expect(formatAxisCents(-135_000_000)).toBe('-$1.4M');
   });
 
   it('is written in the currency the settings choose, and read with its sign', () => {

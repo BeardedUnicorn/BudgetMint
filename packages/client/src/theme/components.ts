@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/theme/components.ts @ 99392ae: keep the two in step.
+// Copied from TaskMint packages/client/src/theme/components.ts @ 5c802e7: keep the two in step.
 /**
  * Component defaults for both modes: visible focus rings, comfortable touch
  * targets (44px, 32px for small controls with a mouse), the few looks that
@@ -8,11 +8,11 @@
 
 import type { Components, Theme } from '@mui/material/styles';
 import type {} from '@mui/x-date-pickers/themeAugmentation';
-import { PHONE, TOUCH } from './media';
-import { BRAND, BRAND_TEXT_LIGHT, ColorMode } from './palettes';
+import { PHONE, SAFE_BOTTOM, TOUCH } from './media';
+import { BRAND_TEXT_LIGHT, brandText, ColorMode } from './palettes';
 
 /** The focus ring's color (and a focused field's edge): the brand green, darker on light surfaces where it would fade. */
-export const focusColor = (mode: ColorMode) => (mode === 'light' ? BRAND_TEXT_LIGHT : BRAND);
+export const focusColor = brandText;
 
 // WebKit (Safari, the Mac app's webview) doesn't repaint an outline while the
 // gap for its label animates: the border crosses a selected field's label and
@@ -114,6 +114,8 @@ export function components(mode: ColorMode): Components<Theme> {
       },
     },
     MuiTab: { styleOverrides: { root: { minHeight: 48, ...focusRing('2px') } } },
+    // A phone's selected tab: the brand green, dark enough to read on white
+    MuiBottomNavigationAction: { styleOverrides: { root: { '&.Mui-selected': { color: brandText(mode) } } } },
     MuiMenuItem: { styleOverrides: { root: { minHeight: 44, ...focusRing('-2px') } } },
     MuiListItem: { styleOverrides: { root: { minHeight: 44, ...focusRing('-2px') } } },
     MuiTableCell: {
@@ -124,6 +126,9 @@ export function components(mode: ColorMode): Components<Theme> {
     },
     MuiDialog: {
       styleOverrides: {
+        // Clear of the on-screen keyboard (useKeyboardInset), so a dialog's
+        // fields and buttons stay above it
+        root: { top: 'var(--keyboard-top, 0px)', bottom: 'var(--keyboard-bottom, 0px)' },
         paper: {
           ...focusRing('2px'),
           // On a phone a dialog takes the screen's width; a wide one (md and
@@ -142,7 +147,7 @@ export function components(mode: ColorMode): Components<Theme> {
               maxHeight: '100%',
               borderRadius: 0,
               paddingTop: 'env(safe-area-inset-top)',
-              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingBottom: SAFE_BOTTOM,
             },
           },
         },
@@ -185,6 +190,8 @@ export function components(mode: ColorMode): Components<Theme> {
                 '&.MuiChip-clickable:hover': { backgroundColor: 'rgba(101, 214, 161, 0.2)' },
               },
             },
+            // The brand green is too light for an outlined chip's label on white
+            { props: { color: 'primary', variant: 'outlined' }, style: { color: BRAND_TEXT_LIGHT } },
           ]
         : [],
     },

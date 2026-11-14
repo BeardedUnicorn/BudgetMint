@@ -1,4 +1,4 @@
-// Copied from TaskMint packages/client/src/theme/palettes.ts @ 8ca16f2: keep the two in step.
+// Copied from TaskMint packages/client/src/theme/palettes.ts @ 5c802e7: keep the two in step.
 /**
  * The light and dark palettes. Shared brand colors; each mode's text colors
  * read on its surfaces, and the text on a filled chip or button reads on its
@@ -13,6 +13,9 @@ export type ColorMode = 'light' | 'dark';
 export const BRAND = '#65D6A1';
 /** Brand-green text that reads on a light surface. */
 export const BRAND_TEXT_LIGHT = '#1F6F4A';
+
+/** Brand-green text (a figure, a selected tab's label) that reads on the mode's surfaces. */
+export const brandText = (mode: ColorMode) => (mode === 'light' ? BRAND_TEXT_LIGHT : BRAND);
 
 const brand = {
   primary: { main: BRAND, dark: '#4CAF50', light: '#B2DFDB' },

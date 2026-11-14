@@ -42,6 +42,9 @@ import { VIEW_LABELS, VIEWS, type SidebarView } from './navigation/views';
 import { getShell } from './shell';
 import type { AppExtensions } from './shell/types';
 import { useAnalyticsScreens } from './utils/analytics';
+import { useKeyboardInset } from './hooks/useKeyboardInset';
+import { useSystemInsets } from './hooks/useSystemInsets';
+import { KEYBOARD, OUTSIDE_PAGE, SAFE_BOTTOM_OVER_KEYBOARD, SAFE_LEFT, SAFE_RIGHT, SAFE_TOP } from './theme/layout';
 
 const PAGES: Record<SidebarView, ComponentType> = {
   overview: OverviewPage,
@@ -54,12 +57,25 @@ const PAGES: Record<SidebarView, ComponentType> = {
   settings: SettingsPage,
 };
 
+/**
+ * What the system draws over the app on a phone: its bars follow the theme
+ * and the app keeps clear of them and of the keyboard, from the first screen
+ * (signing in, a startup error), not only once the budget is open.
+ */
+function SystemChrome() {
+  useSystemBarsTheme();
+  useSystemInsets();
+  useKeyboardInset();
+  return null;
+}
+
 /** Firebase (or core) couldn't load when the app opened. */
 export function StartupError({ message, extensions = {} }: { message: string; extensions?: AppExtensions }) {
   const { Background } = extensions;
   return (
     <ThemeProvider>
       <CssBaseline enableColorScheme />
+      <SystemChrome />
       <AuthLayout title="BudgetMint can’t start">
         <Stack spacing={2}>
           <Alert severity="error">{message}</Alert>
@@ -76,11 +92,7 @@ export function StartupError({ message, extensions = {} }: { message: string; ex
 
 function Loading() {
   return (
-    <Box
-      role="status"
-      aria-label="Loading your budget"
-      sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}
-    >
+    <Box role="status" aria-label="Loading your budget" sx={OUTSIDE_PAGE}>
       <CircularProgress />
     </Box>
   );
@@ -164,7 +176,6 @@ function BackgroundJobs() {
   const [, setCollapsed] = useLocalStorage(SIDEBAR_COLLAPSED_KEY, false);
   useReminders();
   useTrayStatus();
-  useSystemBarsTheme();
   useAnalyticsScreens();
   useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => dialogs.open('shortcuts'));
 
@@ -219,14 +230,19 @@ function AppShell() {
       <BackgroundJobs />
       {/* Inside the navigation: Back closes About, Sign out and the shortcuts */}
       <AppDialogsHost />
-      {/* dvh: a phone's browser bars and keyboard don't hide the bottom. On a phone the page is
-          above the bottom bar; the sidebar slides in over both */}
+      {/* dvh: a phone's browser bars don't hide the bottom. On a phone the page is above the
+          bottom bar; the sidebar slides in over both. The frame ends where the keyboard begins
+          and keeps clear of what's at the screen's sides (a phone on its side) */}
       <Box
         sx={{
+          boxSizing: 'border-box',
           height: '100vh',
           '@supports (height: 100dvh)': { height: '100dvh' },
           display: 'flex',
           flexDirection: compact ? 'column' : 'row',
+          pb: KEYBOARD,
+          pl: SAFE_LEFT,
+          pr: SAFE_RIGHT,
         }}
       >
         <Sidebar
@@ -246,8 +262,9 @@ function AppShell() {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'auto',
-            // The bottom bar keeps clear of the gesture bar on a phone
-            pb: compact ? 0 : 'env(safe-area-inset-bottom)',
+            // On a phone the top bar keeps clear of the status bar, and the bottom bar of the gesture bar
+            pt: compact ? 0 : SAFE_TOP,
+            pb: compact ? 0 : SAFE_BOTTOM_OVER_KEYBOARD,
           }}
         >
           {compact && <CompactTopBar title={VIEW_LABELS[activeView]} />}
@@ -273,6 +290,7 @@ export function App({ session, core, extensions = {} }: AppProps) {
   return (
     <ThemeProvider>
       <CssBaseline enableColorScheme />
+      <SystemChrome />
       <NotificationProvider>
         <BudgetProvider session={session} core={core}>
           <AppExtensionsContext.Provider value={extensions}>

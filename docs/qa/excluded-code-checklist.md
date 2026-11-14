@@ -362,14 +362,29 @@ signing") unless a step says otherwise:
       restores with Restore from a backup…), and backing out of the picker
       saves nothing and shows no error.
       Importing a bank statement opens the picker too. A debug APK works.
-- [ ] **The bar of pages** (Overview, Bills, Savings, Calendar) sits above
-      the gesture bar, or the three buttons, with nothing cut off; a toast
-      (mark a bill paid) shows above it. The top bar stays at the top while
-      a page scrolls, and its menu button opens every page.
-- [ ] **Back:** with a bill's form open, Back closes it; with the menu
+- [ ] **The bar of pages** (Overview, Bills, Calendar, Forecast, More) sits
+      above the gesture bar, or the three buttons, with nothing cut off; a
+      toast (mark a bill paid) shows above it. The top bar stays at the top,
+      under the status bar, while a page scrolls, and More opens every page.
+- [ ] **The system's bars:** the navigation bar's three buttons read on the
+      app's theme (Settings → Appearance), light and dark, as the status
+      bar's icons do, on the sign-in screen too.
+- [ ] **The keyboard:** with a bill's form open and its name being typed,
+      the form sits between the status bar and the keyboard, with Save in
+      view; on the sign-in screen the fields and the button stay above the
+      keyboard; a field low on Settings (Everyday spending) is brought into
+      view above it, the bar of pages standing on the keyboard.
+- [ ] **On its side:** turned, the app shows its sidebar clear of the camera
+      cutout and the status bar, and nothing under the three buttons at the
+      side; turned back, the page is the size it was (not zoomed, the bar of
+      pages in view).
+- [ ] **Large text:** with the system's font size at its largest (Settings
+      → Display), the app's text is larger (to 130%) and the bar of pages'
+      labels don't overlap.
+- [ ] **Back:** with a bill's form open, Back closes it; with More
       open, Back closes it; on another page, Back goes to the Overview; on
       the Overview, Back leaves the app.
-- [ ] **Signing out** (the menu's account, at its foot → Sign out…) asks
+- [ ] **Signing out** (More, the account at its foot → Sign out…) asks
       first, then the app loads again on the sign-in screen; signing in
       again brings the budget back.
 

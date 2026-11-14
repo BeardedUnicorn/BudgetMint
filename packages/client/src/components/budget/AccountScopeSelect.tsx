@@ -19,7 +19,8 @@ export function AccountScopeSelect() {
       label="Showing"
       value={scope ?? ALL}
       onChange={event => setScope(event.target.value === ALL ? null : event.target.value)}
-      sx={{ minWidth: 180 }}
+      // As tall as the buttons it sits beside in a page's header
+      sx={{ minWidth: 180, maxWidth: '100%', '& .MuiInputBase-root': { minHeight: 44 } }}
     >
       <MenuItem value={ALL}>All accounts</MenuItem>
       {live.map(account => (

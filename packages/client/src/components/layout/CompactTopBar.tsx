@@ -1,6 +1,7 @@
 // Adapted from TaskMint packages/client/src/components/layout/CompactTopBar.tsx @ 1623bee: no menu button (the bottom bar has More), and whether changes are still on their way.
 import { AppBar, Chip, Toolbar, Typography } from '@mui/material';
 import { useBudget } from '../../data/BudgetContext';
+import { SAFE_TOP } from '../../theme/layout';
 
 interface CompactTopBarProps {
   /** The page on screen. */
@@ -24,7 +25,7 @@ export function CompactTopBar({ title }: CompactTopBarProps) {
         borderBottom: 1,
         borderColor: 'divider',
         // Below the status bar on an edge-to-edge screen
-        pt: 'env(safe-area-inset-top)',
+        pt: SAFE_TOP,
       }}
     >
       <Toolbar sx={{ gap: 1, px: 2 }}>

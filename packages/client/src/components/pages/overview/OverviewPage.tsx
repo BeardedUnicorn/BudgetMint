@@ -30,23 +30,12 @@ import { ItemDialog } from '../../budget/ItemDialog';
 import { RecordDialog } from '../../budget/RecordDialog';
 import { StatementImport } from '../../budget/StatementImport';
 import { BalanceFlag } from '../../budget/BalanceFlag';
-import { OccurrenceList } from '../../budget/OccurrenceList';
+import { OCCURRENCE_AMOUNT, OCCURRENCE_ROW, OccurrenceList } from '../../budget/OccurrenceList';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { EmptyState } from '../../ui/display/EmptyState';
 import { StatsCard } from '../../ui/display/StatsCard';
 import { AccountCards } from './AccountCards';
-
-const MONO = '"Roboto Mono", monospace';
-
-export const STATS_GRID = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-  gap: 3,
-  mb: 4,
-  [PHONE]: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2, mb: 3 },
-} as const;
-
-export const SECTION = { p: 3, mb: 4, [PHONE]: { p: 2, mb: 3 } } as const;
+import { MONO, SECTION, STATS_GRID } from '../../../theme/layout';
 
 function UpcomingDays({ days, today, scope }: { days: UpcomingDay[]; today: string; scope: string | null }) {
   return (
@@ -67,14 +56,15 @@ function UpcomingDays({ days, today, scope }: { days: UpcomingDay[]; today: stri
           </Stack>
           <OccurrenceList occurrences={day.occurrences} today={today} scope={scope} />
           {day.withdrawalCents > 0 && (
-            <Stack direction="row" sx={{ py: 0.5, justifyContent: 'space-between' }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            // The rows' columns, so its amount lines up with theirs
+            <Box sx={{ ...OCCURRENCE_ROW, py: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, [PHONE]: { gridArea: 'name' } }}>
                 TaskMint withdrawal
               </Typography>
-              <Typography sx={{ fontFamily: MONO, fontWeight: 600, color: 'secondary.main' }}>
+              <Typography sx={{ ...OCCURRENCE_AMOUNT, color: 'secondary.main' }}>
                 +{formatMaybeCents(day.withdrawalCents, day.withdrawalUncertainCents > 0)}
               </Typography>
-            </Stack>
+            </Box>
           )}
         </Box>
       ))}
@@ -213,7 +203,7 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
             severity="info"
             sx={{ mb: 3 }}
             action={
-              <Button color="inherit" size="small" onClick={() => setDialog('balance')}>
+              <Button color="inherit" size="small" onClick={() => setDialog('balance')} sx={{ whiteSpace: 'nowrap' }}>
                 Set balance
               </Button>
             }
@@ -342,21 +332,25 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
         )}
 
         {items.length === 0 ? (
-          <EmptyState
-            icon={<DueIcon sx={{ fontSize: 48 }} />}
-            title="No bills yet"
-            description="Add your bills and other income, and see your balance ahead."
-            action={
-              <Stack direction="row" spacing={1} sx={{ justifyContent: 'center' }}>
-                <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
-                  Add your first bill
-                </Button>
-                <Button variant="outlined" onClick={() => setDialog('income')}>
-                  Add income
-                </Button>
-              </Stack>
-            }
-          />
+          // The gap a section leaves below it: on a phone the cards come next
+          <Box sx={{ mb: SECTION.mb, [PHONE]: { mb: SECTION[PHONE].mb } }}>
+            <EmptyState
+              icon={<DueIcon sx={{ fontSize: 48 }} />}
+              title="No bills yet"
+              description="Add your bills and other income, and see your balance ahead."
+              action={
+                // Too narrow for both, the buttons go one under the other, never onto two lines each
+                <Stack direction="row" spacing={1} useFlexGap sx={{ justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog('bill')}>
+                    Add your first bill
+                  </Button>
+                  <Button variant="outlined" onClick={() => setDialog('income')}>
+                    Add income
+                  </Button>
+                </Stack>
+              }
+            />
+          </Box>
         ) : (
           <Paper component="section" aria-labelledby="upcoming-title" sx={SECTION}>
             <Stack direction="row" sx={{ alignItems: 'baseline', justifyContent: 'space-between', mb: 2 }}>

@@ -22,8 +22,32 @@ import { formatCents, formatMaybeCents } from '../../utils/money';
 import { PHONE } from '../../theme/media';
 import { useNotification } from '../../contexts/NotificationContext';
 import { OccurrenceDialog } from './OccurrenceDialog';
+import { MONO } from '../../theme/layout';
 
-const MONO = '"Roboto Mono", monospace';
+/**
+ * A row's columns: name, amount, Mark paid, details. The last two are fixed
+ * widths, so every row's amount ends at the same place whatever its button
+ * says; on a phone Mark paid goes under, and details is a finger wide.
+ */
+export const OCCURRENCE_ROW = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto 140px 32px',
+  alignItems: 'center',
+  columnGap: 1,
+  [PHONE]: {
+    gridTemplateColumns: 'minmax(0, 1fr) auto 44px',
+    gridTemplateAreas: '"name amount details" "action action action"',
+  },
+} as const;
+
+/** A row's amount: right-aligned figures in a column of their own. */
+export const OCCURRENCE_AMOUNT = {
+  fontFamily: MONO,
+  fontWeight: 600,
+  minWidth: 110,
+  textAlign: 'right',
+  [PHONE]: { gridArea: 'amount', minWidth: 0 },
+} as const;
 
 const CHIP_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
   Paid: 'success',
@@ -96,19 +120,7 @@ export function OccurrenceList({
             <ListItem
               key={`${occurrence.itemId} ${occurrence.scheduled}`}
               disableGutters
-              sx={{
-                // Name, amount, Mark paid, details; on a phone Mark paid goes under, so amounts line up
-                display: 'grid',
-                gridTemplateColumns: '1fr auto auto auto',
-                alignItems: 'center',
-                columnGap: 1,
-                py: 0.5,
-                opacity: occurrence.status.state === 'skipped' ? 0.6 : 1,
-                [PHONE]: {
-                  gridTemplateColumns: '1fr auto auto',
-                  gridTemplateAreas: '"name amount details" "action action action"',
-                },
-              }}
+              sx={{ ...OCCURRENCE_ROW, py: 0.5, opacity: occurrence.status.state === 'skipped' ? 0.6 : 1 }}
             >
               <Box sx={{ minWidth: 0, [PHONE]: { gridArea: 'name' } }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -147,14 +159,7 @@ export function OccurrenceList({
                 )}
               </Box>
               <Typography
-                sx={{
-                  fontFamily: MONO,
-                  fontWeight: 600,
-                  minWidth: 110,
-                  textAlign: 'right',
-                  [PHONE]: { gridArea: 'amount', minWidth: 0 },
-                  color: occurrence.kind === 'income' ? 'success.main' : 'text.primary',
-                }}
+                sx={{ ...OCCURRENCE_AMOUNT, color: occurrence.kind === 'income' ? 'success.main' : 'text.primary' }}
               >
                 {sign}
                 {occurrence.status.state === 'done'
@@ -194,7 +199,7 @@ export function OccurrenceList({
                   size="small"
                   aria-label={`${occurrence.name} on ${formatDay(occurrence.scheduled)}: details`}
                   onClick={() => setOpen({ occurrence })}
-                  sx={{ [PHONE]: { gridArea: 'details' } }}
+                  sx={{ justifySelf: 'end', [PHONE]: { gridArea: 'details' } }}
                 >
                   <MoreIcon fontSize="small" />
                 </IconButton>

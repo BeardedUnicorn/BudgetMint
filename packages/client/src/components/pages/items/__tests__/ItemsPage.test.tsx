@@ -411,8 +411,8 @@ describe('bills and income', () => {
     expect(screen.queryByRole('columnheader', { name: 'Next' })).not.toBeInTheDocument();
     const row = (name: string) => screen.getByText(name).closest('tr')!;
     expect(row('Rent')).toHaveTextContent(/Next: .*Dec 1/);
-    // Late, in words
-    expect(row('Water')).toHaveTextContent(/Next: Overdue: /);
+    // Late, in words, which say it without "Next" before them
+    expect(row('Water')).toHaveTextContent(/WaterOverdue: Yesterday/);
   });
 
   it('saves a rename and a new amount together, or neither, and undoes both', async () => {

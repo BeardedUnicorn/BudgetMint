@@ -10,8 +10,7 @@ import { Box, Button, Chip, List, ListItem, ListItemText, Popover, Tooltip, Typo
 import { useBudget, useCoreQuery } from '../../data/BudgetContext';
 import { formatWeekday } from '../../utils/dates';
 import { formatCents, formatWholeCents } from '../../utils/money';
-
-const MONO = '"Roboto Mono", monospace';
+import { FOCUS_RING, MONO } from '../../theme/layout';
 
 export function BalanceFooter({ collapsed }: { collapsed: boolean }) {
   const { view } = useBudget();
@@ -31,15 +30,19 @@ export function BalanceFooter({ collapsed }: { collapsed: boolean }) {
           aria-label={label}
           // In the tab order, so the keyboard reaches its tooltip too
           tabIndex={0}
-          sx={{
-            // A large balance wraps within the narrow sidebar
-            overflowWrap: 'anywhere',
-            textAlign: 'center',
-            fontFamily: MONO,
-            fontWeight: 700,
-            fontSize: '0.75rem',
-            color: todayCents < 0 ? 'error.main' : 'text.primary',
-          }}
+          sx={[
+            {
+              // A large balance wraps within the narrow sidebar
+              overflowWrap: 'anywhere',
+              textAlign: 'center',
+              fontFamily: MONO,
+              fontWeight: 700,
+              fontSize: '0.75rem',
+              borderRadius: 0.5,
+              color: todayCents < 0 ? 'error.main' : 'text.primary',
+            },
+            FOCUS_RING,
+          ]}
         >
           {formatWholeCents(todayCents)}
         </Typography>

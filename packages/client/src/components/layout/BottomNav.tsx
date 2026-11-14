@@ -10,6 +10,7 @@ import { BottomNavigation, BottomNavigationAction, Paper } from '@mui/material';
 import { MoreHoriz as MoreIcon } from '@mui/icons-material';
 import { type SidebarView, VIEW_LABELS } from '../../navigation/views';
 import { VIEW_ICONS } from '../../navigation/icons';
+import { SAFE_BOTTOM_OVER_KEYBOARD } from '../../theme/layout';
 
 /** The pages on the bar; the others are under More. */
 export const BAR_VIEWS: SidebarView[] = ['overview', 'bills', 'calendar', 'forecast'];
@@ -45,8 +46,8 @@ export function BottomNav({
         flexShrink: 0,
         borderTop: 1,
         borderColor: 'divider',
-        // Clear of the gesture bar on an edge-to-edge screen
-        pb: 'env(safe-area-inset-bottom)',
+        // Clear of the gesture bar on an edge-to-edge screen (the keyboard, when up, covers it)
+        pb: SAFE_BOTTOM_OVER_KEYBOARD,
       }}
     >
       <BottomNavigation

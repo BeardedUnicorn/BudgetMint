@@ -19,6 +19,7 @@ import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { Dot, WIDE } from './DayCell';
 import { DayAgenda, DayDialog } from './DayDialog';
 import { MonthGrid } from './MonthGrid';
+import { MONO } from '../../../theme/layout';
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -26,7 +27,7 @@ function Stat({ label, value }: { label: string; value: string }) {
       <Typography variant="caption" color="text.secondary" component="div">
         {label}
       </Typography>
-      <Typography sx={{ fontFamily: '"Roboto Mono", monospace', fontWeight: 600 }}>{value}</Typography>
+      <Typography sx={{ fontFamily: MONO, fontWeight: 600 }}>{value}</Typography>
     </Box>
   );
 }
@@ -123,7 +124,8 @@ export function CalendarPage() {
             mb: 2,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, [PHONE]: { width: '100%' } }}>
+          {/* On a phone the month keeps to one line between its arrows; too narrow, Today goes under */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, [PHONE]: { width: '100%', flexWrap: 'wrap' } }}>
             <IconButton aria-label="Previous month" onClick={() => goToMonth(addMonths(month, -1))}>
               <ChevronLeft />
             </IconButton>
@@ -136,7 +138,7 @@ export function CalendarPage() {
                 fontWeight: 700,
                 minWidth: 190,
                 textAlign: 'center',
-                [PHONE]: { minWidth: 0, flex: 1, fontSize: '1.1rem' },
+                [PHONE]: { minWidth: 0, flex: '1 0 auto', fontSize: '1rem', whiteSpace: 'nowrap' },
               }}
             >
               {formatMonth(month)}
@@ -149,7 +151,7 @@ export function CalendarPage() {
               variant="outlined"
               disabled={month === thisMonth}
               onClick={() => goToMonth(thisMonth)}
-              sx={{ ml: 1 }}
+              sx={{ ml: 1, [PHONE]: { ml: 'auto' } }}
             >
               Today
             </Button>

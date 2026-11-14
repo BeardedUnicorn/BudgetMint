@@ -42,7 +42,7 @@ export function AccountSection() {
           {problem}
         </Alert>
       )}
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
         <Button variant="outlined" onClick={() => dialogs.open('signOut')}>
           Sign out…
         </Button>

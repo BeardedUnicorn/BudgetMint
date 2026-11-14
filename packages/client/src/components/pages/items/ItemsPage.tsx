@@ -7,6 +7,7 @@
  */
 
 import { type ReactNode, useEffect, useState } from 'react';
+import type { SxProps, Theme } from '@mui/material/styles';
 import {
   Box,
   Button,
@@ -55,8 +56,8 @@ import { PageContainer, PageHeader } from '../../layout/PageLayout';
 import { ConfirmDialog } from '../../ui/dialogs/ConfirmDialog';
 import { EmptyState } from '../../ui/display/EmptyState';
 import { PHONE_TABLE } from '../../ui/tables/tableStyles';
+import { PHONE } from '../../../theme/media';
 import { VISUALLY_HIDDEN } from '../../ui/visuallyHidden';
-import { SECTION } from '../overview/OverviewPage';
 import { OccurrenceDialog } from '../../budget/OccurrenceDialog';
 import { HistoryDialog } from './HistoryDialog';
 import {
@@ -68,8 +69,33 @@ import {
   ItemFilters,
   type ItemQuery,
 } from './ItemFilters';
+import { MONO, SECTION } from '../../../theme/layout';
 
-const MONO = '"Roboto Mono", monospace';
+/**
+ * The table's columns: every one but the name a set width, so the tables on
+ * the page (in use, finished, archived, transfers) line up with each other
+ * and the name gets the room that's left. On a phone the name wraps in a
+ * column narrow enough to leave the amount in view beside it, and the rest
+ * scrolls.
+ */
+const ITEMS_TABLE = {
+  '& th, & td': { px: 1.5 },
+  '& th': { whiteSpace: 'nowrap' },
+  [PHONE]: { '& th, & td': { px: 1 } },
+} as const;
+const NAME_CELL = {
+  minWidth: 200,
+  [PHONE]: { '&&': { whiteSpace: 'normal' }, minWidth: 150, maxWidth: '50vw' },
+} as const;
+/** As wide as it's set on a desktop, as wide as what it holds on a phone. */
+const column = (width: number) => ({ width, [PHONE]: { width: 'auto' } }) as const;
+const COLUMN = {
+  amount: column(140),
+  often: column(170),
+  next: column(116),
+  monthly: column(132),
+  actions: column(184),
+} as const;
 
 /** A note under an amount: on one line, in the body's type rather than the figures'. */
 const NOTE_UNDER = { display: 'block', whiteSpace: 'nowrap', fontFamily: 'fontFamily' } as const;
@@ -227,17 +253,21 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
 
   return (
     <TableContainer>
-      <Table size="small" sx={PHONE_TABLE}>
+      <Table size="small" sx={[PHONE_TABLE, ITEMS_TABLE] as SxProps<Theme>}>
         <TableHead>
           <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell align="right">Amount</TableCell>
-            <TableCell>How often</TableCell>
+            <TableCell sx={NAME_CELL}>Name</TableCell>
+            <TableCell align="right" sx={COLUMN.amount}>
+              Amount
+            </TableCell>
+            <TableCell sx={COLUMN.often}>How often</TableCell>
             {/* On a phone it's under the name: the column would be off the screen's edge */}
-            {!compact && <TableCell>Next</TableCell>}
-            <TableCell align="right">A month</TableCell>
+            {!compact && <TableCell sx={COLUMN.next}>Next</TableCell>}
+            <TableCell align="right" sx={COLUMN.monthly}>
+              A month
+            </TableCell>
             {!compact && (
-              <TableCell>
+              <TableCell sx={COLUMN.actions}>
                 <Box component="span" sx={VISUALLY_HIDDEN}>
                   Actions
                 </Box>
@@ -257,42 +287,55 @@ function ItemsTable({ views, today, onOpen }: { views: ItemView[]; today: string
                 : nameOf(accountOf(view));
             return (
               <TableRow key={item.id} hover>
-                <TableCell>
-                  {/* A long name wraps (and its chips go under it) rather than widening the table,
-                      but a long schedule beside it doesn't squeeze it to a few letters a line */}
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5, minWidth: compact ? 0 : 120 }}
-                  >
-                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
-                      {item.name}
-                    </Typography>
-                    {several && <Chip size="small" variant="outlined" label={account} />}
-                    {item.category && <Chip size="small" label={item.category} />}
-                    {item.autopay && (
-                      <Chip size="small" label={KIND_WORDS[item.kind].auto} variant="outlined" color="info" />
+                <TableCell sx={NAME_CELL}>
+                  {/* On a phone the row's menu stays at the top right of the cell, beside whatever wraps */}
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      {/* A long name wraps, and its chips go under it, rather than widening the table */}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        useFlexGap
+                        sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.5 }}
+                      >
+                        <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
+                          {item.name}
+                        </Typography>
+                        {several && <Chip size="small" variant="outlined" label={account} sx={{ maxWidth: '100%' }} />}
+                        {item.category && <Chip size="small" label={item.category} sx={{ maxWidth: '100%' }} />}
+                        {item.autopay && (
+                          <Chip size="small" label={KIND_WORDS[item.kind].auto} variant="outlined" color="info" />
+                        )}
+                        {item.saveUp && (
+                          <Chip size="small" label="Setting aside" variant="outlined" color="secondary" />
+                        )}
+                      </Stack>
+                      {compact && view.next && (
+                        <Typography
+                          variant="caption"
+                          sx={{ display: 'block', mt: 0.25, color: view.next.late ? 'error.main' : 'text.secondary' }}
+                        >
+                          {/* Overdue or late says so itself */}
+                          {view.next.late ? next : `Next: ${next}`}
+                        </Typography>
+                      )}
+                      {item.note && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block', mt: 0.25, overflowWrap: 'anywhere' }}
+                        >
+                          {item.note}
+                        </Typography>
+                      )}
+                    </Box>
+                    {compact && (
+                      // Up into the cell's padding, so the name's first line stays level with the amount
+                      <Box sx={{ flexShrink: 0, my: -0.75, mr: -0.5 }}>
+                        <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />
+                      </Box>
                     )}
-                    {item.saveUp && <Chip size="small" label="Setting aside" variant="outlined" color="secondary" />}
-                    {compact && <ItemActions actions={actionsOf(view)} label={`${item.name}: what to do`} compact />}
-                  </Stack>
-                  {compact && view.next && (
-                    <Typography
-                      variant="caption"
-                      sx={{ display: 'block', color: view.next.late ? 'error.main' : 'text.secondary' }}
-                    >
-                      Next: {next}
-                    </Typography>
-                  )}
-                  {item.note && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: 'block', overflowWrap: 'anywhere' }}
-                    >
-                      {item.note}
-                    </Typography>
-                  )}
+                  </Box>
                 </TableCell>
                 <TableCell align="right" sx={{ fontFamily: MONO }}>
                   {view.estimate ? `~${formatCents(view.estimate.cents)}` : formatCents(segment.amountCents)}
@@ -461,11 +504,16 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
       {kind === 'bill' && (several || transfers.length > 0) && (
         <Paper component="section" aria-labelledby="transfers-title" sx={SECTION}>
           <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 2, gap: 1 }}>
-            <Typography id="transfers-title" variant="h6" component="h2">
+            <Typography id="transfers-title" variant="h6" component="h2" sx={{ minWidth: 0 }}>
               Money moved between accounts
             </Typography>
             {several && (
-              <Button onClick={() => setDialog({ type: 'edit', view: null, transfer: true })}>Add a transfer</Button>
+              <Button
+                onClick={() => setDialog({ type: 'edit', view: null, transfer: true })}
+                sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+              >
+                Add a transfer
+              </Button>
             )}
           </Stack>
           {transfers.length > 0 ? (

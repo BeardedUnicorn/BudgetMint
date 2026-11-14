@@ -37,6 +37,7 @@ import { CurrencyInput } from '../ui/forms/CurrencyInput';
 import { Wordmark } from '../ui/display/Wordmark';
 import { CurrencyField, currencyPlural } from '../pages/settings/RegionSettings';
 import { DELAYS, delayLabel } from '../pages/settings/TaskMintSection';
+import { OUTSIDE_PAGE } from '../../theme/layout';
 
 type Step = 'balance' | 'pay' | 'spending' | 'bills';
 const STEPS: Step[] = ['balance', 'pay', 'spending', 'bills'];
@@ -260,7 +261,7 @@ export function Onboarding() {
   };
 
   return (
-    <Box component="main" sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
+    <Box component="main" sx={OUTSIDE_PAGE}>
       <Paper sx={{ width: '100%', maxWidth: 560, p: { xs: 3, sm: 4 } }}>
         <Stack spacing={1} sx={{ mb: 3, alignItems: 'center', textAlign: 'center' }}>
           <Wordmark height={44} />
@@ -461,8 +462,9 @@ export function Onboarding() {
                   // (said of an unticked one too, so its room is kept like the fields')
                   const first = inBalance(today, { every: 'months', n: 1, day: row.day });
                   return (
-                    // The fields are there from the start, beside the name (under it on a phone)
-                    // and hidden until it's ticked: ticking one moves no row under the pointer.
+                    // Beside the name the fields are there from the start, hidden until it's ticked:
+                    // ticking one moves no row under the pointer. On a phone they go under the name,
+                    // and an unticked bill takes one line, not the room of fields it doesn't show.
                     // Beside the name they're narrow, so the group carries the bill's name
                     <Box
                       key={bill.name}
@@ -481,41 +483,54 @@ export function Onboarding() {
                         label={bill.name}
                         sx={{ minHeight: { sm: 56 } }}
                       />
-                      <Stack
+                      <Box
                         role="group"
                         aria-label={bill.name}
-                        direction="row"
-                        spacing={2}
-                        sx={{ pl: { xs: 4, sm: 0 }, visibility: row.ticked ? 'visible' : 'hidden' }}
+                        sx={{
+                          pl: { xs: 4, sm: 0 },
+                          visibility: row.ticked ? 'visible' : 'hidden',
+                          display: { xs: row.ticked ? 'block' : 'none', sm: 'block' },
+                        }}
                       >
-                        <CurrencyInput
-                          label="Amount"
-                          value={row.amount}
-                          onChange={value => set({ amount: value })}
-                          error={wrong?.field === `bill-${at}`}
-                          helperText={
-                            wrongAt(`bill-${at}`) ?? (bill.varies ? 'About: it learns from what you pay' : undefined)
-                          }
-                          inputRef={wrong?.field === `bill-${at}` ? focused : undefined}
-                          sx={{ flex: 1 }}
-                        />
-                        <TextField
-                          select
-                          label="Due on"
-                          value={row.day}
-                          onChange={event => set({ day: Number(event.target.value) })}
-                          helperText={
-                            first ? `Its first, ${formatDay(first)}, is taken as already in your balance` : undefined
-                          }
-                          sx={{ flex: 1 }}
-                        >
-                          {Array.from({ length: 31 }, (_, day) => day + 1).map(day => (
-                            <MenuItem key={day} value={day}>
-                              {dayLabel(day)}
-                            </MenuItem>
-                          ))}
-                        </TextField>
-                      </Stack>
+                        <Stack direction="row" spacing={2}>
+                          <CurrencyInput
+                            label="Amount"
+                            value={row.amount}
+                            onChange={value => set({ amount: value })}
+                            error={wrong?.field === `bill-${at}`}
+                            helperText={
+                              wrongAt(`bill-${at}`) ?? (bill.varies ? 'About: it learns from what you pay' : undefined)
+                            }
+                            inputRef={wrong?.field === `bill-${at}` ? focused : undefined}
+                            sx={{ flex: 1 }}
+                          />
+                          <TextField
+                            select
+                            label="Due on"
+                            value={row.day}
+                            onChange={event => set({ day: Number(event.target.value) })}
+                            slotProps={{ select: { SelectDisplayProps: { 'aria-describedby': `bill-${at}-first` } } }}
+                            sx={{ flex: 1 }}
+                          >
+                            {Array.from({ length: 31 }, (_, day) => day + 1).map(day => (
+                              <MenuItem key={day} value={day}>
+                                {dayLabel(day)}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </Stack>
+                        {/* Under both fields, the width of the two: under the day alone it ran to five lines */}
+                        {first && (
+                          <Typography
+                            id={`bill-${at}-first`}
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: 'block', mt: 0.5, mx: 1.75 }}
+                          >
+                            Its first, {formatDay(first)}, is taken as already in your balance
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
                   );
                 })}
