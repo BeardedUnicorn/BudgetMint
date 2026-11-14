@@ -13,6 +13,7 @@ import {
   Box,
   Button,
   CircularProgress,
+  Divider,
   IconButton,
   InputAdornment,
   Stack,
@@ -192,39 +193,46 @@ export function SignInForm({
             size="small"
           />
         )}
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+        {/* The button the form is for, then the ways out of it on a line under it, their words at the fields' edges */}
+        <Stack spacing={0.5}>
           <Button
             type="submit"
             variant="contained"
+            fullWidth
             disabled={busy}
             startIcon={busy ? <CircularProgress size={16} color="inherit" /> : undefined}
           >
             {FORM_TITLES[mode]}
           </Button>
-          {mode === 'signIn' ? (
-            <>
-              {engine.signUp && (
-                <Button disabled={busy} onClick={() => switchTo('signUp')}>
-                  Create an account
-                </Button>
-              )}
-              {engine.resetPassword && (
-                <Button disabled={busy} onClick={() => switchTo('reset')}>
-                  Forgot password?
-                </Button>
-              )}
-            </>
-          ) : (
-            <Button disabled={busy} onClick={() => switchTo('signIn')}>
-              I have an account
-            </Button>
-          )}
+          <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', justifyContent: 'space-between', mx: -2 }}>
+            {mode === 'signIn' ? (
+              <>
+                {engine.signUp && (
+                  <Button disabled={busy} onClick={() => switchTo('signUp')}>
+                    Create an account
+                  </Button>
+                )}
+                {engine.resetPassword && (
+                  <Button disabled={busy} onClick={() => switchTo('reset')}>
+                    Forgot password?
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Button disabled={busy} onClick={() => switchTo('signIn')}>
+                I have an account
+              </Button>
+            )}
+          </Stack>
         </Stack>
         {engine.canUseGoogle && mode !== 'reset' && (
           <Box>
-            <GoogleSignInButton disabled={busy} onClick={() => void google()} />
+            <Divider sx={{ mb: 2, typography: 'caption', color: 'text.secondary' }}>or</Divider>
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <GoogleSignInButton disabled={busy} onClick={() => void google()} />
+            </Box>
             {googleAttempt !== null && (
-              <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center' }}>
+              <Stack direction="row" spacing={1} sx={{ mt: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <Typography variant="body2" color="text.secondary" role="status">
                   {onPhone ? 'Choose your Google account.' : 'Finish signing in in your browser.'}
                 </Typography>

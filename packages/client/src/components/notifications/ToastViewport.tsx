@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/notifications/ToastViewport.tsx @ 1623bee.
+// Adapted from TaskMint packages/client/src/components/notifications/ToastViewport.tsx @ 1623bee: its buttons are a finger's size on a touch screen.
 /**
  * The toasts, stacked in the bottom-right corner (newest at the bottom).
  * Clicking elsewhere never dismisses one; Escape dismisses the toast that has
@@ -16,6 +16,7 @@ import {
   InfoOutlined,
   WarningAmberOutlined,
 } from '@mui/icons-material';
+import { TOUCH } from '../../theme/media';
 
 export type Severity = 'success' | 'info' | 'warning' | 'error';
 
@@ -123,7 +124,8 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
                 key={action.label}
                 size="small"
                 onClick={() => onAction(action, toast.id)}
-                sx={{ color, minHeight: 28, py: 0.25, fontWeight: 600 }}
+                // Undo is what a toast is tapped for: a finger's size on a touch screen
+                sx={{ color, minHeight: 28, py: 0.25, fontWeight: 600, [TOUCH]: { minHeight: 44 } }}
               >
                 {action.label}
               </Button>
@@ -135,7 +137,13 @@ const ToastCard = memo(function ToastCard({ toast, onDismiss, onAction, onHold, 
         size="small"
         aria-label="Dismiss notification"
         onClick={() => onDismiss(toast.id)}
-        sx={{ minWidth: 32, minHeight: 32, mt: -0.5 }}
+        sx={{
+          minWidth: 32,
+          minHeight: 32,
+          mt: -0.5,
+          // A finger's size, drawn out into the card's padding so the cross stays where it was
+          [TOUCH]: { minWidth: 44, minHeight: 44, mt: -1.25, mr: -0.75 },
+        }}
       >
         <CloseIcon fontSize="small" />
       </IconButton>

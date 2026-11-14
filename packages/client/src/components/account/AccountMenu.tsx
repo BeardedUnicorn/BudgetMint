@@ -10,6 +10,7 @@ import { UnfoldMore as OpenIcon } from '@mui/icons-material';
 import { useAppDialogs } from '../../contexts/AppDialogsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useBudget } from '../../data/BudgetContext';
+import { FOCUS_RING } from '../../theme/layout';
 
 interface AccountMenuProps {
   collapsed: boolean;
@@ -49,7 +50,10 @@ export function AccountMenu({ collapsed, onPicked }: AccountMenuProps) {
         <ButtonBase
           aria-label={label}
           onClick={event => setAnchor(event.currentTarget)}
-          sx={{ width: '100%', justifyContent: 'flex-start', gap: 1, p: 1, borderRadius: 1, textAlign: 'left' }}
+          sx={[
+            { width: '100%', justifyContent: 'flex-start', gap: 1, p: 1, borderRadius: 1, textAlign: 'left' },
+            FOCUS_RING,
+          ]}
         >
           {avatar}
           <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }}>

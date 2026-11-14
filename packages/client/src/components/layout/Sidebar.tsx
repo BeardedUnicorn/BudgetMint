@@ -21,6 +21,7 @@ import { VIEWS, VIEW_LABELS, type SidebarView } from '../../navigation/views';
 import { getShell } from '../../shell';
 import { HOVER } from '../../theme/media';
 import { Wordmark } from '../ui/display/Wordmark';
+import { FOCUS_RING } from '../../theme/layout';
 
 export type { SidebarView };
 
@@ -118,7 +119,7 @@ export function Sidebar({
                 onViewChange('overview');
                 onClose?.();
               }}
-              sx={{ borderRadius: 1 }}
+              sx={[{ borderRadius: 1 }, FOCUS_RING]}
             >
               <Wordmark height={28} />
             </ButtonBase>
