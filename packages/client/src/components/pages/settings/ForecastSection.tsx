@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { ShowChart as ForecastIcon } from '@mui/icons-material';
 import { LIMITS } from '@budgetmint/contracts';
 import { useCoreQuery } from '../../../data/BudgetContext';
@@ -15,6 +15,7 @@ import { formatCents, formatWholeCents } from '../../../utils/money';
 import { BalanceDialog } from '../../budget/BalanceDialog';
 import { AmountSetting } from './AmountSetting';
 import { SettingsSection } from './SettingsSection';
+import { settingField, WORDS_AND_BUTTON } from './fieldStyles';
 
 const HORIZONS = [30, 60, 90, 180, 365].filter(
   days => days >= LIMITS.MIN_HORIZON_DAYS && days <= LIMITS.MAX_HORIZON_DAYS
@@ -29,8 +30,8 @@ export function ForecastSection() {
 
   return (
     <SettingsSection title="Forecast" icon={<ForecastIcon />}>
-      <Stack spacing={2} sx={{ maxWidth: 520 }}>
-        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+      <Stack spacing={2}>
+        <Box sx={WORDS_AND_BUTTON}>
           <Typography variant="body2" sx={{ flex: 1 }}>
             {balance
               ? `Starts from ${formatCents(balance.cents)}, your balance at the end of ${formatDay(balance.asOf)}.`
@@ -39,13 +40,13 @@ export function ForecastSection() {
           <Button variant="outlined" onClick={() => setEditing(true)}>
             {balance ? 'Update balance' : 'Set balance'}
           </Button>
-        </Stack>
+        </Box>
         <TextField
           select
           label="Looks ahead"
           value={settings.horizonDays}
           onChange={event => save(current => ({ ...current, horizonDays: Number(event.target.value) }))}
-          sx={{ maxWidth: 220 }}
+          sx={settingField(260)}
         >
           {[...new Set([...HORIZONS, settings.horizonDays])]
             .sort((a, b) => a - b)
@@ -60,17 +61,17 @@ export function ForecastSection() {
           cents={settings.lowBalanceCents}
           onSave={lowBalanceCents => save(current => ({ ...current, lowBalanceCents }))}
           helperText={`Days that end below it are marked Low (and below ${formatWholeCents(0)}, Below zero). Leave it empty for none.`}
-          sx={{ maxWidth: 260 }}
+          sx={settingField(260)}
         />
         <AmountSetting
           label="Everyday spending, a week"
           cents={settings.spendingWeeklyCents}
           onSave={spendingWeeklyCents => save(current => ({ ...current, spendingWeeklyCents }))}
           helperText="Food, fuel and the rest besides your bills: the forecast takes a day’s share out each day. Leave it empty for none."
-          sx={{ maxWidth: 260 }}
+          sx={settingField(260)}
         />
         {estimate && estimate.weeklyCents !== settings.spendingWeeklyCents && (
-          <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+          <Box sx={WORDS_AND_BUTTON}>
             <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
               By your balance updates over the last {estimate.days} days, you spend about{' '}
               {formatCents(estimate.weeklyCents)} a week besides your bills.
@@ -81,7 +82,7 @@ export function ForecastSection() {
             >
               Use it
             </Button>
-          </Stack>
+          </Box>
         )}
       </Stack>
       {editing && <BalanceDialog today={today} onClose={() => setEditing(false)} />}

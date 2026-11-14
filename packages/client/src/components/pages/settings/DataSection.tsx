@@ -80,7 +80,7 @@ export function DataSection() {
           This app can’t save files yet: download them from BudgetMint in a browser, signed in with this account.
         </Typography>
       )}
-      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 1 }}>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
         {canSaveFiles(shell) && (
           <>
             <Button variant="outlined" onClick={() => void save('backup')}>
