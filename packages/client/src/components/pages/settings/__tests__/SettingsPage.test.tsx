@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { forecastDoc, monthly, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
 import { createFakeShell } from '../../../../testing';
@@ -311,11 +311,16 @@ describe('settings', () => {
   });
 
   it('changes how TaskMint’s withdrawals count', async () => {
+    // Imported an hour before the tests' now, not the real one (which leaves it days old)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(TEST_NOW);
+    onTestFinished(() => clock.mockRestore());
     const { user, store } = await settings({
       forecast: forecastDoc({ asOfMs: TEST_NOW, lastImportMs: TEST_NOW - 3_600_000 }),
     });
     const taskmint = () => section('TaskMint');
-    expect(within(taskmint()).getByText(/Work logs last imported/)).toHaveTextContent('Published by TaskMint 4.2.0.');
+    const imported = within(taskmint()).getByText(/Work logs last imported/);
+    expect(imported).toHaveTextContent('Published by TaskMint 4.2.0.');
+    expect(imported).not.toHaveTextContent('may be out of date');
     const plan = () => settingsOf(store).taskmint;
 
     await user.click(within(taskmint()).getByLabelText('You withdraw'));
