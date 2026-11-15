@@ -88,8 +88,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![STARTED_AT_LOGIN]),
         ))
-        // The window's size and position from last time; the first time,
-        // it's centered (tauri.conf.json)
+        // The window's size and position from last time, maximized if it
+        // was; the first time, it's centered (tauri.conf.json)
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(crate::platform::os::window_state())

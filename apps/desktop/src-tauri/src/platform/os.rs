@@ -173,11 +173,13 @@ mod desktop {
     use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
     /// What the window-state plugin keeps of the window: its size and
-    /// position. Not whether it was maximized (restoring that could show a
-    /// window started hidden at login), nor whether it was showing
-    /// (window.rs decides).
+    /// position, and whether it was maximized (a maximized window keeps the
+    /// size it had before, to go back to). The plugin puts them back while
+    /// the window is still hidden, which leaves it hidden: maximizing shows
+    /// only once the window does. Not whether it was showing (window.rs
+    /// decides).
     pub fn window_state() -> StateFlags {
-        StateFlags::SIZE | StateFlags::POSITION
+        StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED
     }
 
     #[derive(Default)]
@@ -340,12 +342,12 @@ mod desktop {
             self.tray().is_some()
         }
 
-        /// Saves the window's size and position now. The plugin saves them
-        /// when the app quits, but not when an update restarts it or a
+        /// Saves the window's size, position and whether it's maximized
+        /// now. The plugin saves them when the app quits, but not when an update restarts it or a
         /// logout ends it, so they're saved each time it hides too.
         pub fn save_window_state(&self, app: &AppHandle) {
             if let Err(e) = app.save_window_state(window_state()) {
-                log::warn!("Failed to save the window's size and position: {}", e);
+                log::warn!("Failed to save the window's state: {}", e);
             }
         }
 
