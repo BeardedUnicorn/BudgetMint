@@ -1,5 +1,5 @@
-// Adapted from TaskMint apps/desktop/src/UpdatePrompt.tsx @ e804c3c.
-import { useEffect, useMemo } from 'react';
+// Adapted from TaskMint apps/desktop/src/UpdatePrompt.tsx @ a2b0156.
+import { useEffect } from 'react';
 import {
   Alert,
   Box,
@@ -12,14 +12,8 @@ import {
   LinearProgress,
   Typography,
 } from '@mui/material';
-import {
-  hasUserFacingChanges,
-  parseReleaseSection,
-  ReleaseNotes,
-  ReleaseNotesList,
-  releasesBetween,
-} from '@budgetmint/client/ui';
 import { APP_VERSION } from './appVersion';
+import { UpdateNotes, useReleasesSince } from './UpdateNotes';
 import {
   automaticCheckDue,
   updates,
@@ -86,38 +80,6 @@ function Progress({ progress }: { progress: DownloadProgress | null }) {
           : `Downloading… ${megabytes(progress.downloaded)}${total ? ` of ${megabytes(total)}` : ''}`}
       </Typography>
     </>
-  );
-}
-
-/** The releases an update brings: every one since the version running now, newest first. */
-function useReleasesSince(update: AvailableUpdate) {
-  return useMemo(
-    () => (update.changelog ? releasesBetween(update.changelog, update.currentVersion, update.version) : []),
-    [update.changelog, update.currentVersion, update.version]
-  );
-}
-
-/**
- * What the update brings. Some releases behind, that's each release since
- * this version (the feed's changelog), without those that changed nothing
- * a user would see; otherwise the new release's own notes.
- */
-function Notes({ update }: { update: AvailableUpdate }) {
-  const since = useReleasesSince(update);
-  const latest = useMemo(
-    () => (update.notes ? parseReleaseSection(update.version, update.notes) : null),
-    [update.version, update.notes]
-  );
-  const releases = since.filter(hasUserFacingChanges);
-  const several = since.length > 1 && releases.length > 0;
-  if (!several && !latest) return null;
-  return (
-    <Box sx={{ mt: 2, maxHeight: 360, overflow: 'auto' }}>
-      <Typography variant="subtitle2" component="h3" sx={{ fontWeight: 600, mb: 1 }}>
-        {several ? `What's new since ${update.currentVersion}` : "What's new"}
-      </Typography>
-      {several ? <ReleaseNotesList releases={releases} /> : latest && <ReleaseNotes release={latest} />}
-    </Box>
   );
 }
 
@@ -196,7 +158,7 @@ export function UpdatePrompt() {
           <Behind update={update} /> BudgetMint downloads the update, installs it and restarts. Your budget is in the
           cloud, so nothing is lost.
         </DialogContentText>
-        <Notes update={update} />
+        <UpdateNotes update={update} />
         {installing && (
           <Box sx={{ mt: 3 }}>
             <Progress progress={state.progress} />

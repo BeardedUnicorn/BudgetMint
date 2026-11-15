@@ -101,12 +101,52 @@ export function hasUserFacingChanges(release: ReleaseNotes): boolean {
   return release.groups.length > 0 || release.intro.some(line => line !== 'No user-facing changes.');
 }
 
-/**
- * The releases after `current` up to `latest`, newest first, from a
- * changelog's text: what an update from one to the other brings.
- */
-export function releasesBetween(text: string, current: string, latest: string): ReleaseNotes[] {
-  return parseChangelog(text).filter(
-    release => compareVersions(release.version, current) > 0 && compareVersions(release.version, latest) <= 0
+/** The releases after `from` up to `to`, in the order given: what an update from one to the other brings. */
+export function releasesSince(releases: ReleaseNotes[], from: string, to: string): ReleaseNotes[] {
+  return releases.filter(
+    release => compareVersions(release.version, from) > 0 && compareVersions(release.version, to) <= 0
   );
+}
+
+/** releasesSince, from a changelog's text (an update feed's), newest first. */
+export function releasesBetween(text: string, current: string, latest: string): ReleaseNotes[] {
+  return releasesSince(parseChangelog(text), current, latest);
+}
+
+/** "2 added · 1 fixed": how much a release changed, for a row that doesn't show its notes. */
+export function summarizeRelease(release: ReleaseNotes): string {
+  const counts = release.groups
+    .filter(group => group.items.length > 0)
+    .map(
+      ({ type, items }) => `${items.length} ${type ? type.toLowerCase() : items.length === 1 ? 'change' : 'changes'}`
+    );
+  if (counts.length > 0) return counts.join(' · ');
+  return hasUserFacingChanges(release) ? '' : 'No user-facing changes';
+}
+
+/** The changelog's headings, in its order. */
+const TYPE_ORDER = ['Added', 'Changed', 'Removed', 'Fixed', 'Security'];
+
+/**
+ * Several releases' notes as one: every bullet under its heading (Added,
+ * Changed…), the newest release's first. For an update many releases ahead,
+ * where what changed matters more than which release changed it.
+ */
+export function combineReleases(releases: ReleaseNotes[]): ReleaseNotes {
+  const groups = new Map<string, Set<string>>();
+  for (const release of releases) {
+    for (const { type, items } of release.groups) {
+      const all = groups.get(type) ?? new Set<string>();
+      for (const item of items) all.add(item);
+      groups.set(type, all);
+    }
+  }
+  // (A heading the changelog doesn't use, or bullets with none, go last)
+  const rank = (type: string) => (TYPE_ORDER.includes(type) ? TYPE_ORDER.indexOf(type) : TYPE_ORDER.length);
+  return {
+    version: releases[0].version,
+    date: null,
+    intro: [...new Set(releases.flatMap(release => release.intro))],
+    groups: [...groups].sort(([a], [b]) => rank(a) - rank(b)).map(([type, items]) => ({ type, items: [...items] })),
+  };
 }

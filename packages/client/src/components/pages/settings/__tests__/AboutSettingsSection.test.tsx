@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/pages/settings/__tests__/AboutSettingsSection.test.tsx @ e804c3c.
+// Adapted from TaskMint packages/client/src/components/pages/settings/__tests__/AboutSettingsSection.test.tsx @ a2b0156.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { AboutSettingsSection } from '../AboutSettingsSection';
@@ -65,8 +65,10 @@ describe('AboutSettingsSection', () => {
     // An older major version's releases stay folded under it
     expect(screen.queryByRole('button', { name: '1.0.0' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Version 1/ }));
-    fireEvent.click(screen.getByRole('button', { name: '1.0.0' }));
-    const region = screen.getByRole('region', { name: '1.0.0' });
+    // Each row says how much the release changed
+    expect(older).toHaveTextContent('1 added');
+    fireEvent.click(screen.getByRole('button', { name: '1.0.0 1 change' }));
+    const region = screen.getByRole('region', { name: '1.0.0 1 change' });
     expect(within(region).getByText('A bullet with no heading.')).toBeInTheDocument();
     expect(within(region).queryByRole('heading')).not.toBeInTheDocument();
   });

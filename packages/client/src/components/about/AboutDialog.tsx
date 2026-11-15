@@ -14,7 +14,9 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { getShell } from '../../shell';
 import { APP_VERSION } from '../../utils/appVersion';
 import { parseChangelog, type ReleaseNotes as Release } from '../../utils/changelog';
-import { ReleaseNotes } from '../ui/display/ReleaseNotes';
+import { releasesSinceUpdate, UPDATED_FROM_VERSION_KEY } from '../../hooks/useUpdatedNotice';
+import { readLocal } from '../../utils/localStore';
+import { ReleaseNotes, ReleaseNotesList } from '../ui/display/ReleaseNotes';
 import { Wordmark } from '../ui/display/Wordmark';
 
 export const REPOSITORY = 'https://github.com/BeardedUnicorn/BudgetMint';
@@ -32,8 +34,25 @@ export function releaseNotesFor(text: string, version: string): Release | null {
 /** This version's notes, from the changelog the release wrote before building it. */
 const THIS_RELEASE = releaseNotesFor(changelog, APP_VERSION);
 
-/** What's new in this version (nothing, for a build whose version the changelog hasn't yet). */
-export function WhatsNew({ release }: { release: Release | null }) {
+/**
+ * What's new in this version (nothing, for a build whose version the
+ * changelog hasn't yet). After an update from `from` that skipped releases,
+ * it's every release since that version.
+ */
+export function WhatsNew({ release, from = null }: { release: Release | null; from?: unknown }) {
+  const since = releasesSinceUpdate(from);
+  if (since.length > 1) {
+    return (
+      <Box>
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
+          What’s new since {String(from)}
+        </Typography>
+        <Box sx={{ maxHeight: 220, overflowY: 'auto', pr: 1 }}>
+          <ReleaseNotesList releases={since} />
+        </Box>
+      </Box>
+    );
+  }
   if (!release) return null;
   return (
     <Box>
@@ -127,7 +146,7 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
 
           {AboutUpdates ? <AboutUpdates /> : <HowItUpdates />}
 
-          <WhatsNew release={THIS_RELEASE} />
+          <WhatsNew release={THIS_RELEASE} from={readLocal<unknown>(UPDATED_FROM_VERSION_KEY, null)} />
 
           <Divider />
           <Stack
