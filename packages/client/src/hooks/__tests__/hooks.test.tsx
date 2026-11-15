@@ -328,8 +328,9 @@ describe('the widgets', () => {
     const plain = widgetDay(day, true);
     expect(plain.alert).toBeNull();
     expect(plain.dueThisWeekNote).toBe('0 bills');
-    expect(plain.withdrawal).toEqual({ amount: '—', note: 'None ahead' });
-    // What's past due comes first; what's paid already isn't listed
+    // Why there's no withdrawal to show, in short
+    expect(plain.withdrawal).toEqual({ amount: '—', note: 'Not connected' });
+    // What's past due comes first; what's paid, or counted in today's balance already, isn't listed
     const rent = overview.upcoming[0].occurrences[0];
     const paid = { ...rent, status: { state: 'done' as const, on: '2026-11-10', amountCents: 30_000 } };
     const listed = widgetDay(
@@ -337,7 +338,7 @@ describe('the widgets', () => {
         overview: {
           ...overview,
           overdue: [{ ...rent, name: 'Power', due: '2026-11-05', amountCents: 8_000 }],
-          upcoming: [{ ...overview.upcoming[0], occurrences: [paid, rent] }],
+          upcoming: [{ ...overview.upcoming[0], occurrences: [paid, { ...rent, inBalance: true }, rent] }],
         },
         goals,
       },

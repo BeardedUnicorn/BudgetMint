@@ -8,7 +8,7 @@
  */
 
 import { useEffect } from 'react';
-import type { GlanceDay, GoalView, OccurrenceView } from '@budgetmint/contracts';
+import type { ForecastState, GlanceDay, GoalView, OccurrenceView } from '@budgetmint/contracts';
 import { useCoreQuery } from '../data/BudgetContext';
 import { getShell } from '../shell';
 import { formatDay, formatRelativeDay, formatWeekday } from '../utils/dates';
@@ -21,6 +21,19 @@ export const WIDGET_DAYS = 7;
 export const WIDGET_ITEMS = 12;
 /** The snapshot's shape, which the widgets (widgets/Snapshot.kt) read. */
 export const WIDGET_SNAPSHOT_VERSION = 1;
+
+/**
+ * Why there's no withdrawal to show, in the two words the This week
+ * widget's cell has room for (the Overview's card says it in full:
+ * utils/taskmint's WITHDRAWALS_NOTE).
+ */
+const NO_WITHDRAWAL: Record<ForecastState, string> = {
+  checking: 'Checking…',
+  ready: 'None yet',
+  missing: 'Not connected',
+  newer: 'Update BudgetMint',
+  unreadable: 'Can’t be read',
+};
 
 export interface WidgetItem {
   name: string;
@@ -82,7 +95,10 @@ const goal = (view: GoalView): WidgetGoal => ({
 /** A day of core's glance, as the widgets show it. */
 export function widgetDay({ overview, goals }: GlanceDay, taskmintShown: boolean): WidgetDay {
   const { today, firstShort, firstLow, nextWithdrawal, dueThisWeek } = overview;
-  const open = overview.upcoming.flatMap(day => day.occurrences).filter(each => each.status.state === 'open');
+  // Still to come: not what's paid, nor what today's balance has counted already
+  const open = overview.upcoming
+    .flatMap(day => day.occurrences)
+    .filter(each => each.status.state === 'open' && !each.inBalance);
   return {
     date: today,
     safeToSpend: formatCents(overview.safeToSpend.cents),
@@ -107,7 +123,7 @@ export function widgetDay({ overview, goals }: GlanceDay, taskmintShown: boolean
               ? `Open now, in the bank ${formatDay(nextWithdrawal.arrivesOn)}`
               : `In the bank ${formatWeekday(nextWithdrawal.arrivesOn)}`,
           }
-        : { amount: '—', note: 'None ahead' },
+        : { amount: '—', note: NO_WITHDRAWAL[overview.taskmint.state] },
     items: [
       ...overview.overdue.map(each => item(each, today, true)),
       ...open.map(each => item(each, today, false)),

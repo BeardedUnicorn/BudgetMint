@@ -3,6 +3,8 @@ package com.budgetmint.android
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.view.WindowManager
@@ -75,6 +77,7 @@ class MainActivity : TauriActivity() {
     // was first started with
     if (savedInstanceState == null) pendingOpen = openTarget(intent)
     setShortcuts()
+    askForLocalNetwork()
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
       val density = resources.displayMetrics.density
       val bars = insets.getInsets(
@@ -114,18 +117,24 @@ class MainActivity : TauriActivity() {
 
   /**
    * What `intent` opens the app for: a shortcut's or a widget's own extra,
-   * or a tapped reminder's (the notification plugin puts the notification
-   * in its intent as JSON, and platform/os.rs put `open` in its extras).
-   * Only something shaped like one of the page's ids, which ignores the
-   * ones it doesn't know: any app can send this activity an intent.
+   * or a tapped reminder's. The notification plugin's tap intent says only
+   * which notification it was (its id, core's id for the reminder), so the
+   * page says what each reminder opens when it schedules them (Launch),
+   * and it's looked up here. Only something shaped like one of the page's
+   * ids, which ignores the ones it doesn't know: any app can send this
+   * activity an intent.
    */
   private fun openTarget(intent: Intent?): String? {
     if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
-    val target = intent.getStringExtra(EXTRA_OPEN)
-      ?: intent.getStringExtra(NOTIFICATION_EXTRA)?.let { notification ->
-        runCatching { JSONObject(notification).optJSONObject("extra")?.optString("open") }.getOrNull()
-      }
+    val target = intent.getStringExtra(EXTRA_OPEN) ?: reminderTarget(intent)
     return target?.takeIf { OPEN_TARGET.matches(it) }
+  }
+
+  private fun reminderTarget(intent: Intent): String? {
+    val id = intent.getIntExtra(NOTIFICATION_ID_EXTRA, Int.MIN_VALUE)
+    if (id == Int.MIN_VALUE) return null
+    val targets = deviceSettings.getString(REMINDER_TARGETS, null) ?: return null
+    return runCatching { JSONObject(targets).optString(id.toString()) }.getOrNull()
   }
 
   /** The launcher's long-press shortcuts: each opens the app for one thing. */
@@ -147,6 +156,18 @@ class MainActivity : TauriActivity() {
           shortcut("record", R.string.shortcut_record, R.drawable.ic_shortcut_spend),
         ),
       )
+    }
+  }
+
+  /**
+   * A debug build asks for the local network (src/debug's manifest says
+   * why), once: until it's allowed, the emulators and a dev server over
+   * Wi-Fi can't be reached. A release build never asks.
+   */
+  private fun askForLocalNetwork() {
+    if (!BuildConfig.DEBUG || Build.VERSION.SDK_INT < LOCAL_NETWORK_SINCE) return
+    if (checkSelfPermission(LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(arrayOf(LOCAL_NETWORK), 0)
     }
   }
 
@@ -374,6 +395,29 @@ class MainActivity : TauriActivity() {
       pendingOpen = null
       return target ?: ""
     }
+
+    /**
+     * What a tap on each scheduled reminder opens: `{ id: menu id }` as
+     * JSON (openTarget reads it). Added to the ones before: a reminder
+     * already shown is no longer among the scheduled, and is still there
+     * to tap. The oldest go once there are more than MAX_REMINDER_TARGETS.
+     */
+    @JavascriptInterface
+    fun setReminderTargets(targets: String) {
+      val kept = runCatching {
+        val all = JSONObject(deviceSettings.getString(REMINDER_TARGETS, null) ?: "{}")
+        val added = JSONObject(targets)
+        for (id in added.keys()) {
+          // Last in, so the newest are the ones kept
+          all.remove(id)
+          all.put(id, added.getString(id))
+        }
+        val ids = all.keys().asSequence().toList()
+        for (id in ids.dropLast(MAX_REMINDER_TARGETS)) all.remove(id)
+        all.toString()
+      }.getOrDefault(targets)
+      deviceSettings.edit().putString(REMINDER_TARGETS, kept).apply()
+    }
   }
 
   /**
@@ -399,9 +443,15 @@ class MainActivity : TauriActivity() {
 
     private const val EXTRA_OPEN = "com.budgetmint.android.OPEN"
 
-    /** Where tauri-plugin-notification's tap intent carries the notification (its spelling). */
-    private const val NOTIFICATION_EXTRA = "LocalNotficationObject"
+    /** Where tauri-plugin-notification's tap intent carries the notification's id. */
+    private const val NOTIFICATION_ID_EXTRA = "NotificationId"
+    private const val REMINDER_TARGETS = "reminderTargets"
+    private const val MAX_REMINDER_TARGETS = 200
     private val OPEN_TARGET = Regex("[a-z][a-z-]{0,31}")
+    private const val LOCAL_NETWORK = "android.permission.ACCESS_LOCAL_NETWORK"
+
+    /** Android 17 (API 37): the first to keep an app off the local network without it. */
+    private const val LOCAL_NETWORK_SINCE = 37
     private const val DEVICE_SETTINGS = "device"
     private const val SCREEN_PRIVATE = "screenPrivate"
 

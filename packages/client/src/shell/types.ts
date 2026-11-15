@@ -19,8 +19,8 @@ export interface ScheduledNotification {
   title: string;
   body: string;
   /**
-   * What a tap on it opens, where the shell can say (Android): one of the
-   * menu's ids (menuCommands.ts), as a click on that item would.
+   * What a tap on it opens, where the shell can do that (Android): one of
+   * the menu's ids (useMenuCommands.ts), as a click on that item would.
    */
   open?: string;
 }

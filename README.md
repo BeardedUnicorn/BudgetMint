@@ -336,9 +336,9 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   widget and a tapped reminder each open the app with one of the menu's ids
   (`useMenuCommands.ts`), which the page takes once the budget is open and
   does as the desktop's menu click (`tauriShell.ts` gives Android a `menu`
-  for it). A reminder's id travels in the notification's extras
-  (`platform/os.rs`), which the notification plugin puts in the tap's
-  intent.
+  for it). A tapped reminder's intent says only which notification it was,
+  so the page tells `MainActivity` what each reminder opens when it
+  schedules them, and that's looked up by the notification's id.
 - **Widgets** (`widgets/`, Jetpack Glance): Safe to spend, Coming up, This
   week and Savings goal. A widget is drawn with the app closed, and the
   budget's figures exist only in the webview, so the page sends them: core's
@@ -352,7 +352,11 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   turn, and kept off the lock screen (`res/xml-v36`).
 - No unencrypted traffic: `res/xml/network_security_config.xml` (Android is
   retiring `usesCleartextTraffic`), with a debug build's own in `src/debug`
-  for the dev server and the emulators.
+  for the dev server and the emulators. A debug build also has
+  `ACCESS_LOCAL_NETWORK` (`src/debug/AndroidManifest.xml`) and asks for it
+  at its first start: an app targeting Android 17 can't reach an address
+  on the local network without it, the emulators' `10.0.2.2` included
+  (requests time out, and sign-in says it can't reach Firebase).
 - Nothing on the device is backed up or moved to a new phone
   (`allowBackup="false"`, `res/xml/data_extraction_rules.xml`): the
   webview's storage holds the sign-in and the device's copy of the budget,
