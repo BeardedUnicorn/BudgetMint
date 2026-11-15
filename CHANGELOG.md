@@ -8,6 +8,21 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.7.0 – 2026-11-15
+
+### Added
+
+- After an update, BudgetMint says so once ("Updated to BudgetMint 2.7.0") with a way to what's new. When the update skipped releases, About BudgetMint shows what's new since the version you had, release by release.
+
+### Changed
+
+- The desktop's update prompt can show several releases' notes by release or all together by type (Added, Fixed…); from five releases behind it starts by type.
+- Each earlier release in Settings → About says how much it changed ("2 added · 1 fixed") before you open it.
+
+### Fixed
+
+- A link in the release notes shows as its text, not as raw Markdown.
+
 ## 2.6.0 – 2026-11-15
 
 ### Added
