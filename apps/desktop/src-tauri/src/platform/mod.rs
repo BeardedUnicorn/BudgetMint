@@ -32,6 +32,9 @@ pub struct AvailableUpdate {
     pub current_version: String,
     /// The release's notes: its CHANGELOG section, as Markdown.
     pub notes: Option<String>,
+    /// Every release's notes, newest first: the CHANGELOG's sections, as
+    /// Markdown. The app shows the ones since the version running now.
+    pub changelog: Option<String>,
     /// When it was published (RFC 3339).
     pub date: Option<String>,
 }

@@ -5,14 +5,13 @@
  */
 
 import { useEffect } from 'react';
-import { Box, Button, Link, Typography } from '@mui/material';
-import { Info as AboutIcon, Palette as AppearanceIcon } from '@mui/icons-material';
+import { Box } from '@mui/material';
+import { Palette as AppearanceIcon } from '@mui/icons-material';
 import { useAppExtensions } from '../../../app/extensions';
-import { useAppDialogs } from '../../../contexts/AppDialogsContext';
 import { useNavigation } from '../../../contexts/NavigationContext';
 import { getShell } from '../../../shell';
-import { APP_VERSION } from '../../../utils/appVersion';
 import { PageContainer, PageHeader } from '../../layout/PageLayout';
+import { AboutSettingsSection } from './AboutSettingsSection';
 import { AccountSection } from './AccountSection';
 import { BankAccountsSection } from './BankAccountsSection';
 import { DataSection } from './DataSection';
@@ -28,7 +27,6 @@ import { SETTINGS_WIDTH } from './fieldStyles';
 export function SettingsPage() {
   const { settingsSections = [] } = useAppExtensions();
   const { params, clearParams } = useNavigation();
-  const dialogs = useAppDialogs();
 
   useEffect(() => {
     if (!params.section) return;
@@ -76,18 +74,7 @@ export function SettingsPage() {
           </Box>
         ))}
         <Box id="settings-about">
-          <SettingsSection title="About" icon={<AboutIcon />}>
-            <Typography variant="body2">BudgetMint {APP_VERSION}: your bills, income and the balance ahead.</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Open source under the MIT license.{' '}
-              <Link href="https://github.com/BeardedUnicorn/BudgetMint" target="_blank" rel="noreferrer">
-                Source and releases
-              </Link>
-            </Typography>
-            <Button variant="outlined" sx={{ mt: 2 }} onClick={() => dialogs.open('about')}>
-              About BudgetMint…
-            </Button>
-          </SettingsSection>
+          <AboutSettingsSection />
         </Box>
       </Box>
     </PageContainer>

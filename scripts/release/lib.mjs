@@ -137,6 +137,13 @@ export function extractSection(changelog, version) {
     .trim();
 }
 
+/** Every release's section, newest first, without the file's own header ('' with no release yet). */
+export function releaseSections(changelog) {
+  const lines = changelog.split('\n');
+  const first = lines.findIndex(line => HEADING.test(line));
+  return first === -1 ? '' : lines.slice(first).join('\n').trim();
+}
+
 // The version in each kind of manifest. Each edit replaces only the version
 // text, so the file's formatting is kept.
 
@@ -378,9 +385,11 @@ export function releaseDownloadUrl(repository, version) {
 /**
  * latest.json: the version, its notes and date, and for each desktop target
  * its update's address and signature (`signatures`: the .sig files' text,
- * by target).
+ * by target). `changelog` is every release's section, so that an app some
+ * releases behind can show what each one brought; the updater itself reads
+ * only the rest.
  */
-export function updateManifest({ product, version, notes, pubDate, downloadUrl, signatures }) {
+export function updateManifest({ product, version, notes, changelog, pubDate, downloadUrl, signatures }) {
   const platforms = {};
   for (const target of DESKTOP_TARGETS) {
     const signature = signatures[target]?.trim();
@@ -388,7 +397,7 @@ export function updateManifest({ product, version, notes, pubDate, downloadUrl, 
     const { file } = updateAssetNames(product, version, target);
     platforms[UPDATES[target].platform] = { signature, url: `${downloadUrl}/${file}` };
   }
-  return { version, notes, pub_date: pubDate, platforms };
+  return { version, notes, changelog, pub_date: pubDate, platforms };
 }
 
 // Minisign, as the updater checks it: a public key is "Ed", its 8-byte key

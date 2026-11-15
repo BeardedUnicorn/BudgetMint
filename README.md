@@ -246,6 +246,10 @@ Rust side does this with `tauri-plugin-updater` (`src/platform/os.rs`,
 `apps/desktop/src/updates.ts`, `UpdatePrompt.tsx` and
 `settings/UpdatesSection.tsx`. A development build checks but won't install.
 
+Besides the new version's own notes, `latest.json` carries every release's
+notes (`changelog`: the CHANGELOG's sections). An app several releases
+behind shows what each release since its own brought, not only the newest.
+
 Updates are signed with BudgetMint's own minisign key (not TaskMint's):
 
 - The public key is `plugins.updater.pubkey` in

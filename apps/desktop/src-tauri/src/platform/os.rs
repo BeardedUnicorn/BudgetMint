@@ -415,6 +415,7 @@ mod desktop {
                 version: update.version.clone(),
                 current_version: update.current_version.clone(),
                 notes: update.body.clone(),
+                changelog: update.raw_json["changelog"].as_str().map(str::to_string),
                 date: update.raw_json["pub_date"].as_str().map(str::to_string),
             });
             *self.update.lock().unwrap_or_else(|e| e.into_inner()) = found;
