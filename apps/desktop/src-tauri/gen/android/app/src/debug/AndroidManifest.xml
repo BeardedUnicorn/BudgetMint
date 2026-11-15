@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BudgetMint: a debug build talks to this computer (the Firebase emulators
+     at 10.0.2.2, the dev server over Wi-Fi from a phone). An app targeting
+     Android 17 needs this permission for any address on the local network:
+     without it those requests time out. MainActivity asks for it at the
+     first start. A release build talks only to Firebase, and doesn't have it. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+</manifest>

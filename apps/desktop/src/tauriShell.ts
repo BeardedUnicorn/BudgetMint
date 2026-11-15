@@ -96,6 +96,12 @@ interface AndroidScreen {
 interface AndroidLaunch {
   /** The id waiting, once ('' when there's none). */
   take(): string;
+  /**
+   * What a tap on each reminder opens: `{ [reminder id]: menu id }` as
+   * JSON. A tapped notification's intent says only which one it was, so
+   * MainActivity keeps this to look it up, with the app closed too.
+   */
+  setReminderTargets(targets: string): void;
 }
 
 /** What Android's MainActivity.kt adds for the home screen's widgets. */
@@ -241,7 +247,15 @@ export function createTauriShell(capabilities: Capabilities, google?: GoogleDesk
     platform: {
       notifications: {
         request: () => command<boolean>('request_notifications'),
-        schedule: reminders => command<void>('schedule_reminders', { reminders }),
+        // What a tap opens stays with Android (MainActivity looks it up); the rest is the Rust side's
+        schedule: reminders => {
+          window.BudgetMintLaunch?.setReminderTargets(
+            JSON.stringify(Object.fromEntries(reminders.flatMap(({ id, open }) => (open ? [[id, open]] : []))))
+          );
+          return command<void>('schedule_reminders', {
+            reminders: reminders.map(({ id, atMs, title, body }) => ({ id, atMs, title, body })),
+          });
+        },
         show: (title, body) => command<void>('show_notification', { title, body }),
         firesWhenClosed: mobile,
       },

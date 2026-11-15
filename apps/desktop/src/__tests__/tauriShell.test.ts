@@ -35,7 +35,8 @@ describe('the Tauri shell', () => {
       shell.platform;
     expect(notifications.firesWhenClosed).toBe(false);
     await notifications.request();
-    await notifications.schedule([{ id: 1, atMs: 2, title: 'Rent', body: '$1' }]);
+    // What a tap opens isn't the Rust side's: only Android's bridge takes it
+    await notifications.schedule([{ id: 1, atMs: 2, title: 'Rent', body: '$1', open: 'go-bills' }]);
     await notifications.show('A test', 'It works');
     await tray!.setStatus(['Today: $1.00']);
     await autostart!.isEnabled();
@@ -134,6 +135,7 @@ describe('the Tauri shell', () => {
         waiting = '';
         return id;
       }),
+      setReminderTargets: vi.fn(),
     };
     const screen = { isPrivate: vi.fn(() => true), setPrivate: vi.fn() };
     const widgets = { set: vi.fn() };
@@ -146,6 +148,13 @@ describe('the Tauri shell', () => {
     expect(screen.setPrivate).toHaveBeenCalledWith(false);
     platform.widgets!.set('{"days":[]}');
     expect(widgets.set).toHaveBeenCalledWith('{"days":[]}');
+
+    // What a tap on each reminder opens, for MainActivity to look up by the notification's id
+    await platform.notifications.schedule([
+      { id: 7, atMs: 1, title: 'Rent', body: '$1', open: 'go-bills' },
+      { id: 8, atMs: 2, title: 'Test', body: '' },
+    ]);
+    expect(launch.setReminderTargets).toHaveBeenCalledWith('{"7":"go-bills"}');
 
     // A shortcut started the app: its id waits for the budget (sign-in, loading)
     const first = vi.fn();

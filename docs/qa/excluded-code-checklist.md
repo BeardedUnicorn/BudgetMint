@@ -402,7 +402,10 @@ signing") unless a step says otherwise:
       open. Signed out, the app opens on the sign-in screen and nothing
       more happens.
 - [ ] **A reminder's tap** opens Bills (a bill's), Income (income's) or
-      the Forecast (a low balance's), with the app closed and with it open.
+      the Forecast (a low balance's), with the app closed and with it open,
+      also for a reminder shown before the app last ran. (With two or more
+      showing, Android groups them: a tap on the group's header only opens
+      the app; expand it and tap one.)
 - [ ] **Widgets:** the launcher's widget list shows Safe to spend, Coming
       up, This week and Savings goal under BudgetMint. Added, each shows
       what the Overview (or Savings) does; marking a bill paid in the app
@@ -418,10 +421,12 @@ signing") unless a step says otherwise:
       screenshots and recent apps on, a screenshot is refused (or blank)
       and Recents shows no preview, also right after a cold start; off,
       both work again.
-- [ ] **Dev build on a phone (Android 17):** `pnpm tauri android dev` on a
-      phone over Wi-Fi loads the page. If it stays blank with a network
-      error, the debug build needs `ACCESS_LOCAL_NETWORK` (targeting API 37
-      asks for it for the local network): add it in `src/debug`'s manifest.
+- [ ] **Dev build (Android 17):** a debug build asks once to "find,
+      connect to, and determine the relative position of nearby devices"
+      (the local network: `src/debug`'s manifest says why). Allowed, it
+      signs in against the Firebase emulators (`10.0.2.2`); refused, sign-in
+      says "Can't reach Firebase". A release APK never asks
+      (`aapt2 dump permissions` lists no `ACCESS_LOCAL_NETWORK`).
 
 ## Windows
 
