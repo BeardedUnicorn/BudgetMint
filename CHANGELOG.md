@@ -8,6 +8,16 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.6.0 – 2026-11-15
+
+### Added
+
+- Settings → About lists the earlier releases and what each one brought, folded under their major versions (Version 2, Version 1), five at a time.
+
+### Changed
+
+- A desktop update that skips several releases shows what each one brought, not only the newest: the prompt lists every release since the version you have, and says how many you're behind. This starts with updates from this version on.
+
 ## 2.5.0 – 2026-11-15
 
 ### Added
