@@ -469,8 +469,28 @@ describe('privacy', () => {
     expect(shell.platform.analytics.setEnabled).toHaveBeenLastCalledWith(true);
   });
 
-  it('has no Privacy section where the shell has no analytics (the desktop)', async () => {
-    await settings({ shell: createFakeShell({ without: ['analytics'] }) });
+  it('keeps the app out of screenshots and recent apps where the shell can (Android), as the device has it', async () => {
+    const shell = createFakeShell({ without: ['analytics'] });
+    vi.mocked(shell.platform.screenPrivacy.isOn).mockReturnValue(true);
+    const { user } = await settings({ shell });
+    const privacy = within(section('Privacy'));
+    expect(privacy.queryByRole('switch', { name: 'Share usage statistics' })).not.toBeInTheDocument();
+    const toggle = privacy.getByRole('switch', { name: 'Hide BudgetMint in screenshots and recent apps' });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(shell.platform.screenPrivacy.set).toHaveBeenLastCalledWith(false);
+  });
+
+  it('has only usage statistics where the shell has no screen privacy (the web)', async () => {
+    await settings({ shell: createFakeShell({ without: ['screenPrivacy'] }) });
+    const privacy = within(section('Privacy'));
+    expect(privacy.getByRole('switch', { name: 'Share usage statistics' })).toBeInTheDocument();
+    expect(privacy.queryByRole('switch', { name: /screenshots/ })).not.toBeInTheDocument();
+  });
+
+  it('has no Privacy section where the shell has neither (the desktop)', async () => {
+    await settings({ shell: createFakeShell({ without: ['analytics', 'screenPrivacy'] }) });
     expect(screen.queryByRole('heading', { name: 'Privacy' })).not.toBeInTheDocument();
   });
 });

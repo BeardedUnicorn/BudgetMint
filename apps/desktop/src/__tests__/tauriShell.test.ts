@@ -16,6 +16,10 @@ afterEach(() => {
   delete window.BudgetMintAnalytics;
   delete window.__budgetmintGoogleSignIn;
   delete window.__budgetmintInsets;
+  delete window.BudgetMintScreen;
+  delete window.BudgetMintLaunch;
+  delete window.BudgetMintWidgets;
+  delete window.__budgetmintLaunch;
 });
 
 describe('the Tauri shell', () => {
@@ -67,6 +71,9 @@ describe('the Tauri shell', () => {
     expect(platform.systemBars).toBeUndefined();
     expect(platform.splashScreen).toBeUndefined();
     expect(platform.analytics).toBeUndefined();
+    expect(platform.screenPrivacy).toBeUndefined();
+    expect(platform.menu).toBeUndefined();
+    expect(platform.widgets).toBeUndefined();
     // Android's document picker, through the same command; false when it's cancelled
     mockInvoke.mockResolvedValueOnce(false);
     expect(await platform.saveFile!('budget.csv', 'a,b', 'text/csv')).toBe(false);
@@ -117,6 +124,54 @@ describe('the Tauri shell', () => {
     expect(await platform.googleSignIn!()).toBe('android-token');
     picker.start.mockImplementationOnce(() => window.__budgetmintGoogleSignIn!({ error: 'Cancelled' }));
     await expect(platform.googleSignIn!()).rejects.toBe('Cancelled');
+  });
+
+  it('on Android: screen privacy, the widgets, and what the app was opened for once the budget is open', async () => {
+    let waiting = 'new-bill';
+    const launch = {
+      take: vi.fn(() => {
+        const id = waiting;
+        waiting = '';
+        return id;
+      }),
+    };
+    const screen = { isPrivate: vi.fn(() => true), setPrivate: vi.fn() };
+    const widgets = { set: vi.fn() };
+    window.BudgetMintScreen = screen;
+    window.BudgetMintLaunch = launch;
+    window.BudgetMintWidgets = widgets;
+    const { platform } = createTauriShell({ runtime: 'mobile' });
+    expect(platform.screenPrivacy!.isOn()).toBe(true);
+    platform.screenPrivacy!.set(false);
+    expect(screen.setPrivate).toHaveBeenCalledWith(false);
+    platform.widgets!.set('{"days":[]}');
+    expect(widgets.set).toHaveBeenCalledWith('{"days":[]}');
+
+    // A shortcut started the app: its id waits for the budget (sign-in, loading)
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = platform.menu!.subscribe(first);
+    window.__budgetmintLaunch!();
+    expect(launch.take).not.toHaveBeenCalled();
+    // The budget opens, and the listeners subscribing with it hear the id, once
+    platform.menu!.setBudgetOpen(true);
+    platform.menu!.subscribe(second);
+    await Promise.resolve();
+    expect(first).toHaveBeenCalledWith('new-bill');
+    expect(second).toHaveBeenCalledWith('new-bill');
+    // While it runs, MainActivity says when there's another; nothing waiting is nothing
+    waiting = 'go-forecast';
+    stopFirst();
+    window.__budgetmintLaunch!();
+    window.__budgetmintLaunch!();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second.mock.calls).toEqual([['new-bill'], ['go-forecast']]);
+    // Signed out: the next one waits again
+    platform.menu!.setBudgetOpen(false);
+    await Promise.resolve();
+    waiting = 'record';
+    window.__budgetmintLaunch!();
+    expect(second).toHaveBeenCalledTimes(2);
   });
 });
 

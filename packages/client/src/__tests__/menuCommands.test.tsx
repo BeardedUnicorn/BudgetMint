@@ -50,6 +50,12 @@ describe('the menu bar', () => {
     await user.keyboard('{Escape}');
     await noDialog();
 
+    // Android's shortcut for a one-off spend
+    click('record');
+    expect(await screen.findByRole('dialog', { name: 'Record a one-off' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await noDialog();
+
     // Not one of the app's: the shell does it, or nobody does
     click('quit');
     expect(page('Overview')).toBeInTheDocument();

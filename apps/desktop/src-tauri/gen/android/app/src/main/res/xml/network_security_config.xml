@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BudgetMint: no unencrypted traffic (Android is retiring the manifest's
+     usesCleartextTraffic for this file). A debug build has its own
+     (src/debug), for the dev server and the Firebase emulators. -->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

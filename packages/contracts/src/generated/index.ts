@@ -34,6 +34,8 @@ export type { ForecastStatus } from "./ForecastStatus";
 export type { ForecastView } from "./ForecastView";
 export type { FormField } from "./FormField";
 export type { FutureEarnings } from "./FutureEarnings";
+export type { GlanceArgs } from "./GlanceArgs";
+export type { GlanceDay } from "./GlanceDay";
 export type { GoalPart } from "./GoalPart";
 export type { GoalView } from "./GoalView";
 export type { GoalsView } from "./GoalsView";

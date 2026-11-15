@@ -16,14 +16,16 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
-    <!-- AndroidTV support -->
-    <uses-feature android:name="android.software.leanback" android:required="false" />
-
+    <!-- BudgetMint: no backups (res/xml/data_extraction_rules.xml says why);
+         allowBackup covers Android 11 and earlier, the rules 12 and later. -->
     <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:targetApi="s"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.budgetmint"
-        android:usesCleartextTraffic="${usesCleartextTraffic}">
+        android:networkSecurityConfig="@xml/network_security_config">
         <!-- BudgetMint: Analytics collects no advertising ID, and its data isn't
              for personalised ads. -->
         <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
@@ -43,8 +45,61 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <!-- AndroidTV support -->
-                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- BudgetMint: the home screen's widgets (widgets/Widgets.kt), and the
+             screen that picks a Savings goal widget's goal. -->
+        <receiver
+            android:name=".widgets.SafeToSpendReceiver"
+            android:label="@string/widget_safe_to_spend"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_safe_to_spend" />
+        </receiver>
+        <receiver
+            android:name=".widgets.ComingUpReceiver"
+            android:label="@string/widget_coming_up"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_coming_up" />
+        </receiver>
+        <receiver
+            android:name=".widgets.ThisWeekReceiver"
+            android:label="@string/widget_this_week"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_this_week" />
+        </receiver>
+        <receiver
+            android:name=".widgets.GoalReceiver"
+            android:label="@string/widget_goal"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_goal" />
+        </receiver>
+        <activity
+            android:name=".widgets.GoalConfigActivity"
+            android:theme="@style/Theme.budgetmint.Dialog"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
             </intent-filter>
         </activity>
 

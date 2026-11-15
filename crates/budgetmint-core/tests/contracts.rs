@@ -18,6 +18,7 @@ use budgetmint_core::earn::EarnToCover;
 use budgetmint_core::error::{FormField, Refusal};
 use budgetmint_core::forecast::contract::FORECAST_SCHEMA;
 use budgetmint_core::forecast::{ForecastDoc, ForecastState, ForecastStatus};
+use budgetmint_core::glance::GlanceDay;
 use budgetmint_core::goals::{GoalPart, GoalView, GoalsView};
 use budgetmint_core::model::*;
 use budgetmint_core::occur::{Estimate, ESTIMATE_FROM};
@@ -76,6 +77,7 @@ fn export_types(cfg: &Config) {
         SaveAccountArgs,
         ArchiveAccountArgs,
         AccountIdArgs,
+        GlanceArgs,
         AccountInput,
         RecordInput,
         OccRef,
@@ -122,6 +124,7 @@ fn export_types(cfg: &Config) {
         ScheduleDate,
         AccountView,
         AccountCard,
+        GlanceDay,
         // What a refused command throws
         Refusal,
         FormField,

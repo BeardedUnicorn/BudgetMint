@@ -30,11 +30,11 @@ export type SettingsSectionId =
 
 /**
  * What a page is opened for: a settings section, (Bills, Income) adding
- * one, or (from the menu bar) Overview's balance, or saving Your data's
- * backup or spreadsheet.
+ * one, or (from the menu bar, or an Android shortcut) Overview's balance or
+ * its one-off spend, or saving Your data's backup or spreadsheet.
  */
 export interface NavigationParams {
   section?: SettingsSectionId;
   add?: boolean;
-  open?: 'balance' | 'backup' | 'spreadsheet';
+  open?: 'balance' | 'record' | 'backup' | 'spreadsheet';
 }

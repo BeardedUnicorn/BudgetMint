@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BudgetMint: a home-screen widget (widgets/Widgets.kt): redrawn as res/xml's, and (Android 16 and later) kept off the lock screen: it shows amounts. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="3600000"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:description="@string/widget_goal_description"
+    android:widgetCategory="home_screen|not_keyguard"
+    android:configure="com.budgetmint.android.widgets.GoalConfigActivity"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BudgetMint: a home-screen widget (widgets/Widgets.kt): redrawn hourly, so the day's own shows once the day turns (WidgetData); the page redraws it sooner whenever the budget changes. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="40dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="1"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="3600000"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:description="@string/widget_safe_to_spend_description"
+    android:widgetCategory="home_screen" />

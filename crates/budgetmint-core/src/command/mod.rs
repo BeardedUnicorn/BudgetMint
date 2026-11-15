@@ -9,6 +9,7 @@ use crate::bank::{self, CsvColumns, StatementView};
 use crate::docs::{DocWrite, DocsApplied, IncomingDoc, Snapshot};
 use crate::error::CoreError;
 use crate::forecast::{ForecastDoc, ForecastStatus, TaskMint};
+use crate::glance::{self, GlanceDay};
 use crate::goals::{self, GoalsView};
 use crate::model::{Balance, Cents, Repeat, Settings, Weekends, MAIN_ACCOUNT};
 use crate::plan::{
@@ -69,6 +70,7 @@ pub enum Command {
     DeleteAccount(AccountIdArgs),
     GetAccountOverview(AccountIdArgs),
     GetAccountForecast(AccountIdArgs),
+    GetGlance(GlanceArgs),
 }
 
 macro_rules! command_types {
@@ -139,6 +141,7 @@ command_types! {
     "delete_account": AccountIdArgs => Planned,
     "get_account_overview": AccountIdArgs => Overview,
     "get_account_forecast": AccountIdArgs => ForecastView,
+    "get_glance": GlanceArgs => Vec<GlanceDay>,
 }
 
 /// `reply` read as a `T` and written back.
@@ -300,6 +303,14 @@ pub struct ScheduleDatesArgs {
 pub struct ScheduleDate {
     pub scheduled: NaiveDate,
     pub due: NaiveDate,
+}
+
+/// How many days a glance covers, today included (glance::MAX_GLANCE_DAYS at most).
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct GlanceArgs {
+    pub days: u8,
 }
 
 #[derive(Debug, Deserialize)]
@@ -599,6 +610,13 @@ pub fn execute(
         Command::ExportBudget(_) => to_value(crate::backup::export(snapshot, ctx)),
         Command::RestoreBudget(args) => to_value(plan::restore_budget(snapshot, &args.backup)?),
         Command::GetGoals(_) => to_value(goals::goals(snapshot, ctx)),
+        Command::GetGlance(args) => to_value(glance::glance(
+            snapshot,
+            forecast,
+            &taskmint.status,
+            ctx,
+            args.days,
+        )),
         Command::GetReport(args) => to_value(
             report::report(snapshot, forecast, &args.month, ctx)
                 .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,

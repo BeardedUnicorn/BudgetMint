@@ -26,6 +26,9 @@ pub struct Reminder {
     pub at_ms: i64,
     pub title: String,
     pub body: String,
+    /// What a tap on it opens (a phone's; see ScheduledNotification).
+    #[serde(default)]
+    pub open: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -148,6 +151,7 @@ pub fn schedule(
             at_ms: reminder.at_ms,
             title: reminder.title,
             body: reminder.body,
+            open: reminder.open,
         })?;
     }
     Ok(())
@@ -165,6 +169,7 @@ mod tests {
             at_ms,
             title: format!("Reminder {}", id),
             body: "Due".into(),
+            open: Some("go-bills".into()),
         }
     }
 
@@ -234,6 +239,8 @@ mod tests {
         assert_eq!(recorded.cancelled_all, 1);
         assert_eq!(recorded.scheduled.len(), 3);
         assert_eq!(recorded.scheduled[2].at_ms, 2_000);
+        // What a tap opens goes with it
+        assert_eq!(recorded.scheduled[2].open.as_deref(), Some("go-bills"));
         platform.fail("schedule");
         assert!(schedule(&scheduler, &platform, vec![reminder(3, 1)]).is_err());
         platform.fail("cancel");

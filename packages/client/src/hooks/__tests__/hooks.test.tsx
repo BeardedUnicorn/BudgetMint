@@ -5,6 +5,7 @@ import { item, monthly, startBudget } from '../../__tests__/setup/budget';
 import { createFakeShell, TEST_NOW } from '../../testing';
 import { shortcutAction, shortcutView, viewShortcut, modifierLabel, isMacPlatform } from '../useKeyboardShortcuts';
 import { LAST_RAN_INTERVAL_MS, LAST_RAN_KEY, reminderText, scheduled } from '../useReminders';
+import { type WidgetSnapshot, widgetDay } from '../useWidgetSnapshot';
 import { readLocal, writeLocal } from '../../utils/localStore';
 import { useSettings } from '../useSettingsChange';
 import { useTick } from '../../data/BudgetContext';
@@ -165,8 +166,15 @@ describe('reminders', () => {
     expect(
       reminderText(reminder({ kind: 'lowBalance', name: 'Savings', accountId: 'savings', short: true })).title
     ).toBe('Savings goes below zero');
+    // With the page a tap on it opens (Android)
     expect(scheduled([reminder({})])).toEqual([
-      { id: 7, atMs: 1, title: 'Rent is due in 3 days', body: '$1,200.00, Tue, Dec 1.' },
+      { id: 7, atMs: 1, title: 'Rent is due in 3 days', body: '$1,200.00, Tue, Dec 1.', open: 'go-bills' },
+    ]);
+    const opens = (kind: Reminder['kind']) => scheduled([reminder({ kind })])[0].open;
+    expect([opens('income'), opens('transfer'), opens('lowBalance')]).toEqual([
+      'go-income',
+      'go-overview',
+      'go-forecast',
     ]);
   });
 
@@ -252,6 +260,153 @@ describe('the tray', () => {
     const shell = createFakeShell();
     await startBudget({ shell, items: [monthly('rent', 'Rent', 12, 150_000)] });
     expect(vi.mocked(shell.platform.tray.setStatus).mock.lastCall![0].at(-1)).toBe('Short: -$2,000.00 on Sat, Dec 12');
+  });
+});
+
+describe('the widgets', () => {
+  const sent = (shell: ReturnType<typeof createFakeShell>): WidgetSnapshot =>
+    JSON.parse(vi.mocked(shell.platform.widgets.set).mock.lastCall![0]);
+
+  it('are sent a week of days in words, and nothing once signed out', async () => {
+    const shell = createFakeShell();
+    const { session } = await startBudget({
+      shell,
+      taskmint: false,
+      items: [
+        monthly('rent', 'Rent', 12, 150_000),
+        item({
+          id: 'pay',
+          kind: 'income',
+          name: 'Pay',
+          schedule: [
+            { from: '2026-11-11', until: null, repeat: { every: 'once' }, amountCents: 50_000, weekends: 'keep' },
+          ],
+        }),
+      ],
+    });
+    await waitFor(() => expect(shell.platform.widgets.set).toHaveBeenCalled());
+    const { version, days } = sent(shell);
+    expect(version).toBe(1);
+    expect(days.map(day => day.date)).toEqual([
+      '2026-11-10',
+      '2026-11-11',
+      '2026-11-12',
+      '2026-11-13',
+      '2026-11-14',
+      '2026-11-15',
+      '2026-11-16',
+    ]);
+    const [today, tomorrow] = days;
+    expect(today.balance).toBe('$1,000.00');
+    // Pay covers this month's rent; December's takes the balance below zero
+    expect(today.items).toEqual([
+      { name: 'Pay', amount: '$500.00', when: 'Tomorrow', tone: 'income' },
+      { name: 'Rent', amount: '$1,500.00', when: 'Thu, Nov 12', tone: 'bill' },
+    ]);
+    expect(today.alert).toEqual({ level: 'short', text: 'Below zero Sat, Dec 12' });
+    expect(today.dueThisWeekNote).toBe('1 bill');
+    expect(today.dueThisWeek).toBe('$1,500.00');
+    expect(today.comingIn).toBe('$500.00');
+    // Without TaskMint, no withdrawal
+    expect(today.withdrawal).toBeNull();
+    expect(today.goals).toEqual([]);
+    // The day after, as core would say it then with nothing changed since (Pay still not marked received)
+    expect(tomorrow.items[0]).toEqual({ name: 'Pay', amount: '$500.00', when: 'Today', tone: 'income' });
+    expect(tomorrow.alert).toEqual({ level: 'short', text: 'Below zero Tomorrow' });
+
+    await session.signOut();
+    await waitFor(() => expect(shell.platform.widgets.set).toHaveBeenLastCalledWith(''));
+  });
+
+  it('word a low day, TaskMint’s withdrawal and what’s saved up, and are left alone where there are none', async () => {
+    const { core } = await startBudget({
+      shell: createFakeShell({ without: ['widgets'] }),
+      items: [monthly('rent', 'Rent', 20, 30_000)],
+    });
+    const [day] = core.call('get_glance', { days: 1 });
+    const { overview, goals } = day;
+    const plain = widgetDay(day, true);
+    expect(plain.alert).toBeNull();
+    expect(plain.dueThisWeekNote).toBe('0 bills');
+    expect(plain.withdrawal).toEqual({ amount: '—', note: 'None ahead' });
+    // What's past due comes first; what's paid already isn't listed
+    const rent = overview.upcoming[0].occurrences[0];
+    const paid = { ...rent, status: { state: 'done' as const, on: '2026-11-10', amountCents: 30_000 } };
+    const listed = widgetDay(
+      {
+        overview: {
+          ...overview,
+          overdue: [{ ...rent, name: 'Power', due: '2026-11-05', amountCents: 8_000 }],
+          upcoming: [{ ...overview.upcoming[0], occurrences: [paid, rent] }],
+        },
+        goals,
+      },
+      false
+    );
+    expect(listed.items).toEqual([
+      { name: 'Power', amount: '$80.00', when: 'Thu, Nov 5', tone: 'overdue' },
+      { name: 'Rent', amount: '$300.00', when: 'Fri, Nov 20', tone: 'bill' },
+    ]);
+
+    const withdrawal = {
+      atMs: 0,
+      opensNow: true,
+      arrivesAtMs: 0,
+      arrivesOn: '2026-11-12',
+      money: { actualCents: 5_000, estimatedCents: 0, pastDueCents: 0, assumedCents: 0 },
+      totalCents: 5_000,
+    };
+    const goal = {
+      itemId: 'car',
+      name: 'Car insurance',
+      category: null,
+      scheduled: '2027-03-03',
+      due: '2027-03-03',
+      targetCents: 120_000,
+      setAsideCents: 90_000,
+      nextPart: { date: '2026-12-04', cents: 10_000 },
+      partsLeft: 3,
+      once: false,
+    };
+    const worded = widgetDay(
+      {
+        overview: { ...overview, firstLow: { date: '2026-11-20', cents: 100 }, nextWithdrawal: withdrawal },
+        goals: {
+          ...goals,
+          goals: [goal, { ...goal, itemId: 'trip', setAsideCents: 500, targetCents: 0, nextPart: null }],
+        },
+      },
+      true
+    );
+    expect(worded.alert).toEqual({ level: 'low', text: 'Low Fri, Nov 20' });
+    expect(worded.withdrawal).toEqual({ amount: '$50.00', note: 'Open now, in the bank Nov 12' });
+    expect(worded.goals).toEqual([
+      {
+        id: 'car',
+        name: 'Car insurance',
+        saved: '$900.00',
+        target: '$1,200.00',
+        percent: 75,
+        next: '$100.00 on Dec 4',
+      },
+      { id: 'trip', name: 'Car insurance', saved: '$5.00', target: '$0.00', percent: 100, next: 'All set aside' },
+    ]);
+    // Not open yet, and partly estimated
+    const later = widgetDay(
+      {
+        overview: {
+          ...overview,
+          nextWithdrawal: {
+            ...withdrawal,
+            opensNow: false,
+            money: { ...withdrawal.money, estimatedCents: 100 },
+          },
+        },
+        goals,
+      },
+      true
+    );
+    expect(later.withdrawal).toEqual({ amount: '~$50.00', note: 'In the bank Thu, Nov 12' });
   });
 });
 

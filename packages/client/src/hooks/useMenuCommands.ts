@@ -1,7 +1,9 @@
 /**
  * The desktop's menu bar and tray items that the app does (the shell's
  * `menu`): their ids, which the Rust side's menu.rs gives them too, and a
- * hook that acts on their clicks.
+ * hook that acts on their clicks. Android sends the same ids for what the
+ * app was opened for: a launcher shortcut, a widget or a reminder
+ * (MainActivity.kt), `record` among them, which only it sends.
  */
 
 import { useEffect, useRef } from 'react';
@@ -15,6 +17,7 @@ export const MENU = {
   newBill: 'new-bill',
   newIncome: 'new-income',
   updateBalance: 'update-balance',
+  record: 'record',
   importStatement: 'import-statement',
   downloadBackup: 'download-backup',
   downloadSpreadsheet: 'download-spreadsheet',

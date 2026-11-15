@@ -47,6 +47,8 @@ export function createFakeShell(
       }),
       setBudgetOpen: vi.fn(),
     },
+    screenPrivacy: { isOn: vi.fn(() => false), set: vi.fn() },
+    widgets: { set: vi.fn() },
   };
   for (const member of options.without ?? []) delete (platform as Partial<FakePlatform>)[member];
   const clickMenu = (id: string) => {

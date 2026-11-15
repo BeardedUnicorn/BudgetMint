@@ -474,6 +474,23 @@ export function verifyApkPackage({ output, name }) {
   }
 }
 
+/**
+ * Checks that `zipalign -c -P 16 -v 4` (its exit `status` and `output`) found
+ * the APK's native libraries aligned for 16 KB pages, which newer phones
+ * use: a library that isn't runs in a slower compatibility mode there, with
+ * a warning. Throws naming the files that failed.
+ */
+export function verifyApkAlignment({ status, output }) {
+  if (status === 0) return;
+  const bad = output
+    .split('\n')
+    .filter(line => /\(BAD/.test(line))
+    .map(line => line.trim());
+  throw new Error(
+    `The APK isn't aligned for 16 KB pages:\n${bad.length > 0 ? bad.join('\n') : output.trim() || `zipalign exited with ${status}`}`
+  );
+}
+
 // The release's checksums, so a download can be checked against the release
 // it came from.
 
