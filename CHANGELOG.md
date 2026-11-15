@@ -8,6 +8,24 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.5.0 – 2026-11-15
+
+### Added
+
+- Android: Settings → Privacy can keep BudgetMint out of screenshots, screen recordings and the recent apps' previews.
+- Android: a long press on BudgetMint's icon offers Add a bill, Update balance and Record spending.
+- Android: tapping a reminder opens the page it's about: Bills, Income, or the Forecast for a low balance.
+- Android: BudgetMint has a themed icon, so it follows your wallpaper's colours when themed icons are on. It no longer appears among Android TV's apps.
+- Android: four home-screen widgets. Safe to spend (with your balance, or the day it goes low), Coming up (what's overdue and the next two weeks), This week (due this week, coming in, TaskMint's next withdrawal) and Savings goal. They follow the budget for a week without the app being opened, and a tap opens BudgetMint.
+
+### Changed
+
+- The window opens maximized if it was maximized when you left it.
+
+### Security
+
+- Android: the app's sign-in and this device's copy of the budget are no longer included in Android's cloud backups or copied to a new phone. Sign in on the new phone and the budget comes back from your account.
+
 ## 2.4.2 – 2026-11-14
 
 ### Changed
