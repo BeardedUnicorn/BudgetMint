@@ -50,7 +50,12 @@ Note anything that fails with the build, the OS version and what you saw.
       `~/Library/Application Support/com.budgetmint.desktop`) the window is
       1280×860 and centered. Move and resize it, quit from the tray and
       launch again: it comes back where it was, at that size. Again after
-      closing it to the tray first, and after an update's restart. Move it
+      closing it to the tray first, and after an update's restart.
+      Maximize it, quit and launch again: it opens maximized, and
+      un-maximizing it gives the size it had before. Again after closing it
+      to the tray first. Maximized, quit and launch with `--hidden` (as Open
+      at login does): no window shows, and the tray's Open BudgetMint opens
+      it maximized. Move it
       to a second display, quit, disconnect the display and launch: the
       window is on the remaining display.
 - [ ] **The tray's lines.** Signed in with a balance, the tray menu shows
