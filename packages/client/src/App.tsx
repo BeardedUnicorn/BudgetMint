@@ -38,6 +38,7 @@ import { goTo, MENU, useMenuCommands } from './hooks/useMenuCommands';
 import { useReminders } from './hooks/useReminders';
 import { useSystemBarsTheme } from './hooks/useSystemBarsTheme';
 import { useTrayStatus } from './hooks/useTrayStatus';
+import { useUpdatedNotice } from './hooks/useUpdatedNotice';
 import { WidgetFeed } from './hooks/useWidgetSnapshot';
 import { VIEW_LABELS, VIEWS, type SidebarView } from './navigation/views';
 import { getShell } from './shell';
@@ -177,6 +178,7 @@ function BackgroundJobs() {
   const [, setCollapsed] = useLocalStorage(SIDEBAR_COLLAPSED_KEY, false);
   useReminders();
   useTrayStatus();
+  useUpdatedNotice();
   useAnalyticsScreens();
   useKeyboardShortcuts(getShell().capabilities.runtime === 'web', () => dialogs.open('shortcuts'));
 

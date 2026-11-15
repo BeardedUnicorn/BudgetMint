@@ -1,4 +1,4 @@
-// Adapted from TaskMint packages/client/src/components/pages/settings/AboutSettingsSection.tsx @ e804c3c.
+// Adapted from TaskMint packages/client/src/components/pages/settings/AboutSettingsSection.tsx @ a2b0156.
 import { useId, useState } from 'react';
 import {
   Accordion,
@@ -15,12 +15,14 @@ import {
 import { ExpandMore as ExpandMoreIcon, Info as AboutIcon } from '@mui/icons-material';
 import { useAppDialogs } from '../../../contexts/AppDialogsContext';
 import { SettingsSection } from './SettingsSection';
+import { PHONE } from '../../../theme/media';
 import { APP_VERSION, compareVersions } from '../../../utils/appVersion';
 import {
   groupReleasesByMajor,
   type MajorReleases,
   RELEASES,
   type ReleaseNotes as Release,
+  summarizeRelease,
 } from '../../../utils/changelog';
 import { ReleaseNotes } from '../../ui/display/ReleaseNotes';
 import { formatDayInYear } from '../../../utils/dates';
@@ -94,6 +96,7 @@ function MajorVersion({ group, defaultOpen }: { group: MajorReleases; defaultOpe
                 expandIcon={<ExpandMoreIcon />}
                 id={`release-${release.version}`}
                 aria-controls={`release-${release.version}-notes`}
+                sx={{ '& .MuiAccordionSummary-content': { flexWrap: 'wrap', alignItems: 'baseline' } }}
               >
                 <Typography variant="body2" sx={{ fontWeight: 600, mr: 2 }}>
                   {release.version}
@@ -103,6 +106,14 @@ function MajorVersion({ group, defaultOpen }: { group: MajorReleases; defaultOpe
                     {formatDayInYear(release.date)}
                   </Typography>
                 )}
+                {/* How much it changed: at the row's end, or on a phone under the version */}
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ ml: 'auto', pl: 2, mr: 1, [PHONE]: { flexBasis: '100%', ml: 0, pl: 0 } }}
+                >
+                  {summarizeRelease(release)}
+                </Typography>
               </AccordionSummary>
               <AccordionDetails id={`release-${release.version}-notes`}>
                 <ReleaseNotes release={release} />

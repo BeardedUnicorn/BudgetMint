@@ -137,11 +137,18 @@ export function extractSection(changelog, version) {
     .trim();
 }
 
-/** Every release's section, newest first, without the file's own header ('' with no release yet). */
-export function releaseSections(changelog) {
+/** How many releases' notes the update feed carries: enough for any update, without growing for good. */
+export const FEED_RELEASES = 30;
+
+/**
+ * The newest releases' sections (`limit` of them), newest first, without the
+ * file's own header ('' with no release yet).
+ */
+export function releaseSections(changelog, limit = FEED_RELEASES) {
   const lines = changelog.split('\n');
-  const first = lines.findIndex(line => HEADING.test(line));
-  return first === -1 ? '' : lines.slice(first).join('\n').trim();
+  const headings = lines.flatMap((line, index) => (HEADING.test(line) ? [index] : []));
+  if (headings.length === 0) return '';
+  return lines.slice(headings[0], headings[limit]).join('\n').trim();
 }
 
 // The version in each kind of manifest. Each edit replaces only the version

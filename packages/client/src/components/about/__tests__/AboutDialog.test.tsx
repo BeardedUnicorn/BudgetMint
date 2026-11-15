@@ -7,6 +7,8 @@ import { setShell } from '../../../shell';
 import { createFakeShell, createFakeStore, TEST_NOW, testCore } from '../../../testing';
 import { startBudget } from '../../../__tests__/setup/budget';
 import { APP_VERSION } from '../../../utils/appVersion';
+import { UPDATED_FROM_VERSION_KEY } from '../../../hooks/useUpdatedNotice';
+import { writeLocal } from '../../../utils/localStore';
 import {
   PRIVACY_URL,
   RELEASE_NOTES_URL,
@@ -105,6 +107,16 @@ describe('About BudgetMint', () => {
     expect(releaseNotesFor(changelog, '9.9.9')).toBeNull();
     const { container } = render(<WhatsNew release={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows every release since the version the last update came from', async () => {
+    // (0.0.1 is before every release, so the whole changelog is "since" it)
+    writeLocal<unknown>(UPDATED_FROM_VERSION_KEY, '0.0.1', null);
+    const { about } = await openAbout();
+    expect(within(about).getByRole('heading', { name: 'What’s new since 0.0.1' })).toBeInTheDocument();
+    expect(within(about).queryByRole('heading', { name: `What’s new in ${APP_VERSION}` })).not.toBeInTheDocument();
+    expect(within(about).getByRole('region', { name: APP_VERSION })).toBeInTheDocument();
+    expect(within(about).getByRole('region', { name: '1.0.0' })).toBeInTheDocument();
   });
 
   it('names the system for a report', () => {

@@ -467,11 +467,51 @@ describe('the update dialog', () => {
     expect(within(dialog).queryByText('Older still.')).not.toBeInTheDocument();
   });
 
+  it('shows the releases since this version by release or all together by type', async () => {
+    const dialog = await found({ ...release, changelog });
+    const grouped = within(dialog).getByRole('group', { name: 'How the notes are grouped' });
+    const byRelease = within(grouped).getByRole('button', { name: 'By release' });
+    const byType = within(grouped).getByRole('button', { name: 'By type' });
+    const headings = () =>
+      within(dialog)
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent);
+    // A few releases behind: by release
+    expect(byRelease).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(byType);
+    expect(byType).toHaveAttribute('aria-pressed', 'true');
+    expect(headings()).toEqual(['Added', 'Fixed']);
+    expect(within(dialog).getByText('A fix in between.')).toBeInTheDocument();
+    expect(within(dialog).getByText('latest.json')).toBeInTheDocument();
+    // Pressing the one chosen keeps it
+    fireEvent.click(byType);
+    expect(byType).toHaveAttribute('aria-pressed', 'true');
+    expect(headings()).toEqual(['Added', 'Fixed']);
+
+    fireEvent.click(byRelease);
+    expect(headings()).toEqual(['2.3.0 · Nov 20, 2026', '2.2.1 · Nov 18, 2026']);
+  });
+
+  it('starts by type from five releases behind', async () => {
+    const dialog = await found({ ...release, currentVersion: '2.0.0', changelog });
+    expect(dialog).toHaveTextContent('You have 2.0.0, 5 releases behind.');
+    expect(within(dialog).getByRole('button', { name: 'By type' })).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      within(dialog)
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent)
+    ).toEqual(['Added', 'Fixed']);
+    expect(within(dialog).getByText('Older still.')).toBeInTheDocument();
+    expect(within(dialog).getByText('What this version already has.')).toBeInTheDocument();
+  });
+
   it("shows the new release's own notes when it's the only one since", async () => {
     const dialog = await found({ ...release, currentVersion: '2.2.2', changelog });
     expect(dialog).toHaveTextContent('You have 2.2.2. BudgetMint downloads the update');
     expect(within(dialog).getByRole('heading', { name: "What's new" })).toBeInTheDocument();
     expect(within(dialog).queryByRole('heading', { level: 4, name: /2\.3\.0/ })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole('group', { name: 'How the notes are grouped' })).not.toBeInTheDocument();
     expect(within(dialog).getByRole('heading', { level: 4, name: 'Added' })).toBeInTheDocument();
   });
 
