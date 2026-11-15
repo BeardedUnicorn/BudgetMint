@@ -1,6 +1,6 @@
 /**
  * Settings: one page of sections (TaskMint's layout), with Privacy where the
- * shell has usage analytics, and the shell's own (the desktop's Updates)
+ * shell has usage analytics or screen privacy, and the shell's own (the desktop's Updates)
  * before About. A link can open it at a section.
  */
 
@@ -65,7 +65,7 @@ export function SettingsPage() {
             <RegionSettings />
           </SettingsSection>
         </Box>
-        {getShell().platform.analytics && (
+        {(getShell().platform.analytics || getShell().platform.screenPrivacy) && (
           <Box id="settings-privacy">
             <PrivacySection />
           </Box>

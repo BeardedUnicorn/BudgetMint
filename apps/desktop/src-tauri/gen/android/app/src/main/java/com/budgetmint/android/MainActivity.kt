@@ -1,12 +1,18 @@
 // Adapted from TaskMint apps/desktop/src-tauri/gen/android/app/src/main/java/com/taskmint/android/MainActivity.kt @ 5c802e7.
 package com.budgetmint.android
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.splashscreen.SplashScreenViewProvider
 import androidx.core.view.ViewCompat
@@ -20,6 +26,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.budgetmint.android.widgets.WidgetData
 import com.google.firebase.analytics.FirebaseAnalytics
 import org.json.JSONObject
 
@@ -47,11 +54,27 @@ class MainActivity : TauriActivity() {
   @Volatile private var edgeInsetsDp = floatArrayOf(0f, 0f, 0f, 0f)
   @Volatile private var keyboardInsetDp = 0f
 
+  /**
+   * BudgetMint: what the app was opened for (a launcher shortcut, a widget,
+   * a reminder that was tapped), as one of the page's menu ids
+   * (useMenuCommands.ts), until the page takes it (Launch).
+   */
+  @Volatile private var pendingOpen: String? = null
+
+  /** This device's own settings that hold before the page loads (screen privacy). */
+  private val deviceSettings get() = getSharedPreferences(DEVICE_SETTINGS, Context.MODE_PRIVATE)
+
   override fun onCreate(savedInstanceState: Bundle?) {
     val splashScreen = installSplashScreen()
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     applyBarsTheme()
+    // BudgetMint: before anything is drawn, so no preview of it is ever taken
+    applyScreenPrivacy(deviceSettings.getBoolean(SCREEN_PRIVATE, false))
+    // Not again when Android brings the activity back with the intent it
+    // was first started with
+    if (savedInstanceState == null) pendingOpen = openTarget(intent)
+    setShortcuts()
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
       val density = resources.displayMetrics.density
       val bars = insets.getInsets(
@@ -79,6 +102,58 @@ class MainActivity : TauriActivity() {
       if (pageDrawn) dismissSplash()
     }
     window.decorView.postDelayed({ onPageDrawn() }, SPLASH_TIMEOUT_MS)
+  }
+
+  /** Opened again while it runs: the page hears there's something to take. */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    val target = openTarget(intent) ?: return
+    pendingOpen = target
+    webView?.evaluateJavascript("window.__budgetmintLaunch && window.__budgetmintLaunch()", null)
+  }
+
+  /**
+   * What `intent` opens the app for: a shortcut's or a widget's own extra,
+   * or a tapped reminder's (the notification plugin puts the notification
+   * in its intent as JSON, and platform/os.rs put `open` in its extras).
+   * Only something shaped like one of the page's ids, which ignores the
+   * ones it doesn't know: any app can send this activity an intent.
+   */
+  private fun openTarget(intent: Intent?): String? {
+    if (intent == null || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+    val target = intent.getStringExtra(EXTRA_OPEN)
+      ?: intent.getStringExtra(NOTIFICATION_EXTRA)?.let { notification ->
+        runCatching { JSONObject(notification).optJSONObject("extra")?.optString("open") }.getOrNull()
+      }
+    return target?.takeIf { OPEN_TARGET.matches(it) }
+  }
+
+  /** The launcher's long-press shortcuts: each opens the app for one thing. */
+  private fun setShortcuts() {
+    val shortcut = { id: String, label: Int, icon: Int ->
+      ShortcutInfoCompat.Builder(this, id)
+        .setShortLabel(getString(label))
+        .setIcon(IconCompat.createWithResource(this, icon))
+        .setIntent(openIntent(this, id))
+        .build()
+    }
+    // Android keeps them between runs; a failure (a launcher without them) loses nothing
+    runCatching {
+      ShortcutManagerCompat.setDynamicShortcuts(
+        this,
+        listOf(
+          shortcut("new-bill", R.string.shortcut_new_bill, R.drawable.ic_shortcut_add),
+          shortcut("update-balance", R.string.shortcut_update_balance, R.drawable.ic_shortcut_balance),
+          shortcut("record", R.string.shortcut_record, R.drawable.ic_shortcut_spend),
+        ),
+      )
+    }
+  }
+
+  /** Screenshots, screen recordings and the recent apps' preview show nothing of the app, or do. */
+  private fun applyScreenPrivacy(on: Boolean) {
+    if (on) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
   }
 
   private fun onPageDrawn() {
@@ -124,6 +199,9 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(SystemBars(), "BudgetMintSystemBars")
     webView.addJavascriptInterface(GoogleSignIn(), "BudgetMintGoogleSignIn")
     webView.addJavascriptInterface(Analytics(), "BudgetMintAnalytics")
+    webView.addJavascriptInterface(Screen(), "BudgetMintScreen")
+    webView.addJavascriptInterface(Launch(), "BudgetMintLaunch")
+    webView.addJavascriptInterface(Widgets(), "BudgetMintWidgets")
     releaseFieldWhenKeyboardHides(webView)
   }
 
@@ -268,15 +346,73 @@ class MainActivity : TauriActivity() {
     }
   }
 
-  private companion object {
+  /**
+   * BudgetMint: Settings → Privacy can keep the app out of screenshots,
+   * screen recordings and the recent apps' previews (FLAG_SECURE, which
+   * from Android 17 is also the only way out of content capture). Kept
+   * here, not by the page, so it holds from the app's first frame.
+   */
+  private inner class Screen {
+    @JavascriptInterface
+    fun isPrivate(): Boolean = deviceSettings.getBoolean(SCREEN_PRIVATE, false)
+
+    @JavascriptInterface
+    fun setPrivate(on: Boolean) {
+      deviceSettings.edit().putBoolean(SCREEN_PRIVATE, on).apply()
+      runOnUiThread { applyScreenPrivacy(on) }
+    }
+  }
+
+  /**
+   * BudgetMint: what the app was opened for, taken once by the page when
+   * the budget is open (tauriShell.ts hands it on as a menu click).
+   */
+  private inner class Launch {
+    @JavascriptInterface
+    fun take(): String {
+      val target = pendingOpen
+      pendingOpen = null
+      return target ?: ""
+    }
+  }
+
+  /**
+   * BudgetMint: the home screen's widgets. The page sends what they show,
+   * worded, whenever the budget changes (useWidgetSnapshot.ts), and '' once
+   * signed out; WidgetData keeps it and draws them again.
+   */
+  private inner class Widgets {
+    @JavascriptInterface
+    fun set(snapshot: String) {
+      WidgetData.save(this@MainActivity, snapshot)
+    }
+  }
+
+  companion object {
+    /** The intent that opens the app for `target`, one of the page's menu ids (shortcuts, widgets). */
+    fun openIntent(context: Context, target: String): Intent =
+      Intent(context, MainActivity::class.java)
+        // Not ACTION_MAIN: the notification plugin reads those as its own
+        .setAction(Intent.ACTION_VIEW)
+        .putExtra(EXTRA_OPEN, target)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    private const val EXTRA_OPEN = "com.budgetmint.android.OPEN"
+
+    /** Where tauri-plugin-notification's tap intent carries the notification (its spelling). */
+    private const val NOTIFICATION_EXTRA = "LocalNotficationObject"
+    private val OPEN_TARGET = Regex("[a-z][a-z-]{0,31}")
+    private const val DEVICE_SETTINGS = "device"
+    private const val SCREEN_PRIVATE = "screenPrivate"
+
     /** Blurs the focused text field, if one is. */
-    const val RELEASE_FIELD =
+    private const val RELEASE_FIELD =
       "(() => { const field = document.activeElement; " +
         "if (field && field.matches('input, textarea, [contenteditable]')) field.blur(); })()"
-    const val SPLASH_FADE_MS = 250L
-    const val SPLASH_TIMEOUT_MS = 10_000L
+    private const val SPLASH_FADE_MS = 250L
+    private const val SPLASH_TIMEOUT_MS = 10_000L
 
     /** BudgetMint: the largest system font size the page's text follows. */
-    const val MAX_FONT_SCALE = 1.3f
+    private const val MAX_FONT_SCALE = 1.3f
   }
 }

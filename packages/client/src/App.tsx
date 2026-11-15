@@ -38,6 +38,7 @@ import { goTo, MENU, useMenuCommands } from './hooks/useMenuCommands';
 import { useReminders } from './hooks/useReminders';
 import { useSystemBarsTheme } from './hooks/useSystemBarsTheme';
 import { useTrayStatus } from './hooks/useTrayStatus';
+import { WidgetFeed } from './hooks/useWidgetSnapshot';
 import { VIEW_LABELS, VIEWS, type SidebarView } from './navigation/views';
 import { getShell } from './shell';
 import type { AppExtensions } from './shell/types';
@@ -167,8 +168,8 @@ function Ready() {
 
 /**
  * What runs behind the pages once signed in: reminders, the tray, the
- * system bars, the pages opened (for usage analytics), shortcuts, and the
- * menu bar's items for the budget.
+ * system bars, the pages opened (for usage analytics), shortcuts, the menu
+ * bar's items for the budget, and (Android) the home screen's widgets.
  */
 function BackgroundJobs() {
   const { navigate } = useNavigation();
@@ -195,6 +196,7 @@ function BackgroundJobs() {
     [MENU.newBill]: unlessOnTop(() => navigate('bills', { add: true })),
     [MENU.newIncome]: unlessOnTop(() => navigate('income', { add: true })),
     [MENU.updateBalance]: unlessOnTop(() => navigate('overview', { open: 'balance' })),
+    [MENU.record]: unlessOnTop(() => navigate('overview', { open: 'record' })),
     [MENU.importStatement]: unlessOnTop(() => navigate('settings', { section: 'data' })),
     [MENU.downloadBackup]: unlessOnTop(() => navigate('settings', { section: 'data', open: 'backup' })),
     [MENU.downloadSpreadsheet]: unlessOnTop(() => navigate('settings', { section: 'data', open: 'spreadsheet' })),
@@ -202,7 +204,7 @@ function BackgroundJobs() {
     [MENU.toggleSidebar]: () => setCollapsed(collapsed => !collapsed),
     ...Object.fromEntries(VIEWS.map(view => [goTo(view), unlessOnTop(() => navigate(view))])),
   });
-  return null;
+  return getShell().platform.widgets ? <WidgetFeed /> : null;
 }
 
 function AppShell() {

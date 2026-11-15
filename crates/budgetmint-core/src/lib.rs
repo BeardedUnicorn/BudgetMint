@@ -9,7 +9,8 @@
 //!   and what each page shows of it ([`views`]); the reminders due
 //!   ([`reminders`]).
 //! - Money set aside for bills ([`goals`]), what's safe to spend, and the
-//!   months gone by ([`report`]).
+//!   months gone by ([`report`]); today's and the coming days' at a glance,
+//!   for the widgets ([`glance`]).
 //! - A bank's statement read and matched to the bills ([`bank`]).
 //! - The documents they're kept in ([`docs`]), and the writes each change
 //!   makes ([`plan`]).
@@ -26,6 +27,7 @@ pub mod docs;
 pub mod earn;
 pub mod error;
 pub mod forecast;
+pub mod glance;
 pub mod goals;
 pub mod host;
 pub mod model;

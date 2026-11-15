@@ -114,6 +114,12 @@ pnpm firebase firestore:delete --all-collections --project budgetmint-dev
   next one, or by installing the previous release's APK by hand: Android
   refuses an older version over a newer one, so uninstall first (the budget
   is the cloud's; only the device's own settings go).
+  Two of Android's own rules can stop an install from the APK: a phone in
+  Advanced Protection Mode refuses any app from outside its store, and
+  Google's developer verification (in some countries since September 2026,
+  everywhere in 2027) refuses an app whose signing key isn't registered to
+  a verified developer, beyond a small number of devices. Before then,
+  register the release key (developer.android.com/developer-verification).
 - **The rules:** Firebase console → `budgetmint` → Firestore → Rules → the
   version before → Publish. Or deploy the previous tag's
   `rules/firestore.rules` as above.

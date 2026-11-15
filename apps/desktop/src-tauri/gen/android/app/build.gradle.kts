@@ -5,6 +5,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    // BudgetMint: the widgets (Glance) are Compose
+    id("org.jetbrains.kotlin.plugin.compose")
     id("rust")
     id("com.google.gms.google-services")
 }
@@ -43,7 +45,6 @@ android {
     compileSdk = 37
     namespace = "com.budgetmint.android"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
         // BudgetMint: a dev build adds .dev (buildTypes below). The package
         // is only the installed name: the code's stays com.budgetmint.android
         // (namespace), which the Rust side's JNI needs
@@ -77,7 +78,6 @@ android {
             // keeps the real name. As TaskMint's (its 6ef8a51).
             applicationIdSuffix = ".dev"
             if (production) applicationIdSuffix = null
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
@@ -104,10 +104,12 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        // BudgetMint: the widgets (Glance)
+        compose = true
         buildConfig = true
         // BudgetMint: the app's label is a resValue (BUDGETMINT_ENV above)
         resValues = true
@@ -116,7 +118,7 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget = JvmTarget.JVM_1_8
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
@@ -139,9 +141,9 @@ dependencies {
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.1")
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.1.4")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.0")
+    // BudgetMint: the home screen's widgets (widgets/Widgets.kt)
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.glance:glance-material3:1.2.0")
 }
 
 apply(from = file("tauri.build.gradle.kts"))

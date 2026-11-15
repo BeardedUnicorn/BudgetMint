@@ -28,8 +28,8 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 
 **Getting around.** BudgetMint opens on the Overview. On the desktop the
 sidebar lists every page (⌘1–⌘8), and on macOS the menu bar adds File, Go
-and Help menus; on a phone a bar at the bottom has Overview, Bills, Savings
-and Calendar, the top bar's menu every page, and Back goes to the Overview.
+and Help menus; on a phone a bar at the bottom has Overview, Bills, Calendar
+and Forecast, the top bar's menu every page, and Back goes to the Overview.
 The account at the sidebar's foot opens About BudgetMint and signs out,
 which erases this device's copy of the budget (the account keeps it).
 
@@ -312,21 +312,54 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   and the Firebase BoM with Analytics, Credential Manager and googleid as
   dependencies. Firebase and googleid need Kotlin 2.3, which the root
   `build.gradle.kts` and `buildSrc/build.gradle.kts` pin.
-- `MainActivity.kt` gives the webview four bridges (`tauriShell.ts` uses
+- `MainActivity.kt` gives the webview seven bridges (`tauriShell.ts` uses
   them): `BudgetMintSplash` (the launch screen stays until the app has
   drawn), `BudgetMintSystemBars` (the status and navigation bars follow the
   app's theme, and the page learns what they, a camera cutout and the
   keyboard cover: the webview reports none of it, so `useSystemInsets.ts`
   and `useKeyboardInset.ts` ask, and the app keeps its bars, tabs, dialogs
-  and the field being typed in clear of them), `BudgetMintGoogleSignIn` (Credential Manager's Google sign-in) and
-  `BudgetMintAnalytics` (Firebase Analytics, and its off switch).
-  `app/proguard-rules.pro` keeps them, and Credential Manager's Play
+  and the field being typed in clear of them), `BudgetMintGoogleSignIn` (Credential Manager's Google sign-in),
+  `BudgetMintAnalytics` (Firebase Analytics, and its off switch),
+  `BudgetMintScreen` (Settings → Privacy's switch that keeps the app out of
+  screenshots and the recent apps' previews: `FLAG_SECURE`, kept in the
+  app's own preferences so it holds from the first frame), `BudgetMintLaunch`
+  (what the app was opened for) and `BudgetMintWidgets` (what the widgets
+  show). `app/proguard-rules.pro` keeps them, and Credential Manager's Play
   services provider, through R8.
 - The manifest asks for exact alarms (`USE_EXACT_ALARM`, and
   `SCHEDULE_EXACT_ALARM` on Android 12), so a bill's reminder comes at its
   hour. Unlike TaskMint's, it also removes the advertising-ID permissions
   Firebase Analytics brings in, and turns off Analytics' advertising ID and
   ad personalisation, as the privacy page says.
+- **Opened for something.** A launcher shortcut (long-press the icon: Add a
+  bill, Update balance, Record spending; `MainActivity.setShortcuts`), a
+  widget and a tapped reminder each open the app with one of the menu's ids
+  (`useMenuCommands.ts`), which the page takes once the budget is open and
+  does as the desktop's menu click (`tauriShell.ts` gives Android a `menu`
+  for it). A reminder's id travels in the notification's extras
+  (`platform/os.rs`), which the notification plugin puts in the tap's
+  intent.
+- **Widgets** (`widgets/`, Jetpack Glance): Safe to spend, Coming up, This
+  week and Savings goal. A widget is drawn with the app closed, and the
+  budget's figures exist only in the webview, so the page sends them: core's
+  `get_glance` gives the overview and goals for today and the six days
+  after (each as core would say it that day), `useWidgetSnapshot.ts` words
+  every figure, and `WidgetData` keeps that JSON in the app's own
+  preferences. A widget picks today's day and shows it, with no sums or
+  formatting of its own; past the last day it says "Open BudgetMint to
+  refresh", and signed out it shows nothing of the budget. They're text
+  only (Android 17 limits a widget's bitmaps), redrawn hourly for the day's
+  turn, and kept off the lock screen (`res/xml-v36`).
+- No unencrypted traffic: `res/xml/network_security_config.xml` (Android is
+  retiring `usesCleartextTraffic`), with a debug build's own in `src/debug`
+  for the dev server and the emulators.
+- Nothing on the device is backed up or moved to a new phone
+  (`allowBackup="false"`, `res/xml/data_extraction_rules.xml`): the
+  webview's storage holds the sign-in and the device's copy of the budget,
+  and the account keeps the budget. The template's Android TV launcher entry
+  is gone, and `res/xml/file_paths.xml` shares only the cache and the app's
+  own Pictures folder (the webview's file chooser), not all of external
+  storage.
 - The launch screen is androidx `core-splashscreen`'s, themed by
   `Theme.budgetmint.Starting` (`values/themes.xml`, and `values-v31` for the
   wordmark, which Android 12 and later show): the leaf on the app icon's
@@ -344,8 +377,13 @@ swift scripts/brand/android-splash.swift
   icon's background in `values/ic_launcher_background.xml`) come from
   `assets/brand/icon-macos.png`. Its padding keeps the coins and leaf inside
   the circle a launcher crops to, and the background is the tile's colour,
-  so no edge shows. After changing the icon, make them again and copy
-  `android/` over `res`:
+  so no edge shows. The themed icon (Android 13 and later) is
+  `drawable/ic_launcher_monochrome.xml`, the leaf's outline and dollar sign
+  drawn from `assets/brand/mark.svg`'s paths, which
+  `mipmap-anydpi-v26/ic_launcher.xml` names as its `<monochrome>` layer.
+  After changing the icon, make them again and copy `android/` over `res`,
+  then put the `<monochrome>` line back (`tauri icon` writes the file
+  without it):
 
 ```bash
 cd apps/desktop && pnpm tauri icon ../../assets/brand/icon-macos.png --ios-color '#0A3A3E' -o /tmp/budgetmint-icons && cp -R /tmp/budgetmint-icons/android/. src-tauri/gen/android/app/src/main/res/
@@ -388,7 +426,8 @@ turned, which pushed the tabs off the screen.
 
 On Android the Rust side reports the runtime `mobile` (`get_capabilities`).
 The app has the budget, reminders as system alarms (they come with the app
-closed), Google sign-in and usage analytics. Google sign-in needs Google
+closed, and a tap opens the page they're about), home-screen widgets,
+launcher shortcuts, Google sign-in and usage analytics. Google sign-in needs Google
 Play services, and the build's signing certificate registered on the
 "BudgetMint Android" app (Firebase console → Project settings → Your apps):
 the debug key's and the release key's SHA-1 and SHA-256 are, in `budgetmint`,

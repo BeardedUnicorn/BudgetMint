@@ -21,6 +21,9 @@ pub struct ScheduledNotification {
     pub at_ms: i64,
     pub title: String,
     pub body: String,
+    /// What a tap on it opens: one of the menu's ids, which Android's
+    /// MainActivity reads from the notification and hands the page.
+    pub open: Option<String>,
 }
 
 /// A newer release the update feed announced (GitHub's latest release).

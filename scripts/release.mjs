@@ -63,6 +63,7 @@ import {
   updateAssetNames,
   updateBundlePaths,
   updateManifest,
+  verifyApkAlignment,
   verifyApkPackage,
   verifyApkSigner,
   verifyUpdateSignature,
@@ -366,7 +367,8 @@ function requireProductionWebview() {
 
 /**
  * Builds the APK with Tauri, signed with the release key, and checks it's
- * signed with the release certificate; returns where Gradle left it.
+ * signed with the release certificate, is the real app and is aligned for
+ * 16 KB pages; returns where Gradle left it.
  */
 function buildApk(version, plan) {
   run('rustup', ['target', 'add', plan.triple]);
@@ -395,6 +397,11 @@ function buildApk(version, plan) {
   if (badging.error) stop(`aapt2: ${badging.error.message}`);
   const name = JSON.parse(read(TAURI_ANDROID_CONF)).identifier;
   checked(() => verifyApkPackage({ output: badging.stdout, name }));
+  const aligned = spawnSync(buildTool('zipalign'), ['-c', '-P', '16', '-v', '4', join(root, apk)], {
+    encoding: 'utf8',
+  });
+  if (aligned.error) stop(`zipalign: ${aligned.error.message}`);
+  checked(() => verifyApkAlignment({ status: aligned.status, output: `${aligned.stdout}${aligned.stderr}` }));
   requireProductionWebview();
   return apk;
 }
@@ -402,7 +409,7 @@ function buildApk(version, plan) {
 /** The newest released Build-Tools' apksigner in the Android SDK. */
 const apksigner = () => buildTool('apksigner');
 
-/** The newest released Build-Tools' `name` (apksigner, aapt2) in the Android SDK. */
+/** The newest released Build-Tools' `name` (apksigner, aapt2, zipalign) in the Android SDK. */
 function buildTool(name) {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) stop("ANDROID_HOME (the Android SDK) isn't set.");

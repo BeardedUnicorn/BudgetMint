@@ -128,6 +128,7 @@
       "error": "It was changed again since, so it can't be undone."
     },
     { "call": "undo", "args": { "planned": { "writes": [], "undo": [] } }, "expect": [] },
+    { "call": "get_glance", "args": { "days": 2 }, "expect": [{ "goals": {} }, { "overview": {} }] },
     { "call": "reset_docs", "expect": null },
     { "call": "get_settings", "expect": { "saved": false } },
     { "call": "get_overview", "expect": { "todayCents": 0, "taskmint": { "state": "checking" } } },

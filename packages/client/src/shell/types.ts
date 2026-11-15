@@ -18,6 +18,11 @@ export interface ScheduledNotification {
   atMs: number;
   title: string;
   body: string;
+  /**
+   * What a tap on it opens, where the shell can say (Android): one of the
+   * menu's ids (menuCommands.ts), as a click on that item would.
+   */
+  open?: string;
 }
 
 export interface Notifications {
@@ -88,20 +93,38 @@ export interface Platform {
   saveFile?: (name: string, text: string, type: string) => Promise<boolean>;
   /** Which pages are opened (the web and Android apps; the desktop has none). */
   analytics?: AnalyticsPlatform;
-  /** The menu bar's and the tray's items that the app does (the desktop's). */
+  /**
+   * The menu bar's and the tray's items that the app does (the desktop's);
+   * on Android, what the app was opened for: a launcher shortcut, a widget
+   * or a reminder that was tapped.
+   */
   menu?: MenuPlatform;
+  /**
+   * Keeping the app out of screenshots and the recent apps' previews
+   * (Android). The device keeps the choice itself, so it holds from the
+   * moment the app starts.
+   */
+  screenPrivacy?: { isOn(): boolean; set(on: boolean): void };
+  /**
+   * The home screen's widgets (Android): what they show, worded, as JSON
+   * (useWidgetSnapshot.ts), or '' for nothing (signed out).
+   */
+  widgets?: { set(snapshot: string): void };
 }
 
 /**
  * The desktop's menus (the macOS menu bar, the tray): a click on one of
- * the items the app does comes as its id (menuCommands.ts lists them).
+ * the items the app does comes as its id (menuCommands.ts lists them). On
+ * Android the same ids come from a launcher shortcut, a widget or a
+ * reminder that was tapped.
  */
 export interface MenuPlatform {
   /** Each click, until the returned stop. */
   subscribe(listener: (id: string) => void): () => void;
   /**
    * Whether the budget is open (signed in, past onboarding): the items for
-   * it (New Bill, the pages, Sign Out…) are greyed out until it is.
+   * it (New Bill, the pages, Sign Out…) are greyed out until it is. On
+   * Android, what the app was opened for waits until it is.
    */
   setBudgetOpen(open: boolean): void;
 }

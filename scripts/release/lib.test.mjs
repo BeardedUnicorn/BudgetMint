@@ -35,6 +35,7 @@ import {
   updateAssetNames,
   updateBundlePaths,
   updateManifest,
+  verifyApkAlignment,
   verifyApkPackage,
   verifyApkSigner,
   verifyUpdateSignature,
@@ -580,6 +581,26 @@ describe('checksums', () => {
         'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  latest.json\n'
     );
     assert.equal(sha256Sums([]), '');
+  });
+});
+
+describe('verifyApkAlignment', () => {
+  it('passes an aligned APK', () => {
+    assert.doesNotThrow(() => verifyApkAlignment({ status: 0, output: 'Verification successful\n' }));
+  });
+
+  it('names the files that are not aligned, or says what zipalign said', () => {
+    assert.throws(
+      () =>
+        verifyApkAlignment({
+          status: 1,
+          output:
+            ' 4096 classes.dex (OK - compressed)\n 8192 lib/arm64-v8a/libbudgetmint.so (BAD - 4096)\nVerification FAILED\n',
+        }),
+      /isn't aligned for 16 KB pages:\n8192 lib\/arm64-v8a\/libbudgetmint\.so \(BAD - 4096\)$/
+    );
+    assert.throws(() => verifyApkAlignment({ status: 1, output: 'Unable to open\n' }), /16 KB pages:\nUnable to open$/);
+    assert.throws(() => verifyApkAlignment({ status: 2, output: '' }), /zipalign exited with 2$/);
   });
 });
 

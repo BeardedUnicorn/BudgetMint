@@ -22,6 +22,18 @@
 -keepclassmembers class com.budgetmint.android.MainActivity$Analytics {
    @android.webkit.JavascriptInterface public <methods>;
 }
+# and screen privacy and what the app was opened for
+# (window.BudgetMintScreen, window.BudgetMintLaunch)
+-keepclassmembers class com.budgetmint.android.MainActivity$Screen {
+   @android.webkit.JavascriptInterface public <methods>;
+}
+-keepclassmembers class com.budgetmint.android.MainActivity$Launch {
+   @android.webkit.JavascriptInterface public <methods>;
+}
+# and the widgets' contents (window.BudgetMintWidgets)
+-keepclassmembers class com.budgetmint.android.MainActivity$Widgets {
+   @android.webkit.JavascriptInterface public <methods>;
+}
 # Credential Manager finds its Play services provider by reflection
 -if class androidx.credentials.CredentialManager
 -keep class androidx.credentials.playservices.** {

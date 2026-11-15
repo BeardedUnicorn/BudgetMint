@@ -119,10 +119,11 @@ export function OverviewPage({ nowMs = Date.now() }: { nowMs?: number }) {
     setAdding(null);
     setDialog(what);
   };
-  // Opened to update the balance (⌘B, the menu bar's Update Balance…)
+  // Opened to update the balance (⌘B, the menu bar's Update Balance…), or
+  // for a one-off spend (Android's shortcut)
   useEffect(() => {
-    if (params.open !== 'balance') return;
-    setDialog('balance');
+    if (params.open !== 'balance' && params.open !== 'record') return;
+    setDialog(params.open);
     clearParams();
   }, [params.open, clearParams]);
   const { today, balance, lowest, firstShort, firstLow, nextWithdrawal } = overview;

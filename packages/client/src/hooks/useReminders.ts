@@ -23,6 +23,7 @@ import { formatWeekday } from '../utils/dates';
 import { formatCents } from '../utils/money';
 import { readLocal, writeLocal } from '../utils/localStore';
 import { useLocalStorage } from './useLocalStorage';
+import { goTo } from './useMenuCommands';
 
 /** Whether this device shows reminders. */
 export const REMINDERS_ON_KEY = 'remindersOn';
@@ -79,8 +80,21 @@ export function reminderText(reminder: Reminder): { title: string; body: string 
   }
 }
 
+/** The page a tapped reminder opens (where the shell can: Android). */
+const OPENS: Record<Reminder['kind'], string> = {
+  bill: goTo('bills'),
+  income: goTo('income'),
+  transfer: goTo('overview'),
+  lowBalance: goTo('forecast'),
+};
+
 export function scheduled(reminders: Reminder[]): ScheduledNotification[] {
-  return reminders.map(reminder => ({ id: reminder.id, atMs: reminder.atMs, ...reminderText(reminder) }));
+  return reminders.map(reminder => ({
+    id: reminder.id,
+    atMs: reminder.atMs,
+    ...reminderText(reminder),
+    open: OPENS[reminder.kind],
+  }));
 }
 
 export function useReminders(): void {

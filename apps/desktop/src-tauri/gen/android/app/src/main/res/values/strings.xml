@@ -1,4 +1,29 @@
 <resources>
     <!-- app_name and main_activity_title come from app/build.gradle.kts:
          "BudgetMint", or "BudgetMint Dev" for a dev build -->
+    <!-- BudgetMint: the launcher's long-press shortcuts (MainActivity) -->
+    <string name="shortcut_new_bill">Add a bill</string>
+    <string name="shortcut_update_balance">Update balance</string>
+    <string name="shortcut_record">Record spending</string>
+    <!-- BudgetMint: the home screen's widgets (widgets/Widgets.kt). Their
+         figures come worded from the page; these are the labels around them. -->
+    <string name="widget_safe_to_spend">Safe to spend</string>
+    <string name="widget_safe_to_spend_description">What you can spend today, and your balance</string>
+    <string name="widget_balance_today">Balance today %1$s</string>
+    <string name="widget_coming_up">Coming up</string>
+    <string name="widget_coming_up_description">What\'s overdue and the next two weeks\' bills and income</string>
+    <string name="widget_nothing_due">Nothing due in the next two weeks</string>
+    <string name="widget_this_week">This week</string>
+    <string name="widget_this_week_description">Due this week, coming in, and TaskMint\'s next withdrawal</string>
+    <string name="widget_due_this_week">Due this week</string>
+    <string name="widget_coming_in">Coming in</string>
+    <string name="widget_coming_in_note">Next 14 days</string>
+    <string name="widget_withdrawal">TaskMint</string>
+    <string name="widget_goal">Savings goal</string>
+    <string name="widget_goal_description">How far along a bill you\'re saving up for is</string>
+    <string name="widget_goal_of">of %1$s</string>
+    <string name="widget_goal_choose">Which one?</string>
+    <string name="widget_no_goals">Nothing being saved up for</string>
+    <string name="widget_signed_out">Sign in to BudgetMint</string>
+    <string name="widget_stale">Open BudgetMint to refresh</string>
 </resources>

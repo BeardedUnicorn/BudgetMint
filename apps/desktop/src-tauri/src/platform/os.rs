@@ -82,14 +82,21 @@ fn schedule_os_notification(
     use tauri_plugin_notification::Schedule;
     let nanos = i128::from(scheduled.at_ms) * 1_000_000;
     let date = time::OffsetDateTime::from_unix_timestamp_nanos(nanos).map_err(text)?;
-    app.notification()
+    let mut builder = app
+        .notification()
         .builder()
         .id(scheduled.id)
         .title(&scheduled.title)
         .body(&scheduled.body)
         // Shown expanded too (see notify)
         .large_body(&scheduled.body)
-        .sound(SOUND)
+        .sound(SOUND);
+    // The tap's intent carries the notification, this with it:
+    // MainActivity reads it and opens that page
+    if let Some(open) = &scheduled.open {
+        builder = builder.extra("open", open);
+    }
+    builder
         .schedule(Schedule::At {
             date,
             repeating: false,

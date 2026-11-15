@@ -11,9 +11,10 @@
  *   menus' items for the client (menu.rs) come as MENU_COMMAND events.
  * - A phone or tablet (runtime 'mobile') has no tray; the system keeps its
  *   reminders as alarms, which come with the app closed. On Android it also
- *   has the status bar, the launch screen, Google's account picker and
- *   Firebase Analytics, which MainActivity.kt hands the webview directly,
- *   outside dispatch.
+ *   has the status bar, the launch screen, Google's account picker,
+ *   Firebase Analytics, screen privacy, what the app was opened for (a
+ *   shortcut, a widget, a reminder) and the widgets' contents, which
+ *   MainActivity.kt hands the webview directly, outside dispatch.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -82,6 +83,30 @@ interface AndroidAnalytics {
   screen(name: string): void;
 }
 
+/** What Android's MainActivity.kt adds for keeping the app out of screenshots and recents. */
+interface AndroidScreen {
+  isPrivate(): boolean;
+  setPrivate(on: boolean): void;
+}
+
+/**
+ * What Android's MainActivity.kt adds for what the app was opened for: a
+ * launcher shortcut, a widget or a reminder, as one of the menu's ids.
+ */
+interface AndroidLaunch {
+  /** The id waiting, once ('' when there's none). */
+  take(): string;
+}
+
+/** What Android's MainActivity.kt adds for the home screen's widgets. */
+interface AndroidWidgets {
+  /** What they show, as JSON ('' for nothing). */
+  set(snapshot: string): void;
+}
+
+/** What listens for what the app was opened for. */
+const launchListeners = new Set<(id: string) => void>();
+
 type GoogleAnswer = { idToken: string } | { error: string };
 
 declare global {
@@ -93,6 +118,11 @@ declare global {
     BudgetMintSplash?: AndroidSplash;
     BudgetMintGoogleSignIn?: AndroidGoogleSignIn;
     BudgetMintAnalytics?: AndroidAnalytics;
+    /** MainActivity calls it when the app is opened for something while it runs. */
+    __budgetmintLaunch?: () => void;
+    BudgetMintScreen?: AndroidScreen;
+    BudgetMintLaunch?: AndroidLaunch;
+    BudgetMintWidgets?: AndroidWidgets;
   }
 }
 
@@ -103,13 +133,55 @@ export interface GoogleDesktopClient {
 }
 
 /**
- * Android's status bar, launch screen and usage analytics; elsewhere there
- * are none. The desktop has no analytics: Google's tag would run in a
- * webview that can call every command.
+ * What the app was opened for, as the desktop's menu clicks: MainActivity
+ * keeps the id until the budget is open (a cold start signs in and loads
+ * first), then every listener hears it, as a click on that menu item.
  */
-function androidParts(): Pick<Platform, 'systemBars' | 'splashScreen' | 'analytics'> {
-  const { BudgetMintSystemBars: bars, BudgetMintSplash: splash, BudgetMintAnalytics: analytics } = window;
+function androidLaunch(launch: AndroidLaunch): NonNullable<Platform['menu']> {
+  let budgetOpen = false;
+  const deliver = () => {
+    if (!budgetOpen) return;
+    const id = launch.take();
+    if (id) for (const each of [...launchListeners]) each(id);
+  };
+  window.__budgetmintLaunch = deliver;
   return {
+    subscribe: listener => {
+      launchListeners.add(listener);
+      return () => {
+        launchListeners.delete(listener);
+      };
+    },
+    setBudgetOpen: open => {
+      budgetOpen = open;
+      // After the effects that subscribe, which run with this one
+      queueMicrotask(deliver);
+    },
+  };
+}
+
+/**
+ * Android's status bar, launch screen, usage analytics, screen privacy,
+ * what the app was opened for and its widgets; elsewhere there are none.
+ * The desktop has no analytics: Google's tag would run in a webview that
+ * can call every command.
+ */
+function androidParts(): Pick<
+  Platform,
+  'systemBars' | 'splashScreen' | 'analytics' | 'screenPrivacy' | 'menu' | 'widgets'
+> {
+  const {
+    BudgetMintSystemBars: bars,
+    BudgetMintSplash: splash,
+    BudgetMintAnalytics: analytics,
+    BudgetMintScreen: screen,
+    BudgetMintLaunch: launch,
+    BudgetMintWidgets: widgets,
+  } = window;
+  return {
+    ...(screen ? { screenPrivacy: { isOn: () => screen.isPrivate(), set: on => screen.setPrivate(on) } } : {}),
+    ...(launch ? { menu: androidLaunch(launch) } : {}),
+    ...(widgets ? { widgets: { set: snapshot => widgets.set(snapshot) } } : {}),
     // Called on the bridge itself: Android refuses a method taken off it
     ...(bars
       ? {

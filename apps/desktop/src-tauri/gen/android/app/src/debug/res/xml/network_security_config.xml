@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BudgetMint: a debug build loads the page from the dev server
+     (`tauri android dev`, on this computer over the network) and talks to
+     the Firebase emulators (10.0.2.2), all over plain http. -->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

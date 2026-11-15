@@ -14,6 +14,8 @@ import type { DocWrite } from "./DocWrite";
 import type { DocsApplied } from "./DocsApplied";
 import type { ForecastStatus } from "./ForecastStatus";
 import type { ForecastView } from "./ForecastView";
+import type { GlanceArgs } from "./GlanceArgs";
+import type { GlanceDay } from "./GlanceDay";
 import type { GoalsView } from "./GoalsView";
 import type { ItemHistoryArgs } from "./ItemHistoryArgs";
 import type { ItemIdArgs } from "./ItemIdArgs";
@@ -80,6 +82,7 @@ export interface CommandMap {
   delete_account: { args: AccountIdArgs; reply: Planned };
   get_account_overview: { args: AccountIdArgs; reply: Overview };
   get_account_forecast: { args: AccountIdArgs; reply: ForecastView };
+  get_glance: { args: GlanceArgs; reply: Array<GlanceDay> };
 }
 
 export type CommandName = keyof CommandMap;

@@ -335,6 +335,15 @@ signing") unless a step says otherwise:
 
 - [ ] **Installs over the last one:** the APK installs over the previous
       release's and keeps the sign-in.
+- [ ] **Not backed up:** `adb shell bmgr backupnow com.budgetmint.android`
+      backs nothing up (or says the app isn't eligible), and `aapt2 dump
+      badging` on the APK lists no `leanback-launchable-activity`.
+- [ ] **Themed icon:** with themed icons on (Wallpaper & style), the
+      launcher shows the leaf's outline and dollar sign in the theme's
+      colours, inside the circle.
+- [ ] **Memory:** after ten minutes of use across every page,
+      `adb shell dumpsys activity exit-info com.budgetmint.android` shows no
+      exit with "MemoryLimiter" (Android 17's limit by the phone's RAM).
 - [ ] **Launch screen:** a cold start (swipe BudgetMint out of Recents, then
       open it from the launcher) shows the leaf on teal, with the BudgetMint
       wordmark at the bottom on Android 12 and later, until the app fades in.
@@ -387,6 +396,32 @@ signing") unless a step says otherwise:
 - [ ] **Signing out** (More, the account at its foot → Sign out…) asks
       first, then the app loads again on the sign-in screen; signing in
       again brings the budget back.
+- [ ] **Shortcuts:** a long press on the launcher icon offers Add a bill,
+      Update balance and Record spending; each opens the app on that form,
+      from a cold start (after sign-in's loading) and with the app already
+      open. Signed out, the app opens on the sign-in screen and nothing
+      more happens.
+- [ ] **A reminder's tap** opens Bills (a bill's), Income (income's) or
+      the Forecast (a low balance's), with the app closed and with it open.
+- [ ] **Widgets:** the launcher's widget list shows Safe to spend, Coming
+      up, This week and Savings goal under BudgetMint. Added, each shows
+      what the Overview (or Savings) does; marking a bill paid in the app
+      changes them within a few seconds; a tap opens the Overview (Savings
+      for the goal). Savings goal asks which goal when there's more than
+      one. Light and dark follow the system.
+- [ ] **Widgets over days:** with the app closed, setting the phone's date
+      a day ahead shows that day's figures within the hour (what was due
+      "Tomorrow" is "Today"); eight days ahead, each says "Open BudgetMint
+      to refresh". Signing out leaves each saying "Sign in to BudgetMint".
+      On Android 16 and later none is offered for the lock screen.
+- [ ] **Screen privacy:** with Settings → Privacy → Hide BudgetMint in
+      screenshots and recent apps on, a screenshot is refused (or blank)
+      and Recents shows no preview, also right after a cold start; off,
+      both work again.
+- [ ] **Dev build on a phone (Android 17):** `pnpm tauri android dev` on a
+      phone over Wi-Fi loads the page. If it stays blank with a network
+      error, the debug build needs `ACCESS_LOCAL_NETWORK` (targeting API 37
+      asks for it for the local network): add it in `src/debug`'s manifest.
 
 ## Windows
 
