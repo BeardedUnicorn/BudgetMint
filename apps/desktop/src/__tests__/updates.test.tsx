@@ -44,8 +44,38 @@ const release: AvailableUpdate = {
   version: '2.3.0',
   currentVersion: '2.2.0',
   notes: '### Added\n\n- Updates from GitHub, with `latest.json`.',
+  changelog: null,
   date: '2026-11-20T10:00:00Z',
 };
+
+/** latest.json's changelog: every release's section, newest first. */
+const changelog = [
+  '## 2.3.0 – 2026-11-20',
+  '',
+  '### Added',
+  '',
+  '- Updates from GitHub, with `latest.json`.',
+  '',
+  '## 2.2.2 – 2026-11-19',
+  '',
+  'No user-facing changes.',
+  '',
+  '## 2.2.1 – 2026-11-18',
+  '',
+  '### Fixed',
+  '',
+  '- A fix in between.',
+  '',
+  '## 2.2.0 – 2026-11-17',
+  '',
+  '### Added',
+  '',
+  '- What this version already has.',
+  '',
+  '## 2.1.0 – 2026-11-10',
+  '',
+  '- Older still.',
+].join('\n');
 
 /** The Tauri events listened for, by name. */
 const listening = new Map<string, EventCallback<unknown>>();
@@ -418,6 +448,44 @@ describe('the update dialog', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Skip this version' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(updates.get().skippedVersion).toBe('2.3.0');
+  });
+
+  it('shows what every release since this version brought, newest first', async () => {
+    const dialog = await found({ ...release, changelog });
+    expect(dialog).toHaveTextContent('You have 2.2.0, 3 releases behind. BudgetMint downloads the update');
+    expect(within(dialog).getByRole('heading', { name: "What's new since 2.2.0" })).toBeInTheDocument();
+    // Each release under its version; not the one that changed nothing to see
+    expect(
+      within(dialog)
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent)
+    ).toEqual(['2.3.0 · Nov 20, 2026', '2.2.1 · Nov 18, 2026']);
+    expect(within(dialog).getByText('latest.json').tagName).toBe('CODE');
+    expect(within(dialog).getByText('A fix in between.')).toBeInTheDocument();
+    // Nothing this version has, or had before it
+    expect(within(dialog).queryByText('What this version already has.')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Older still.')).not.toBeInTheDocument();
+  });
+
+  it("shows the new release's own notes when it's the only one since", async () => {
+    const dialog = await found({ ...release, currentVersion: '2.2.2', changelog });
+    expect(dialog).toHaveTextContent('You have 2.2.2. BudgetMint downloads the update');
+    expect(within(dialog).getByRole('heading', { name: "What's new" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('heading', { level: 4, name: /2\.3\.0/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('heading', { level: 4, name: 'Added' })).toBeInTheDocument();
+  });
+
+  it("falls back to the new release's notes when none since changed anything to see", async () => {
+    const quiet = '## 2.3.0\n\nNo user-facing changes.\n\n## 2.2.1\n\nNo user-facing changes.\n';
+    const dialog = await found({ ...release, notes: 'No user-facing changes.', changelog: quiet });
+    expect(dialog).toHaveTextContent('You have 2.2.0, 2 releases behind.');
+    expect(within(dialog).getByRole('heading', { name: "What's new" })).toBeInTheDocument();
+    expect(within(dialog).getByText('No user-facing changes.')).toBeInTheDocument();
+  });
+
+  it('shows no notes when the feed has none', async () => {
+    const dialog = await found({ ...release, notes: null, changelog: '## 2.3.0\n\n- Only this.\n' });
+    expect(within(dialog).queryByRole('heading', { name: /What's new/ })).not.toBeInTheDocument();
   });
 
   it('closes on Escape, as Later', async () => {

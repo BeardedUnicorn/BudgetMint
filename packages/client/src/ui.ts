@@ -4,5 +4,5 @@
  */
 
 export { SettingsSection } from './components/pages/settings/SettingsSection';
-export { ReleaseNotes } from './components/ui/display/ReleaseNotes';
-export { parseReleaseSection } from './utils/changelog';
+export { ReleaseNotes, ReleaseNotesList } from './components/ui/display/ReleaseNotes';
+export { hasUserFacingChanges, parseReleaseSection, releasesBetween } from './utils/changelog';

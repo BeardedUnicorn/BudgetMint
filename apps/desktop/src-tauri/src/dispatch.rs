@@ -315,12 +315,13 @@ mod tests {
             version: "0.2.0".into(),
             current_version: "0.1.0".into(),
             notes: Some("New".into()),
+            changelog: Some("## 0.2.0\n\nNew".into()),
             date: None,
         });
         assert_eq!(
             run(&f.state, "check_for_update", Value::Null),
             Ok(
-                json!({ "version": "0.2.0", "currentVersion": "0.1.0", "notes": "New", "date": null })
+                json!({ "version": "0.2.0", "currentVersion": "0.1.0", "notes": "New", "changelog": "## 0.2.0\n\nNew", "date": null })
             )
         );
         assert_eq!(

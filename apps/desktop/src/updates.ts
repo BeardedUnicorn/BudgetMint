@@ -27,6 +27,8 @@ export interface AvailableUpdate {
   currentVersion: string;
   /** The release's CHANGELOG section (Markdown). */
   notes: string | null;
+  /** Every release's notes, newest first (the CHANGELOG's sections); null from a feed without them. */
+  changelog: string | null;
   date: string | null;
 }
 
