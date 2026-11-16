@@ -29,7 +29,7 @@ export function AccountSection() {
   };
 
   return (
-    <SettingsSection title="Account" icon={<AccountIcon />}>
+    <SettingsSection title="Account" icon={<AccountIcon color="primary" />}>
       <Typography variant="body2" sx={{ mb: 1 }}>
         Signed in as <strong>{view.user?.email ?? 'you'}</strong>
         {view.user?.providers.includes('google.com') ? ' with Google' : ''}.

@@ -22,11 +22,38 @@ export type SettingsSectionId =
   | 'account'
   | 'data'
   | 'forecast'
+  | 'accounts'
   | 'taskmint'
   | 'reminders'
   | 'appearance'
   | 'privacy'
   | 'about';
+
+/** Settings' sections, in page order, as its section list names them. */
+export const SETTINGS_SECTION_LABELS: Record<SettingsSectionId, string> = {
+  account: 'Account',
+  data: 'Your data',
+  forecast: 'Forecast',
+  accounts: 'Bank accounts',
+  taskmint: 'TaskMint',
+  reminders: 'Reminders',
+  appearance: 'Appearance',
+  privacy: 'Privacy',
+  about: 'About',
+};
+
+/**
+ * The Settings sections this platform can use: Privacy needs usage
+ * statistics or screen privacy to offer (the desktop has neither).
+ */
+export function availableSettingsSections(platform: {
+  analytics?: unknown;
+  screenPrivacy?: unknown;
+}): SettingsSectionId[] {
+  return (Object.keys(SETTINGS_SECTION_LABELS) as SettingsSectionId[]).filter(
+    id => id !== 'privacy' || Boolean(platform.analytics || platform.screenPrivacy)
+  );
+}
 
 /**
  * What a page is opened for: a settings section, (Bills, Income) adding

@@ -124,7 +124,7 @@ export function BankAccountsSection() {
   };
 
   return (
-    <SettingsSection title="Bank accounts" icon={<BankIcon />}>
+    <SettingsSection title="Bank accounts" icon={<BankIcon color="primary" />}>
       <Stack spacing={2}>
         {all.length === 1 && !all[0].named ? (
           <Typography variant="body2" color="text.secondary">

@@ -29,7 +29,7 @@ export function ForecastSection() {
   const { balance } = settings;
 
   return (
-    <SettingsSection title="Forecast" icon={<ForecastIcon />}>
+    <SettingsSection title="Forecast" icon={<ForecastIcon color="primary" />}>
       <Stack spacing={2}>
         <Box sx={WORDS_AND_BUTTON}>
           <Typography variant="body2" sx={{ flex: 1 }}>

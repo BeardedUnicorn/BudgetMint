@@ -72,7 +72,7 @@ function TaskMintSignIn({ intro }: { intro: string }) {
 function ConnectTaskMint() {
   const [connecting, setConnecting] = useState(false);
   return (
-    <SettingsSection title="TaskMint" icon={<TaskMintIcon />}>
+    <SettingsSection title="TaskMint" icon={<TaskMintIcon color="primary" />}>
       {connecting ? (
         <TaskMintSignIn intro="Sign in with your TaskMint account. BudgetMint only reads its forecast of what you’ll withdraw." />
       ) : (
@@ -113,7 +113,7 @@ function TaskMintSettings({ nowMs }: { nowMs: number }) {
   return (
     <SettingsSection
       title="TaskMint"
-      icon={<TaskMintIcon />}
+      icon={<TaskMintIcon color="primary" />}
       headerChildren={
         <Chip
           size="small"

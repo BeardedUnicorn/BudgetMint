@@ -1,6 +1,7 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { forecastDoc, monthly, SETTLED, startBudget, TEST_NOW } from '../../../../__tests__/setup/budget';
+import { setPhoneViewport } from '../../../../__tests__/setup/viewport';
 import { createFakeShell } from '../../../../testing';
 import { APP_VERSION } from '../../../../utils/appVersion';
 
@@ -492,5 +493,75 @@ describe('privacy', () => {
   it('has no Privacy section where the shell has neither (the desktop)', async () => {
     await settings({ shell: createFakeShell({ without: ['analytics', 'screenPrivacy'] }) });
     expect(screen.queryByRole('heading', { name: 'Privacy' })).not.toBeInTheDocument();
+  });
+});
+
+describe('on a phone', () => {
+  const sectionList = () => screen.findByRole('navigation', { name: 'Settings sections' });
+  const topBar = () => document.querySelector('header.MuiAppBar-root')!;
+
+  /** A phone (or a window as narrow) open on Settings' list of sections. */
+  async function phoneSettings() {
+    setPhoneViewport();
+    const shell = createFakeShell();
+    const started = await startBudget({ shell });
+    act(() => shell.clickMenu('settings'));
+    return { ...started, shell, list: await sectionList() };
+  }
+
+  it('saves the backup the menu bar asks for, with Your data showing', async () => {
+    setPhoneViewport();
+    const shell = createFakeShell();
+    await startBudget({ shell });
+    act(() => shell.clickMenu('download-backup'));
+    await waitFor(() =>
+      expect(shell.platform.saveFile).toHaveBeenLastCalledWith(
+        expect.stringMatching(/\.json$/),
+        expect.any(String),
+        'application/json'
+      )
+    );
+    expect(screen.getByRole('heading', { name: 'Your data' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Account' })).not.toBeInTheDocument();
+
+    // The spreadsheet, with the section already showing
+    act(() => shell.clickMenu('download-spreadsheet'));
+    await waitFor(() =>
+      expect(shell.platform.saveFile).toHaveBeenLastCalledWith(
+        expect.stringMatching(/\.csv$/),
+        expect.any(String),
+        'text/csv'
+      )
+    );
+    expect(shell.platform.saveFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes back from a section’s dialog to the section, then to the list', async () => {
+    const { user, list } = await phoneSettings();
+    await user.click(within(list).getByRole('button', { name: 'Account' }));
+    await user.click(screen.getByRole('button', { name: 'Delete account' }));
+    expect(await screen.findByRole('dialog', { name: 'Delete your account?' })).toBeInTheDocument();
+
+    act(() => window.history.back());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Account' })).toBeInTheDocument();
+
+    act(() => window.history.back());
+    expect(await sectionList()).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Account' })).not.toBeInTheDocument();
+    expect(topBar()).toHaveTextContent('Settings');
+  });
+
+  it('leaves a section for another page, and comes back to the list', async () => {
+    const { user, list } = await phoneSettings();
+    await user.click(within(list).getByRole('button', { name: 'Reminders' }));
+    expect(screen.getByRole('heading', { name: 'Reminders' })).toBeInTheDocument();
+
+    await user.click(within(screen.getByRole('navigation', { name: 'Pages' })).getByRole('button', { name: 'Bills' }));
+    await waitFor(() => expect(topBar()).toHaveTextContent('Bills'));
+
+    act(() => window.history.back());
+    await waitFor(() => expect(topBar()).toHaveTextContent('Settings'));
+    expect(await sectionList()).toBeInTheDocument();
   });
 });

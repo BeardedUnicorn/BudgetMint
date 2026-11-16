@@ -103,7 +103,7 @@ export function RemindersSection() {
   };
 
   return (
-    <SettingsSection title="Reminders" icon={<RemindersIcon />}>
+    <SettingsSection title="Reminders" icon={<RemindersIcon color="primary" />}>
       <Stack spacing={2} useFlexGap>
         <FormControlLabel
           control={<Switch checked={on} onChange={event => void toggle(event.target.checked)} />}
