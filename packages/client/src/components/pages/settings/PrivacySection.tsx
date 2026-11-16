@@ -19,7 +19,7 @@ export function PrivacySection() {
   const [hidden, setHidden] = useState(() => screenPrivacy?.isOn() ?? false);
 
   return (
-    <SettingsSection title="Privacy" icon={<PrivacyIcon />}>
+    <SettingsSection title="Privacy" icon={<PrivacyIcon color="primary" />}>
       <Stack spacing={2}>
         {analytics && (
           <div>

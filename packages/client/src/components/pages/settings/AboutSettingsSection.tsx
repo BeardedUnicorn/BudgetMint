@@ -148,7 +148,7 @@ export function AboutSettingsSection() {
   const earlier = RELEASES.filter(release => compareVersions(release.version, APP_VERSION) < 0);
 
   return (
-    <SettingsSection title="About" icon={<AboutIcon />}>
+    <SettingsSection title="About" icon={<AboutIcon color="primary" />}>
       <Typography variant="body2">BudgetMint {APP_VERSION}: your bills, income and the balance ahead.</Typography>
       <Typography variant="body2" color="text.secondary">
         Open source under the MIT license.{' '}

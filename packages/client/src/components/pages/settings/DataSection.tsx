@@ -65,7 +65,7 @@ export function DataSection() {
   };
 
   return (
-    <SettingsSection title="Your data" icon={<DataIcon />}>
+    <SettingsSection title="Your data" icon={<DataIcon color="primary" />}>
       <Typography variant="body2" sx={{ mb: 2 }}>
         Keep a copy of your own: a backup BudgetMint can restore (your settings, every bill and income, and what you
         marked over the last year or so), or a spreadsheet of a year’s bills and income.

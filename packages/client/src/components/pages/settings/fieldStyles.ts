@@ -6,9 +6,6 @@
 
 import { PHONE } from '../../../theme/media';
 
-/** As wide as a settings section gets: a column to read, not the whole window. */
-export const SETTINGS_WIDTH = 760;
-
 /** A field on a line of its own: its box `width` wide, its helper text as wide as the section. */
 export const settingField = (width: number) =>
   ({

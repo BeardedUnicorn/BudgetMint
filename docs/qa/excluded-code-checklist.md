@@ -386,8 +386,9 @@ signing") unless a step says otherwise:
 - [ ] **The keyboard:** with a bill's form open and its name being typed,
       the form sits between the status bar and the keyboard, with Save in
       view; on the sign-in screen the fields and the button stay above the
-      keyboard; a field low on Settings (Everyday spending) is brought into
-      view above it, the bar of pages standing on the keyboard.
+      keyboard; a field low in a Settings section (Forecast's Everyday
+      spending) is brought into view above it, the bar of pages standing on
+      the keyboard.
 - [ ] **On its side:** turned, the app shows its sidebar clear of the camera
       cutout and the status bar, and nothing under the three buttons at the
       side; turned back, the page is the size it was (not zoomed, the bar of
@@ -396,8 +397,9 @@ signing") unless a step says otherwise:
       → Display), the app's text is larger (to 130%) and the bar of pages'
       labels don't overlap.
 - [ ] **Back:** with a bill's form open, Back closes it; with More
-      open, Back closes it; on another page, Back goes to the Overview; on
-      the Overview, Back leaves the app.
+      open, Back closes it; with one of Settings' sections open, Back
+      returns to the list of them; on another page, Back goes to the
+      Overview; on the Overview, Back leaves the app.
 - [ ] **Signing out** (More, the account at its foot → Sign out…) asks
       first, then the app loads again on the sign-in screen; signing in
       again brings the budget back.
