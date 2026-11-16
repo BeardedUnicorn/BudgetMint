@@ -8,6 +8,12 @@ things.
 `pnpm release` writes each section from the change notes in `changes/`
 (see [changes/README.md](changes/README.md)).
 
+## 2.8.0 – 2026-11-16
+
+### Changed
+
+- Settings is laid out like TaskMint's. On a wide window a list of its sections sits beside them: it jumps to each one, and follows the section you're reading. On a phone, Settings opens as that list, and each section opens on its own screen, with Back returning to the list.
+
 ## 2.7.0 – 2026-11-15
 
 ### Added
