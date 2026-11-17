@@ -25,7 +25,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 url = "2.5"
 # Google sign-in (google_sign_in.rs, as TaskMint's): the token exchange, the
-# PKCE challenge, and the random verifier and state
+# PKCE challenge, and the random verifier and state. ureq also reads the
+# release feed for a phone's update check (platform/os.rs)
 base64 = "0.23"
 tiny_http = "0.12"
 ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
@@ -40,7 +41,8 @@ tauri-plugin-dialog = "2.8"
 tauri = { version = "2.12", features = ["test"] }
 
 # Desktop only (Tauri's `desktop` cfg): a phone has no second instance to
-# forward to, no browser sign-in to come back from and no updater
+# forward to, no browser sign-in to come back from and no updater plugin (it
+# downloads its update for Android to install)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 # budgetmint:// links: Google sign-in's page opens one to bring the app back
 # in front of the browser (window.rs). A second launch with a link (Windows,

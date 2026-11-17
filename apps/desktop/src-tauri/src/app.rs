@@ -7,7 +7,8 @@
 //!
 //! On Android and iOS (Tauri's `mobile` cfg) there's no second instance,
 //! tray, menu bar, hide-on-close, saved window place, budgetmint:// link or
-//! updater, and the system keeps the reminders.
+//! updater plugin (a phone downloads its update: apk_update.rs), and the
+//! system keeps the reminders.
 //!
 //! A dev build (environment.rs) is "BudgetMint Dev", an app of its own beside
 //! the installed one; it refuses to start as the installed app, and a

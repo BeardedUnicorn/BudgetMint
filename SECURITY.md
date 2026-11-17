@@ -12,14 +12,15 @@ stays between you and the maintainer until a fix is released.
 
 - BudgetMint's code here: the web app and its Hosting configuration
   (`firebase.json`), BudgetMint's Firestore rules (`rules/firestore.rules`),
-  the desktop app and its updates, core, and the release workflow.
+  the desktop and Android apps and their updates, core, and the release
+  workflow.
 - **Not TaskMint's rules or project:** `firebase/` here is a pinned copy of
   TaskMint's rules, which BudgetMint only reads TaskMint's forecast under.
   Report a problem with them to
   [TaskMint](https://github.com/BeardedUnicorn/taskmint) the same way.
 
-Only the latest release is fixed: the desktop app updates itself, and the web
-app is always the latest.
+Only the latest release is fixed: the desktop and Android apps update
+themselves, and the web app is always the latest.
 
 ## Not vulnerabilities
 

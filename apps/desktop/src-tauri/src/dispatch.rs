@@ -26,6 +26,7 @@ pub const COMMANDS: &[&str] = &[
     "google_sign_in",
     "check_for_update",
     "install_update",
+    "download_update",
     "log",
     "open_logs_folder",
     "save_file",
@@ -121,6 +122,12 @@ pub fn run(state: &AppState, command: &str, value: Value) -> Result<Value, Strin
             updates::install(state)?;
             Ok(Value::Null)
         }
+        // A phone's update, when the app's own download failed: the APK of
+        // what the last check found, in the browser
+        "download_update" => {
+            platform.download_update()?;
+            Ok(Value::Null)
+        }
         "log" => {
             let LogArgs { level, message } = args(command, value)?;
             logs::webview(&level, &message);
@@ -175,7 +182,7 @@ mod tests {
             run(&phone.state, "nope", Value::Null),
             Err("Unknown command: nope".to_string())
         );
-        assert_eq!(COMMANDS.len(), 14);
+        assert_eq!(COMMANDS.len(), 15);
     }
 
     #[test]
@@ -333,6 +340,21 @@ mod tests {
         f.platform.fail("install_update");
         assert!(run(&f.state, "check_for_update", Value::Null).is_err());
         assert!(run(&f.state, "install_update", Value::Null).is_err());
+    }
+
+    #[test]
+    fn a_phone_downloads_the_update_it_found() {
+        let phone = with_platform(FakePlatform::mobile());
+        assert_eq!(
+            run(&phone.state, "download_update", json!({})),
+            Ok(Value::Null)
+        );
+        assert_eq!(phone.platform.recorded().updates_downloaded, 1);
+        phone.platform.fail("download_update");
+        assert_eq!(
+            run(&phone.state, "download_update", json!({})),
+            Err("download_update failed".to_string())
+        );
     }
 
     #[test]

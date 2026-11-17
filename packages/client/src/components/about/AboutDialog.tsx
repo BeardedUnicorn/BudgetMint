@@ -1,6 +1,6 @@
 /**
- * About BudgetMint: the version, whether it's the newest (the desktop
- * checks; Android and the web say how they update), what's new in it,
+ * About BudgetMint: the version, whether it's the newest (the desktop and
+ * Android check; the web says how it updates), what's new in it,
  * and the links a user looks for here: the release notes, reporting a
  * problem, the privacy policy and terms, and the source. Copy version
  * info puts what a bug report needs on the clipboard.
@@ -21,7 +21,6 @@ import { Wordmark } from '../ui/display/Wordmark';
 
 export const REPOSITORY = 'https://github.com/BeardedUnicorn/BudgetMint';
 export const RELEASE_NOTES_URL = `${REPOSITORY}/blob/main/CHANGELOG.md`;
-export const RELEASES_URL = `${REPOSITORY}/releases`;
 export const LICENSE_URL = `${REPOSITORY}/blob/main/LICENSE`;
 export const PRIVACY_URL = 'https://budgetmint.web.app/privacy';
 export const TERMS_URL = 'https://budgetmint.web.app/terms';
@@ -86,27 +85,14 @@ export function reportProblemUrl(): string {
   return `${REPOSITORY}/issues/new?body=${encodeURIComponent(`What happened, and what you expected:\n\n\n---\n${versionInfo()}`)}`;
 }
 
-/** Android and the web update their own way: said where the desktop has its check. */
+/** The web updates its own way: said where the desktop and Android have their check. */
 function HowItUpdates() {
-  const { runtime } = getShell().capabilities;
-  if (runtime === 'mobile') {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        Each release has an Android app to install over this one, which keeps you signed in.{' '}
-        <Link href={RELEASES_URL} target="_blank" rel="noreferrer">
-          Releases
-        </Link>
-      </Typography>
-    );
-  }
-  if (runtime === 'web') {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        The web app is the newest version each time it opens online.
-      </Typography>
-    );
-  }
-  return null;
+  if (getShell().capabilities.runtime !== 'web') return null;
+  return (
+    <Typography variant="body2" color="text.secondary">
+      The web app is the newest version each time it opens online.
+    </Typography>
+  );
 }
 
 function OutLink({ href, children }: { href: string; children: string }) {

@@ -1,8 +1,10 @@
-// Adapted from TaskMint apps/desktop/src/__tests__/updates.test.tsx @ ded0475.
+// Adapted from TaskMint apps/desktop/src/__tests__/updates.test.tsx @ 94318ec.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type EventCallback } from '@tauri-apps/api/event';
+import { setShell } from '@budgetmint/client/shell';
+import { createFakeShell } from '@budgetmint/client/testing';
 import {
   automaticCheckDue,
   CHECK_INTERVAL_MS,
@@ -86,10 +88,14 @@ function emit(event: string, payload: unknown) {
 }
 
 let focused: boolean;
+/** The shell the store asks what it runs on: a desktop, unless a test says a phone. */
+let shell: ReturnType<typeof createFakeShell>;
 
 beforeEach(() => {
   localStorage.clear();
   resetUpdatesForTest();
+  shell = createFakeShell();
+  setShell(shell);
   listening.clear();
   vi.mocked(listen).mockImplementation(async (event, handler) => {
     listening.set(event, handler as EventCallback<unknown>);
@@ -640,6 +646,213 @@ describe("the menus' Check for Updates…", () => {
     render(<UpdatePrompt />);
     await act(() => updates.check({ manual: true }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('on a phone', () => {
+  /** The phone's own download (AppUpdate.kt, through the shell). */
+  const download = () => vi.mocked(shell.platform.appUpdate.download);
+
+  beforeEach(() => {
+    shell = createFakeShell({ runtime: 'mobile' });
+    setShell(shell);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function found() {
+    render(<UpdatePrompt />);
+    await act(() => updates.check({ manual: true }));
+    return screen.findByRole('dialog', { name: 'BudgetMint 2.3.0 is available' });
+  }
+
+  it('downloads the release itself, showing how far it is, and closes the dialog for the installer', async () => {
+    let finish!: () => void;
+    download().mockImplementation(
+      () =>
+        new Promise<void>(resolve => {
+          finish = resolve;
+        })
+    );
+    answer({ check_for_update: release });
+    const dialog = await found();
+    expect(dialog).toHaveTextContent(
+      'You have 2.2.0. BudgetMint downloads the update, and Android asks before installing it. You stay signed in'
+    );
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }));
+    expect(await within(dialog).findByText('Starting the download…')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Download' })).toBeDisabled();
+    const [version, onProgress] = download().mock.calls[0];
+    expect(version).toBe('2.3.0');
+
+    act(() => onProgress({ downloaded: 6_000_000, total: 24_000_000 }));
+    expect(within(dialog).getByText('Downloading… 6.0 MB of 24.0 MB')).toBeInTheDocument();
+    expect(within(dialog).getByRole('progressbar', { name: 'Downloading the update' })).toHaveAttribute(
+      'aria-valuenow',
+      '25'
+    );
+
+    await act(async () => finish());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(updates.get().update).toMatchObject({ status: 'available', open: false });
+    expect(sent('download_update')).toHaveLength(0);
+    expect(sent('install_update')).toHaveLength(0);
+  });
+
+  it('says why the download failed, and can try again or hand it to the browser', async () => {
+    download().mockRejectedValue('GitHub answered 404.');
+    answer({ check_for_update: release, download_update: undefined });
+    const dialog = await found();
+    expect(within(dialog).queryByRole('button', { name: 'Open in browser' })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "The update couldn't be downloaded. GitHub answered 404."
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(download()).toHaveBeenCalledTimes(2));
+    await within(dialog).findByRole('alert');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open in browser' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(sent('download_update')).toHaveLength(1);
+    expect(updates.get().update).toMatchObject({ status: 'available', open: false });
+  });
+
+  it('skips this version, as a desktop does', async () => {
+    answer({ check_for_update: release });
+    const dialog = await found();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Skip this version' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(updates.get().skippedVersion).toBe('2.3.0');
+    expect(download()).not.toHaveBeenCalled();
+  });
+
+  describe("where the app can't download it itself", () => {
+    beforeEach(() => {
+      shell = createFakeShell({ runtime: 'mobile', without: ['appUpdate'] });
+      setShell(shell);
+    });
+
+    it('downloads the release in the browser, and closes the dialog', async () => {
+      answer({ check_for_update: release, download_update: undefined });
+      const dialog = await found();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(sent('download_update')).toHaveLength(1);
+      expect(updates.get().update).toMatchObject({ status: 'available', open: false });
+    });
+
+    it("says why the browser couldn't open it", async () => {
+      answer({ check_for_update: release, download_update: rejects('no browser to open it in') });
+      const dialog = await found();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Download' }));
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+        "The update couldn't be downloaded. No browser to open it in."
+      );
+    });
+  });
+
+  describe('with Advanced Protection on', () => {
+    let blocked: boolean;
+    const openSecuritySettings = vi.fn();
+
+    beforeEach(() => {
+      blocked = true;
+      openSecuritySettings.mockClear();
+      vi.stubGlobal('BudgetMintUpdate', { installsBlocked: () => blocked, openSecuritySettings, download: vi.fn() });
+    });
+
+    async function help() {
+      answer({ check_for_update: release });
+      render(<UpdatePrompt />);
+      await act(() => updates.check({ manual: true }));
+      return screen.findByRole('dialog', { name: 'Turn off Advanced Protection to update' });
+    }
+
+    it('shows how to turn it off instead of a download, and opens the Security settings', async () => {
+      const dialog = await help();
+
+      expect(dialog).toHaveTextContent('BudgetMint 2.3.0 is available, and you have 2.2.0.');
+      expect(dialog).toHaveTextContent("it blocks apps that don't come from Google Play");
+      // What the update brings is here too
+      expect(within(dialog).getByRole('heading', { name: "What's new" })).toBeInTheDocument();
+      expect(within(dialog).getByText('latest.json')).toBeInTheDocument();
+      const steps = within(within(dialog).getByRole('list', { name: 'How to turn off Advanced Protection' }));
+      expect(steps.getAllByRole('listitem').map(step => step.textContent)).toEqual([
+        'Open the phone’s Settings, then Security & privacy.',
+        'Tap Advanced Protection.',
+        'Turn Device protection off, and restart the phone if it asks.',
+        'Open BudgetMint again and download the update.',
+        'Once BudgetMint has updated, turn Device protection back on the same way.',
+      ]);
+      expect(within(dialog).queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Open Settings' }));
+      expect(openSecuritySettings).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(download()).not.toHaveBeenCalled();
+    });
+
+    it('offers the download once it is off: on Check again, or on coming back to the app', async () => {
+      const dialog = await help();
+
+      // Still on: the same screen
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Check again' }));
+      expect(screen.getByRole('dialog', { name: 'Turn off Advanced Protection to update' })).toBeInTheDocument();
+
+      blocked = false;
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Check again' }));
+      const update = await screen.findByRole('dialog', { name: 'BudgetMint 2.3.0 is available' });
+      expect(within(update).getByRole('button', { name: 'Download' })).toBeInTheDocument();
+      expect(within(update).getByRole('button', { name: 'Later' })).toBeInTheDocument();
+
+      // On again, then off while the app is in the background
+      blocked = true;
+      act(() => updates.show());
+      await screen.findByRole('dialog', { name: 'Turn off Advanced Protection to update' });
+      blocked = false;
+      const visibility = vi.spyOn(document, 'visibilityState', 'get');
+      visibility.mockReturnValue('hidden');
+      fireEvent(document, new Event('visibilitychange'));
+      expect(screen.getByRole('dialog', { name: 'Turn off Advanced Protection to update' })).toBeInTheDocument();
+      visibility.mockReturnValue('visible');
+      fireEvent(document, new Event('visibilitychange'));
+      expect(await screen.findByRole('dialog', { name: 'BudgetMint 2.3.0 is available' })).toBeInTheDocument();
+    });
+
+    it('skips this version there too, so automatic checks stop asking', async () => {
+      const dialog = await help();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Skip this version' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(updates.get().skippedVersion).toBe('2.3.0');
+    });
+  });
+
+  it('only downloads an update a check found', async () => {
+    await updates.download();
+    await updates.openInBrowser();
+    expect(download()).not.toHaveBeenCalled();
+    expect(sent('download_update')).toHaveLength(0);
+  });
+
+  it('says it asks before downloading, and so does its notification', async () => {
+    render(<UpdatesSection />);
+    expect(screen.getByText(/asks before downloading it/)).toBeInTheDocument();
+
+    focused = false;
+    answer({ check_for_update: release, show_notification: undefined });
+    await act(() => updates.check({ manual: false }));
+    expect(sent('show_notification')).toEqual([
+      { title: 'BudgetMint 2.3.0 is available', body: 'Open BudgetMint to download it.' },
+    ]);
   });
 });
 

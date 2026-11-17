@@ -29,6 +29,8 @@ pub struct Recorded {
     pub restarts: usize,
     pub update_checks: usize,
     pub updates_installed: usize,
+    /// Releases whose APK was opened in the browser (a phone's update).
+    pub updates_downloaded: usize,
 }
 
 #[derive(Default)]
@@ -204,6 +206,12 @@ impl Platform for FakePlatform {
         }
         self.check("install_update")?;
         self.record(|r| r.updates_installed += 1);
+        Ok(())
+    }
+
+    fn download_update(&self) -> Result<(), String> {
+        self.check("download_update")?;
+        self.record(|r| r.updates_downloaded += 1);
         Ok(())
     }
 }

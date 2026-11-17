@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { command, createTauriShell, subscribe } from '../tauriShell';
+import { command, createTauriShell, openSecuritySettings, sideloadingBlocked, subscribe } from '../tauriShell';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => undefined) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn() }));
@@ -20,6 +20,8 @@ afterEach(() => {
   delete window.BudgetMintLaunch;
   delete window.BudgetMintWidgets;
   delete window.__budgetmintLaunch;
+  delete window.BudgetMintUpdate;
+  delete window.__budgetmintUpdate;
 });
 
 describe('the Tauri shell', () => {
@@ -59,6 +61,10 @@ describe('the Tauri shell', () => {
     expect(splashScreen).toBeUndefined();
     // No Google tag in a webview that can call every command
     expect(analytics).toBeUndefined();
+    // A desktop installs its own updates (the updater), and has no Advanced Protection to ask about
+    expect(shell.platform.appUpdate).toBeUndefined();
+    expect(sideloadingBlocked()).toBe(false);
+    expect(() => openSecuritySettings()).not.toThrow();
     // Without a client, email and password only
     expect(createTauriShell({ runtime: 'desktop' }).platform.googleSignIn).toBeUndefined();
   });
@@ -75,6 +81,7 @@ describe('the Tauri shell', () => {
     expect(platform.screenPrivacy).toBeUndefined();
     expect(platform.menu).toBeUndefined();
     expect(platform.widgets).toBeUndefined();
+    expect(platform.appUpdate).toBeUndefined();
     // Android's document picker, through the same command; false when it's cancelled
     mockInvoke.mockResolvedValueOnce(false);
     expect(await platform.saveFile!('budget.csv', 'a,b', 'text/csv')).toBe(false);
@@ -181,6 +188,37 @@ describe('the Tauri shell', () => {
     waiting = 'record';
     window.__budgetmintLaunch!();
     expect(second).toHaveBeenCalledTimes(2);
+  });
+
+  it('on Android: its own update, downloaded for the installer, and whether Advanced Protection blocks it', async () => {
+    const update = { installsBlocked: vi.fn(() => true), openSecuritySettings: vi.fn(), download: vi.fn() };
+    window.BudgetMintUpdate = update;
+    const { platform } = createTauriShell({ runtime: 'mobile' });
+
+    // AppUpdate.kt says how far the download is, then that the installer is open
+    const onProgress = vi.fn();
+    const downloaded = platform.appUpdate!.download('2.9.0', onProgress);
+    expect(update.download).toHaveBeenCalledWith('2.9.0');
+    window.__budgetmintUpdate!({ downloaded: 6_000_000, total: 24_000_000 });
+    window.__budgetmintUpdate!({ downloaded: 24_000_000, total: null });
+    expect(onProgress.mock.calls).toEqual([
+      [{ downloaded: 6_000_000, total: 24_000_000 }],
+      [{ downloaded: 24_000_000, total: null }],
+    ]);
+    window.__budgetmintUpdate!({ done: true });
+    await expect(downloaded).resolves.toBeUndefined();
+
+    // Or why it isn't
+    const failed = platform.appUpdate!.download('2.9.0', onProgress);
+    window.__budgetmintUpdate!({ error: 'GitHub answered 404.' });
+    await expect(failed).rejects.toBe('GitHub answered 404.');
+    expect(onProgress).toHaveBeenCalledTimes(2);
+
+    expect(sideloadingBlocked()).toBe(true);
+    update.installsBlocked.mockReturnValue(false);
+    expect(sideloadingBlocked()).toBe(false);
+    openSecuritySettings();
+    expect(update.openSecuritySettings).toHaveBeenCalledTimes(1);
   });
 });
 

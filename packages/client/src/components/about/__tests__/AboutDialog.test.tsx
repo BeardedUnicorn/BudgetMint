@@ -42,7 +42,7 @@ describe('About BudgetMint', () => {
     expect(link('Report a problem').getAttribute('href')).toBe(reportProblemUrl());
     expect(decodeURIComponent(reportProblemUrl())).toContain(versionInfo());
     // The desktop says nothing of updating without its own word (the shell's AboutUpdates)
-    expect(about).not.toHaveTextContent(/newest version each time|install over this one/);
+    expect(about).not.toHaveTextContent(/newest version each time/);
 
     await user.click(within(about).getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -62,18 +62,15 @@ describe('About BudgetMint', () => {
     expect(await screen.findByText('Couldn’t copy the version info')).toBeInTheDocument();
   });
 
-  it('has the shell’s word on updates, or says how Android and the web update', async () => {
+  it('has the shell’s word on updates (the desktop’s and Android’s), or says how the web updates', async () => {
     const AboutUpdates = () => <div>BudgetMint is up to date</div>;
     const desktop = await openAbout({ extensions: { AboutUpdates } });
     expect(desktop.about).toHaveTextContent('BudgetMint is up to date');
     desktop.unmount();
 
-    const android = await openAbout({ shell: createFakeShell({ runtime: 'mobile' }) });
-    expect(android.about).toHaveTextContent('Each release has an Android app to install over this one');
-    expect(within(android.about).getByRole('link', { name: 'Releases' })).toHaveAttribute(
-      'href',
-      'https://github.com/BeardedUnicorn/BudgetMint/releases'
-    );
+    const android = await openAbout({ shell: createFakeShell({ runtime: 'mobile' }), extensions: { AboutUpdates } });
+    expect(android.about).toHaveTextContent('BudgetMint is up to date');
+    expect(android.about).not.toHaveTextContent(/newest version each time/);
     android.unmount();
 
     const web = await openAbout({ shell: createFakeShell({ runtime: 'web' }) });

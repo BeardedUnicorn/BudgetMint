@@ -80,7 +80,9 @@ jobs:
           - target: windows-x64
             os: windows-2025
             desktop: true
-          # The APK, signed with the release key (no updates: it's sideloaded)
+          # The APK, signed with the release key. Installed apps download it
+          # by its name to update (apk_update.rs, AppUpdate.kt); it has no
+          # updater artifacts of its own
           - target: android-arm64
             os: ubuntu-26.04
     runs-on: ${{ matrix.os }}
@@ -188,7 +190,7 @@ jobs:
           VITE_GOOGLE_DESKTOP_CLIENT_ID: ${{ matrix.desktop && secrets.VITE_GOOGLE_DESKTOP_CLIENT_ID || '' }}
           VITE_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ matrix.desktop && secrets.VITE_GOOGLE_DESKTOP_CLIENT_SECRET || '' }}
           # Signs the desktop builds' updates (only this step sees the key; the
-          # APK has no updates)
+          # APK is signed with the release key instead)
           TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.desktop && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ matrix.desktop && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           # The release key's password, for the APK only

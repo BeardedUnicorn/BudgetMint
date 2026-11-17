@@ -1,4 +1,4 @@
-// Adapted from TaskMint apps/desktop/src-tauri/src/environment.rs @ 8b486ac.
+// Adapted from TaskMint apps/desktop/src-tauri/src/environment.rs @ 94318ec.
 //! Which BudgetMint this build is: production (a release, the installed
 //! app) or dev (every other build; ADR 0005). build.rs takes it from
 //! BUDGETMINT_ENV (scripts/environment.mjs), the same variable that picks
@@ -18,6 +18,10 @@ pub const DEV_IDENTIFIER: &str = "com.budgetmint.desktop.dev";
 pub const PRODUCTION_DEEP_LINK_SCHEME: &str = "budgetmint";
 /// A dev build's links (tauri.conf.json registers it).
 pub const DEV_DEEP_LINK_SCHEME: &str = "budgetmint-dev";
+/// The release feed a phone checks for updates (a desktop's updater has it
+/// in tauri.production.conf.json; the Android build doesn't use that file).
+pub const UPDATE_FEED_URL: &str =
+    "https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
@@ -65,6 +69,15 @@ impl Environment {
                  BUDGETMINT_ENV=production, or without tauri.production.conf.json."
             )),
             _ => Ok(()),
+        }
+    }
+
+    /// Where a phone looks for a newer release: only the real app does (a
+    /// desktop's updater reads the same feed from tauri.production.conf.json).
+    pub fn update_feed(self) -> Option<&'static str> {
+        match self {
+            Environment::Production => Some(UPDATE_FEED_URL),
+            Environment::Dev => None,
         }
     }
 }
@@ -115,6 +128,12 @@ mod tests {
     }
 
     #[test]
+    fn only_the_real_app_checks_for_updates() {
+        assert_eq!(Environment::Production.update_feed(), Some(UPDATE_FEED_URL));
+        assert_eq!(Environment::Dev.update_feed(), None);
+    }
+
+    #[test]
     fn the_tauri_configs_match() {
         let base = config(include_str!("../tauri.conf.json"));
         let production = config(include_str!("../tauri.production.conf.json"));
@@ -136,11 +155,10 @@ mod tests {
             scheme(&production),
             serde_json::json!([PRODUCTION_DEEP_LINK_SCHEME])
         );
+        // The phone's feed is the desktop's
         assert_eq!(
             production["plugins"]["updater"]["endpoints"],
-            serde_json::json!([
-                "https://github.com/BeardedUnicorn/BudgetMint/releases/latest/download/latest.json"
-            ])
+            serde_json::json!([UPDATE_FEED_URL])
         );
 
         // Android's name and package are Gradle's, by BUDGETMINT_ENV

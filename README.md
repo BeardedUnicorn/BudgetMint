@@ -24,7 +24,7 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 | **Calendar** | Each day's bills, income and withdrawals, and the balance at the end of it, in red below your low-balance mark. Click a day for its details. |
 | **Forecast** | The balance line over the next 14 to 366 days (and what's left of it besides the money set aside), with your low-balance mark, a day-by-day table, and the assumptions it rests on, everyday spending among them. |
 | **Reports** | A month looked back on: bills paid against what was expected, by category; income and TaskMint's withdrawals; bills paid late; spending besides the bills; and the six months up to it. |
-| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop) updates. |
+| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop and Android) updates. |
 
 **Getting around.** BudgetMint opens on the Overview. On the desktop the
 sidebar lists every page (⌘1–⌘8), and on macOS the menu bar adds File, Go
@@ -170,7 +170,7 @@ build and the web dev server are all dev builds. Only the release
 | Web app | https://budgetmint.web.app | https://budgetmint-dev.web.app |
 | Desktop app | BudgetMint, `com.budgetmint.desktop` | BudgetMint Dev, `com.budgetmint.desktop.dev` |
 | Desktop links | `budgetmint://` | `budgetmint-dev://` |
-| Desktop updates | from the latest GitHub release | none |
+| Desktop and Android updates | from the latest GitHub release | none |
 | Android app | BudgetMint, `com.budgetmint.android` | BudgetMint Dev, `com.budgetmint.android.dev` |
 | Usage analytics | on, with the off switch | none |
 
@@ -245,6 +245,8 @@ Rust side does this with `tauri-plugin-updater` (`src/platform/os.rs`,
 `src/updates.rs`); the dialog and Settings → Updates are
 `apps/desktop/src/updates.ts`, `UpdatePrompt.tsx` and
 `settings/UpdatesSection.tsx`. A development build checks but won't install.
+The Android app reads the same feed and downloads its update for Android to
+install ([Android](#android)).
 
 Besides the new version's own notes, `latest.json` carries every release's
 notes (`changelog`: the CHANGELOG's sections). An app several releases
@@ -280,7 +282,21 @@ roughly the last eight years.
 Opening it asks you to let the browser (or Files) install unknown apps;
 allow it, go back and install. A later release's APK installs the same way,
 over the app, and keeps its data: they're all signed with the same key (see
-[Android signing](#android-signing)). The app doesn't update itself.
+[Android signing](#android-signing)).
+
+**Updating it.** As TaskMint's: the app checks for a new release at launch
+and daily, as the desktop does (Settings → Updates), in the same
+`latest.json` (`src/apk_update.rs` compares the versions; `platform/os.rs`
+fetches the feed, in a release build only). Its Download fetches the new APK
+itself (`AppUpdate.kt`, into the app's cache), shows how far it is, and
+opens Android's installer on it; the first time, Android asks to let
+BudgetMint install apps. If that fails, Open in browser hands the APK's link
+to the browser. With Android's Advanced Protection on, the phone installs
+nothing from outside Google Play: the update dialog then shows the steps to
+turn it off, with a button to the phone's Security settings, and offers the
+download once it's off. Android itself refuses an APK signed with another
+key, or an older version. Releases up to 2.8.0 don't check: the first
+release with the check is installed by hand, as above.
 
 **Prerequisites**, besides the ones above:
 
@@ -316,7 +332,7 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   and the Firebase BoM with Analytics, Credential Manager and googleid as
   dependencies. Firebase and googleid need Kotlin 2.3, which the root
   `build.gradle.kts` and `buildSrc/build.gradle.kts` pin.
-- `MainActivity.kt` gives the webview seven bridges (`tauriShell.ts` uses
+- `MainActivity.kt` gives the webview eight bridges (`tauriShell.ts` uses
   them): `BudgetMintSplash` (the launch screen stays until the app has
   drawn), `BudgetMintSystemBars` (the status and navigation bars follow the
   app's theme, and the page learns what they, a camera cutout and the
@@ -327,12 +343,18 @@ was made by `pnpm tauri android init` from `tauri.conf.json` and
   `BudgetMintScreen` (Settings → Privacy's switch that keeps the app out of
   screenshots and the recent apps' previews: `FLAG_SECURE`, kept in the
   app's own preferences so it holds from the first frame), `BudgetMintLaunch`
-  (what the app was opened for) and `BudgetMintWidgets` (what the widgets
-  show). `app/proguard-rules.pro` keeps them, and Credential Manager's Play
+  (what the app was opened for), `BudgetMintWidgets` (what the widgets
+  show) and `BudgetMintUpdate` (the app's own update: `AppUpdate.kt`
+  downloads a release's APK and opens Android's installer on it, and the
+  page asks whether Advanced Protection blocks that).
+  `app/proguard-rules.pro` keeps them, and Credential Manager's Play
   services provider, through R8.
 - The manifest asks for exact alarms (`USE_EXACT_ALARM`, and
   `SCHEDULE_EXACT_ALARM` on Android 12), so a bill's reminder comes at its
-  hour. Unlike TaskMint's, it also removes the advertising-ID permissions
+  hour; to install its own update (`REQUEST_INSTALL_PACKAGES`: Android asks
+  the user to allow it the first time); and whether Advanced Protection is
+  on (`QUERY_ADVANCED_PROTECTION_MODE`, Android 16 and later). Unlike
+  TaskMint's, it also removes the advertising-ID permissions
   Firebase Analytics brings in, and turns off Analytics' advertising ID and
   ad personalisation, as the privacy page says.
 - **Opened for something.** A launcher shortcut (long-press the icon: Add a
@@ -445,7 +467,7 @@ project's own web client, which TaskMint's project of the same environment
 safelists, so it signs in to both. The parts only a desktop has are left out, in the Rust
 (`#[cfg(desktop)]`, and those crates are desktop-only dependencies) and in
 the webview (`tauriShell.ts`, `extensions.tsx`): the tray, opening at login
-and updates. Settings → Your data's backup and spreadsheet are saved through
+and the updater (a phone downloads its update instead, above). Settings → Your data's backup and spreadsheet are saved through
 Android's file picker, which picks a document (a `content://` address)
 rather than a path: `tauri-plugin-fs`, a mobile-only dependency, opens it
 (`platform/os.rs`).

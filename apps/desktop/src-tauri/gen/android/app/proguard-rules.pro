@@ -34,6 +34,10 @@
 -keepclassmembers class com.budgetmint.android.MainActivity$Widgets {
    @android.webkit.JavascriptInterface public <methods>;
 }
+# and the app's own update (window.BudgetMintUpdate)
+-keepclassmembers class com.budgetmint.android.MainActivity$Update {
+   @android.webkit.JavascriptInterface public <methods>;
+}
 # Credential Manager finds its Play services provider by reflection
 -if class androidx.credentials.CredentialManager
 -keep class androidx.credentials.playservices.** {

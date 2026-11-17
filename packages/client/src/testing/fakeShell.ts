@@ -49,6 +49,7 @@ export function createFakeShell(
     },
     screenPrivacy: { isOn: vi.fn(() => false), set: vi.fn() },
     widgets: { set: vi.fn() },
+    appUpdate: { download: vi.fn() },
   };
   for (const member of options.without ?? []) delete (platform as Partial<FakePlatform>)[member];
   const clickMenu = (id: string) => {
