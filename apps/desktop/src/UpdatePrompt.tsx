@@ -1,5 +1,5 @@
-// Adapted from TaskMint apps/desktop/src/UpdatePrompt.tsx @ a2b0156.
-import { useEffect } from 'react';
+// Adapted from TaskMint apps/desktop/src/UpdatePrompt.tsx @ 94318ec.
+import { useEffect, useReducer } from 'react';
 import {
   Alert,
   Box,
@@ -12,10 +12,13 @@ import {
   LinearProgress,
   Typography,
 } from '@mui/material';
+import { AdvancedProtectionHelp } from './AdvancedProtectionHelp';
 import { APP_VERSION } from './appVersion';
+import { sideloadingBlocked } from './tauriShell';
 import { UpdateNotes, useReleasesSince } from './UpdateNotes';
 import {
   automaticCheckDue,
+  downloadsUpdates,
   updates,
   useUpdates,
   type AvailableUpdate,
@@ -130,12 +133,17 @@ function CheckReport({ state }: { state: UpdateState }) {
 }
 
 /**
- * The desktop's update check (the client's Background extension): it runs
- * on its own at launch and daily, and asks before installing what it finds.
+ * The update check (the client's Background extension): it runs on its own
+ * at launch and daily, and asks before installing what it finds, or on a
+ * phone, before downloading it. A phone with Advanced Protection on won't
+ * install the download, so there it shows how to turn that off instead
+ * (AdvancedProtectionHelp).
  */
 export function UpdatePrompt() {
   useAutomaticChecks();
   const { update: state, reporting } = useUpdates();
+  // Advanced Protection is the phone's setting: asked again on each render
+  const [, recheck] = useReducer((count: number) => count + 1, 0);
 
   const open =
     (state.status === 'available' && state.open) || state.status === 'installing' || state.status === 'installFailed';
@@ -143,6 +151,10 @@ export function UpdatePrompt() {
 
   const { update } = state;
   const installing = state.status === 'installing';
+  const phone = downloadsUpdates();
+  if (phone && sideloadingBlocked()) {
+    return <AdvancedProtectionHelp update={update} onRecheck={recheck} onSkip={updates.skip} onClose={updates.later} />;
+  }
   return (
     <Dialog
       open
@@ -155,8 +167,10 @@ export function UpdatePrompt() {
       <DialogTitle id="update-dialog-title">BudgetMint {update.version} is available</DialogTitle>
       <DialogContent>
         <DialogContentText>
-          <Behind update={update} /> BudgetMint downloads the update, installs it and restarts. Your budget is in the
-          cloud, so nothing is lost.
+          <Behind update={update} />{' '}
+          {phone
+            ? 'BudgetMint downloads the update, and Android asks before installing it. You stay signed in, and your budget is in the cloud, so nothing is lost.'
+            : 'BudgetMint downloads the update, installs it and restarts. Your budget is in the cloud, so nothing is lost.'}
         </DialogContentText>
         <UpdateNotes update={update} />
         {installing && (
@@ -166,7 +180,7 @@ export function UpdatePrompt() {
         )}
         {state.status === 'installFailed' && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            The update couldn't be installed. {state.error}
+            {phone ? "The update couldn't be downloaded." : "The update couldn't be installed."} {state.error}
           </Alert>
         )}
       </DialogContent>
@@ -178,8 +192,15 @@ export function UpdatePrompt() {
         <Button onClick={updates.later} disabled={installing}>
           {state.status === 'installFailed' ? 'Close' : 'Later'}
         </Button>
-        <Button variant="contained" onClick={() => void updates.install()} disabled={installing}>
-          {state.status === 'installFailed' ? 'Try again' : 'Download and install'}
+        {phone && state.status === 'installFailed' && (
+          <Button onClick={() => void updates.openInBrowser()}>Open in browser</Button>
+        )}
+        <Button
+          variant="contained"
+          onClick={() => void (phone ? updates.download() : updates.install())}
+          disabled={installing}
+        >
+          {state.status === 'installFailed' ? 'Try again' : phone ? 'Download' : 'Download and install'}
         </Button>
       </DialogActions>
     </Dialog>

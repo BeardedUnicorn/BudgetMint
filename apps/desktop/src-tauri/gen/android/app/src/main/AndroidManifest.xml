@@ -15,6 +15,13 @@
          needs SCHEDULE_EXACT_ALARM. -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <!-- Whether Advanced Protection is on (Android 16 and later): it blocks
+         installing an update from outside the Play Store, and the update
+         dialog says so (MainActivity's Update.installsBlocked) -->
+    <uses-permission android:name="android.permission.QUERY_ADVANCED_PROTECTION_MODE" />
+    <!-- The app downloads its own update and opens Android's installer on
+         it (AppUpdate.kt); Android asks the user to allow that the first time -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- BudgetMint: no backups (res/xml/data_extraction_rules.xml says why);
          allowBackup covers Android 11 and earlier, the rules 12 and later. -->

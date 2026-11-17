@@ -1,13 +1,18 @@
-// Adapted from TaskMint apps/desktop/src/updates.ts @ 1623bee.
+// Adapted from TaskMint apps/desktop/src/updates.ts @ 94318ec.
 /**
  * Updates from BudgetMint's GitHub releases. The Rust side asks the release
  * feed and installs (apps/desktop/src-tauri/src/updates.rs); this holds what
  * the update dialog and Settings → Updates show, whether checks run on their
  * own, when the last one did, and the version the user skipped. One store
  * for the window, read with useUpdates().
+ *
+ * A phone isn't updated in place: the app downloads the release's APK
+ * (AppUpdate.kt) and Android installs it over the app, asking first. Where
+ * that fails, the browser downloads it instead (apk_update.rs).
  */
 
 import { useSyncExternalStore } from 'react';
+import { getShell } from '@budgetmint/client/shell';
 import { command, subscribe } from './tauriShell';
 
 /** The Rust side's event with an update's download progress (src-tauri/src/events.rs). */
@@ -134,13 +139,18 @@ export function automaticCheckDue(now: number): boolean {
   return current.autoCheck && (last === null || now - last >= CHECK_INTERVAL_MS);
 }
 
+/** A phone downloads its update and Android installs it, instead of the app installing it. */
+export function downloadsUpdates(): boolean {
+  return getShell().capabilities.runtime === 'mobile';
+}
+
 /** Says, outside the window, that a version is out (once per version). */
 function notifyAvailable(update: AvailableUpdate): void {
   if (document.hasFocus() || notifiedVersion === update.version) return;
   notifiedVersion = update.version;
   command('show_notification', {
     title: `BudgetMint ${update.version} is available`,
-    body: 'Open BudgetMint to install it.',
+    body: downloadsUpdates() ? 'Open BudgetMint to download it.' : 'Open BudgetMint to install it.',
   }).catch(error => console.warn('Failed to announce the update:', error));
 }
 
@@ -240,6 +250,44 @@ export const updates = {
       setUpdate({ status: 'installFailed', update: found, error: sentence(error) });
     } finally {
       stop();
+    }
+  },
+
+  /**
+   * A phone's update: downloads the release, showing its progress, and opens
+   * Android's installer on it, which asks before it replaces the app. The
+   * dialog closes once the installer is up. Where the app can't download it
+   * itself, the browser does.
+   */
+  async download(): Promise<void> {
+    const { update } = current;
+    if (update.status !== 'available' && update.status !== 'installFailed') return;
+    const found = update.update;
+    const { appUpdate } = getShell().platform;
+    if (!appUpdate) return updates.openInBrowser();
+    setUpdate({ status: 'installing', update: found, progress: null });
+    try {
+      await appUpdate.download(found.version, progress =>
+        setUpdate({ status: 'installing', update: found, progress: { ...progress, installing: false } })
+      );
+      setUpdate({ status: 'available', update: found, open: false });
+    } catch (error) {
+      setUpdate({ status: 'installFailed', update: found, error: sentence(error) });
+    }
+  },
+
+  /**
+   * A phone's update the other way: opens the release's APK in the browser,
+   * for Android to install once it's downloaded, and closes the dialog.
+   */
+  async openInBrowser(): Promise<void> {
+    const { update } = current;
+    if (update.status !== 'available' && update.status !== 'installFailed') return;
+    try {
+      await command<void>('download_update');
+      setUpdate({ status: 'available', update: update.update, open: false });
+    } catch (error) {
+      setUpdate({ status: 'installFailed', update: update.update, error: sentence(error) });
     }
   },
 

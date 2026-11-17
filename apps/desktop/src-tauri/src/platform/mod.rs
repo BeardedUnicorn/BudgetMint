@@ -61,7 +61,8 @@ pub enum DownloadEvent {
 }
 
 pub trait Platform: Send + Sync {
-    /// A phone or tablet (no tray, no updater; the system keeps the reminders).
+    /// A phone or tablet (no tray; it downloads its updates, and the system
+    /// keeps the reminders).
     fn is_mobile(&self) -> bool;
     /// Sends an event to the webview.
     fn emit(&self, event: &str, payload: &Value) -> Result<(), String>;
@@ -104,12 +105,18 @@ pub trait Platform: Send + Sync {
     /// Starts the app again (into an update).
     fn restart(&self);
     /// Asks the update feed whether there's a newer version, and keeps what
-    /// it found for install_update. None: this is the newest.
+    /// it found for install_update (a phone: for download_update). None:
+    /// this is the newest.
     fn check_update(&self) -> Result<Option<AvailableUpdate>, String>;
     /// Downloads the update check_update found, verifies its signature and
-    /// installs it, telling `progress` how the download goes.
+    /// installs it, telling `progress` how the download goes. Only a
+    /// desktop can.
     fn install_update(
         &self,
         progress: &mut (dyn FnMut(DownloadEvent) + Send),
     ) -> Result<(), String>;
+    /// A phone's update when the app's own download fails: opens the APK of
+    /// the release check_update found in the browser, for the user to
+    /// install (apk_update). A desktop installs instead.
+    fn download_update(&self) -> Result<(), String>;
 }

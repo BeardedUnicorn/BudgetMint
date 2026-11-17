@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.provider.Settings
+import android.security.advancedprotection.AdvancedProtectionManager
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -223,6 +225,7 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(Screen(), "BudgetMintScreen")
     webView.addJavascriptInterface(Launch(), "BudgetMintLaunch")
     webView.addJavascriptInterface(Widgets(), "BudgetMintWidgets")
+    webView.addJavascriptInterface(Update(), "BudgetMintUpdate")
     releaseFieldWhenKeyboardHides(webView)
   }
 
@@ -429,6 +432,50 @@ class MainActivity : TauriActivity() {
     @JavascriptInterface
     fun set(snapshot: String) {
       WidgetData.save(this@MainActivity, snapshot)
+    }
+  }
+
+  /**
+   * The app's own update (as TaskMint's AppTask, 94318ec): the page finds a
+   * newer release (apk_update.rs) and asks here for its download.
+   */
+  private inner class Update {
+    /**
+     * Whether the phone won't install an update: Advanced Protection
+     * (Android 16 and later) blocks apps from outside the Play Store, which
+     * is where BudgetMint's updates come from (the page then says so rather
+     * than offer the download).
+     */
+    @JavascriptInterface
+    fun installsBlocked(): Boolean =
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
+        runCatching {
+          getSystemService(AdvancedProtectionManager::class.java)?.isAdvancedProtectionEnabled == true
+        }.getOrDefault(false)
+
+    /**
+     * The phone's Security settings, where Advanced Protection is turned
+     * off (Android has no screen of its own to open for it).
+     */
+    @JavascriptInterface
+    fun openSecuritySettings() {
+      runOnUiThread {
+        runCatching { startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS)) }
+          .onFailure { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+      }
+    }
+
+    /**
+     * Downloads a release and opens Android's installer on it (AppUpdate),
+     * telling the page how far it is (window.__budgetmintUpdate).
+     */
+    @JavascriptInterface
+    fun download(version: String) {
+      AppUpdate.download(this@MainActivity, version) { report ->
+        runOnUiThread {
+          webView?.evaluateJavascript("window.__budgetmintUpdate && window.__budgetmintUpdate($report)", null)
+        }
+      }
     }
   }
 

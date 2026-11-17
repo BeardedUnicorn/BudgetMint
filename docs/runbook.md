@@ -110,12 +110,17 @@ pnpm firebase firestore:delete --all-collections --project budgetmint-dev
   release is fixed by releasing the next one (or installing the previous one
   by hand). Pull its update first (below), so no more apps install it
   meanwhile. The data is the cloud's, so reinstalling loses nothing.
-- **Android:** the APK doesn't update itself. A bad release is fixed by the
-  next one, or by installing the previous release's APK by hand: Android
+- **Android:** as the desktop, the app updates only to a newer version (it
+  reads the same `latest.json`, and downloads that release's APK for
+  Android to install), so a bad release is fixed by the next one; pull its
+  update first (below). Releases up to 2.8.0 don't check, and are updated by
+  hand. To go back by hand, install the previous release's APK: Android
   refuses an older version over a newer one, so uninstall first (the budget
   is the cloud's; only the device's own settings go).
-  Two of Android's own rules can stop an install from the APK: a phone in
-  Advanced Protection Mode refuses any app from outside its store, and
+  Two of Android's own rules can stop an install from the APK, the app's
+  own download included: a phone in
+  Advanced Protection Mode refuses any app from outside its store (the
+  update dialog then says how to turn it off), and
   Google's developer verification (in some countries since September 2026,
   everywhere in 2027) refuses an app whose signing key isn't registered to
   a verified developer, beyond a small number of devices. Before then,
@@ -124,10 +129,12 @@ pnpm firebase firestore:delete --all-collections --project budgetmint-dev
   version before → Publish. Or deploy the previous tag's
   `rules/firestore.rules` as above.
 
-## Pulling a bad desktop update
+## Pulling a bad update
 
-Installed apps read `latest.json` from the latest GitHub release, at launch
-and once a day, and offer whatever newer version it names. To stop a bad
+Installed apps, on the desktop and on Android, read `latest.json` from the
+latest GitHub release, at launch and once a day, and offer whatever newer
+version it names (a phone then downloads that version's APK from its own
+release). To stop a bad
 release spreading, make the release before it the latest again (its
 `latest.json` names an older version, so no app is offered the bad one any
 more), and mark the bad one a pre-release:

@@ -1,6 +1,7 @@
 /**
- * About BudgetMint's word on updates, on the desktop: when it last checked,
- * what it found (Settings → Updates says the same), and a check now.
+ * About BudgetMint's word on updates, on the desktop and Android: when it
+ * last checked, what it found (Settings → Updates says the same), and a
+ * check now.
  */
 
 import { Box, Button, Stack, Typography } from '@mui/material';

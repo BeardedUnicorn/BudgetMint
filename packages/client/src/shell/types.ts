@@ -74,6 +74,22 @@ export interface SystemBarsPlatform {
   onInsetsChange(listener: () => void): () => void;
 }
 
+/** How far an update's download is, in bytes; `total` is null when the server doesn't say. */
+export interface AppUpdateProgress {
+  downloaded: number;
+  total: number | null;
+}
+
+/**
+ * The app's own update where the system installs it (Android): the app
+ * downloads the release and opens the system's installer on it (as
+ * TaskMint's, 94318ec).
+ */
+export interface AppUpdatePlatform {
+  /** Resolves once the installer is open; rejects with why it couldn't be. */
+  download(version: string, onProgress: (progress: AppUpdateProgress) => void): Promise<void>;
+}
+
 export interface Platform {
   notifications: Notifications;
   /** A Google ID token, got the shell's own way (desktop, Android). */
@@ -110,6 +126,8 @@ export interface Platform {
    * (useWidgetSnapshot.ts), or '' for nothing (signed out).
    */
   widgets?: { set(snapshot: string): void };
+  /** Downloading a new release for the system to install (Android). */
+  appUpdate?: AppUpdatePlatform;
 }
 
 /**
@@ -134,7 +152,7 @@ export interface Shell {
   readonly platform: Platform;
 }
 
-/** A shell's own Settings section (the desktop's Updates). */
+/** A shell's own Settings section (the desktop's and Android's Updates). */
 export interface SettingsExtension {
   id: string;
   label: string;
@@ -143,7 +161,8 @@ export interface SettingsExtension {
 
 /**
  * What a shell adds to the app: Settings sections, work behind the pages
- * (the update prompt), and About's word on updates (the desktop's check).
+ * (the update prompt), and About's word on updates (the desktop's and
+ * Android's check).
  */
 export interface AppExtensions {
   settingsSections?: SettingsExtension[];

@@ -13,8 +13,9 @@
  *   reminders as alarms, which come with the app closed. On Android it also
  *   has the status bar, the launch screen, Google's account picker,
  *   Firebase Analytics, screen privacy, what the app was opened for (a
- *   shortcut, a widget, a reminder) and the widgets' contents, which
- *   MainActivity.kt hands the webview directly, outside dispatch.
+ *   shortcut, a widget, a reminder), the widgets' contents and the app's
+ *   own update, which MainActivity.kt hands the webview directly, outside
+ *   dispatch.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -110,6 +111,19 @@ interface AndroidWidgets {
   set(snapshot: string): void;
 }
 
+/** What Android's MainActivity.kt adds for the app's own update (as TaskMint's AppTask, 94318ec). */
+interface AndroidUpdate {
+  /** Whether the phone won't install an update (Advanced Protection is on). */
+  installsBlocked(): boolean;
+  /** The phone's Security settings, where Advanced Protection is turned off. */
+  openSecuritySettings(): void;
+  /** Downloads a release and opens Android's installer on it; `window.__budgetmintUpdate` hears how far it is. */
+  download(version: string): void;
+}
+
+/** What AppUpdate.kt reports of a download: how far it is, that the installer is open, or why it isn't. */
+type UpdateReport = { downloaded: number; total: number | null } | { done: true } | { error: string };
+
 /** What listens for what the app was opened for. */
 const launchListeners = new Set<(id: string) => void>();
 
@@ -129,7 +143,24 @@ declare global {
     BudgetMintScreen?: AndroidScreen;
     BudgetMintLaunch?: AndroidLaunch;
     BudgetMintWidgets?: AndroidWidgets;
+    /** AppUpdate.kt calls it as a download goes. */
+    __budgetmintUpdate?: (report: UpdateReport) => void;
+    BudgetMintUpdate?: AndroidUpdate;
   }
+}
+
+/**
+ * Whether the phone won't install an update it downloads: Android's
+ * Advanced Protection blocks apps that don't come from the Play Store, as
+ * BudgetMint's updates don't. False anywhere else.
+ */
+export function sideloadingBlocked(): boolean {
+  return window.BudgetMintUpdate?.installsBlocked() ?? false;
+}
+
+/** Opens the phone's Security settings, where Advanced Protection is turned off. Nothing anywhere else. */
+export function openSecuritySettings(): void {
+  window.BudgetMintUpdate?.openSecuritySettings();
 }
 
 /** The "Desktop app" OAuth client Google sign-in uses (the build's VITE_GOOGLE_DESKTOP_CLIENT_*). */
@@ -167,14 +198,33 @@ function androidLaunch(launch: AndroidLaunch): NonNullable<Platform['menu']> {
 }
 
 /**
+ * The app's own update: AppUpdate.kt downloads the release and opens
+ * Android's installer on it, reporting to `window.__budgetmintUpdate` as it
+ * goes.
+ */
+function androidUpdate(update: AndroidUpdate): NonNullable<Platform['appUpdate']> {
+  return {
+    download: (version, onProgress) =>
+      new Promise<void>((resolve, reject) => {
+        window.__budgetmintUpdate = report => {
+          if ('done' in report) resolve();
+          else if ('error' in report) reject(report.error);
+          else onProgress(report);
+        };
+        update.download(version);
+      }),
+  };
+}
+
+/**
  * Android's status bar, launch screen, usage analytics, screen privacy,
- * what the app was opened for and its widgets; elsewhere there are none.
- * The desktop has no analytics: Google's tag would run in a webview that
- * can call every command.
+ * what the app was opened for, its widgets and its own update; elsewhere
+ * there are none. The desktop has no analytics: Google's tag would run in a
+ * webview that can call every command.
  */
 function androidParts(): Pick<
   Platform,
-  'systemBars' | 'splashScreen' | 'analytics' | 'screenPrivacy' | 'menu' | 'widgets'
+  'systemBars' | 'splashScreen' | 'analytics' | 'screenPrivacy' | 'menu' | 'widgets' | 'appUpdate'
 > {
   const {
     BudgetMintSystemBars: bars,
@@ -183,11 +233,13 @@ function androidParts(): Pick<
     BudgetMintScreen: screen,
     BudgetMintLaunch: launch,
     BudgetMintWidgets: widgets,
+    BudgetMintUpdate: update,
   } = window;
   return {
     ...(screen ? { screenPrivacy: { isOn: () => screen.isPrivate(), set: on => screen.setPrivate(on) } } : {}),
     ...(launch ? { menu: androidLaunch(launch) } : {}),
     ...(widgets ? { widgets: { set: snapshot => widgets.set(snapshot) } } : {}),
+    ...(update ? { appUpdate: androidUpdate(update) } : {}),
     // Called on the bridge itself: Android refuses a method taken off it
     ...(bars
       ? {

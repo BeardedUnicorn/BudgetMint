@@ -2,9 +2,11 @@
 //! and what the webview can't do itself. Its data is the cloud's, read and
 //! written in the webview (packages/client), so the shell only shows
 //! reminders, keeps the tray and the menus, signs in with Google in the
-//! browser, keeps the log, and updates itself. The webview reaches it
-//! through one command, `dispatch`.
+//! browser, keeps the log, and updates itself (a phone downloads its update
+//! for Android to install: apk_update). The webview reaches it through one
+//! command, `dispatch`.
 
+pub mod apk_update;
 mod app;
 pub mod dispatch;
 pub mod environment;

@@ -13,7 +13,8 @@ Tauri or plugin versions, or to the `Platform` trait they implement.
 | File | What it does | Section |
 |---|---|---|
 | `apps/desktop/src-tauri/src/app.rs` | the Tauri builder: plugins, setup, the window and its saved place, the macOS menu bar, the menus' clicks, the reminders' thread, the run loop | [Startup and wiring](#startup-and-wiring-apprs), [The menus](#the-menus-apprs-platformosrs) |
-| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the save dialog, the window and the Dock icon, the menus and the tray, opening at login, the updater | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs) |
+| `apps/desktop/src-tauri/src/platform/os.rs` | `TauriPlatform`: events, notifications, the browser, the logs folder, the save dialog, the window and the Dock icon, the menus and the tray, opening at login, the updater; on a phone, reading the release feed and opening the APK in the browser | [The platform](#the-platform-platformosrs), [The menus](#the-menus-apprs-platformosrs), [Updates](#updates-platformosrs), [Android](#android) |
+| `gen/android`'s `AppUpdate.kt`, `MainActivity.kt` | the Android app's own update: the download, the check that it's BudgetMint at that version, Android's installer, Advanced Protection | [Android](#android) |
 | `apps/desktop/src-tauri/src/main.rs` | calls `budgetmint_lib::run`; no console window on Windows | [Windows](#windows) |
 | BudgetMint against the real Firebase projects | the tested store and session, on Google's servers and in real webviews | [The cloud](#the-cloud) |
 | `app/build.gradle.kts`, `tauri.production.conf.json` | which BudgetMint a build is: dev or production (ADR 0005) | [Dev and production builds](#dev-and-production-builds) |
@@ -434,6 +435,31 @@ signing") unless a step says otherwise:
       signs in against the Firebase emulators (`10.0.2.2`); refused, sign-in
       says "Can't reach Firebase". A release APK never asks
       (`aapt2 dump permissions` lists no `ACCESS_LOCAL_NETWORK`).
+- [ ] **Update check:** a release older than the latest finds it (Settings
+      → Updates → Check for updates, or About's), and on its own ten
+      seconds after a launch. Before a release has the check, build this
+      code as an older version with the release key
+      (`BUDGETMINT_ENV=production`, `pnpm tauri android build --apk --target
+      aarch64 --config '{"version":"<older>"}'`). Download shows its
+      progress in the dialog, then Android's installer opens (after allowing
+      BudgetMint to install apps, the first time), and installing keeps the
+      sign-in. With no network, the dialog says why, and Open in browser
+      hands the APK to the browser. Skip this version closes the dialog, and
+      the next launch doesn't ask; Settings → Updates still offers it. A dev
+      build says it doesn't update. `aapt2 dump permissions` lists
+      `REQUEST_INSTALL_PACKAGES` and `QUERY_ADVANCED_PROTECTION_MODE`.
+- [ ] **A wrong APK:** the same build signed with another key (a debug
+      build's) downloads the release, and Android refuses to install it over
+      the app.
+- [ ] **Advanced Protection:** with it on (Settings → Security & privacy),
+      the update dialog shows the steps to turn it off instead of Download;
+      Open Settings opens the phone's Security settings, and coming back
+      with it off shows Download.
+- [ ] **Back with the update dialog open** doesn't close it (the dialog is
+      outside the pages' Back stack): Later, or a tap outside it, does.
+- [ ] **Reminders after an update:** a bill's reminder set before an update
+      from inside the app still comes at its hour, with the app not opened
+      since.
 
 ## Windows
 

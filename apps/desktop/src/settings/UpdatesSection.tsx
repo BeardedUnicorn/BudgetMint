@@ -1,9 +1,9 @@
-// Adapted from TaskMint apps/desktop/src/settings/UpdatesSection.tsx @ 1623bee.
+// Adapted from TaskMint apps/desktop/src/settings/UpdatesSection.tsx @ 94318ec.
 import { Alert, Box, Button, FormControlLabel, Stack, Switch, Typography } from '@mui/material';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import { SettingsSection } from '@budgetmint/client/ui';
 import { APP_VERSION } from '../appVersion';
-import { updates, useUpdates, type UpdateState } from '../updates';
+import { downloadsUpdates, updates, useUpdates, type UpdateState } from '../updates';
 
 /** When a check last got an answer, as "Nov 11, 2026, 9:41 AM" in the user's locale. */
 export function checkedAt(ms: number): string {
@@ -53,7 +53,8 @@ export function UpdatesSection() {
             label="Check for updates automatically"
           />
           <Typography variant="body2" color="text.secondary">
-            BudgetMint looks for a new release on GitHub when it starts and once a day, and asks before installing it.
+            BudgetMint looks for a new release on GitHub when it starts and once a day, and asks before{' '}
+            {downloadsUpdates() ? 'downloading' : 'installing'} it.
           </Typography>
         </Box>
         <Typography variant="body2">
