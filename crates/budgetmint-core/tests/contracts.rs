@@ -26,9 +26,13 @@ use budgetmint_core::plan::{
     AccountInput, ItemInput, OccurrenceInput, Planned, RecordInput, MAX_ACCOUNTS, MAX_CATEGORY,
     MAX_LEADS, MAX_LEAD_DAYS, MAX_NAME, MAX_NOTE,
 };
+use budgetmint_core::recurring::RecurringFound;
 use budgetmint_core::reminders::{Reminder, ReminderKind, MAX_REMINDERS, MAX_WINDOW_DAYS};
 use budgetmint_core::report::{
     CategoryReport, MonthTotals, OutsideSpending, PaidLate, ReportTotals, ReportView,
+};
+use budgetmint_core::transactions::{
+    ImportInput, KeptTransaction, SpendingCategory, SpendingView, TransactionInput,
 };
 use budgetmint_core::views::*;
 use serde_json::{json, Value};
@@ -118,6 +122,17 @@ fn export_types(cfg: &Config) {
         StatementFormat,
         StatementMatch,
         BankTransaction,
+        RecurringFound,
+        ImportStatementArgs,
+        ImportInput,
+        TransactionInput,
+        SpendingView,
+        SpendingCategory,
+        KeptTransaction,
+        Transaction,
+        MonthTransactions,
+        CategoryRule,
+        LineFlow,
         SafeToSpend,
         EarnToCover,
         Estimate,

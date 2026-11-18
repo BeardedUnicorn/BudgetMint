@@ -2,7 +2,9 @@
  * Reports: a month looked back on (core's get_report). What the bills and
  * income came to against what was expected, by category; TaskMint's money
  * in (with TaskMint connected); the bills paid late; what went out besides the bills, by the
- * balance's updates; and the six months up to it side by side.
+ * balance's updates; what the bank statements imported show was spent, by
+ * category (core's get_spending), each opening to its transactions; and
+ * the six months up to it side by side.
  */
 
 import { useState } from 'react';
@@ -30,7 +32,7 @@ import {
 } from '@mui/icons-material';
 import { type SxProps, type Theme, useTheme } from '@mui/material/styles';
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from 'recharts';
-import type { CategoryReport, MonthTotals } from '@budgetmint/contracts';
+import type { CategoryReport, MonthTotals, SpendingView } from '@budgetmint/contracts';
 import { useNotification } from '../../../contexts/NotificationContext';
 import { useBudget, useCoreQuery } from '../../../data/BudgetContext';
 import { getShell } from '../../../shell';
@@ -85,12 +87,76 @@ function MonthsChart({ months, taskmint }: { months: MonthTotals[]; taskmint: bo
   );
 }
 
+/** What the month's bank statements show was spent, by category: each opens to its transactions. */
+function Spending({ spending }: { spending: SpendingView }) {
+  /** The category whose transactions are shown. */
+  const [shown, setShown] = useState<string | null>(null);
+  const named = (category: string | null) => category ?? 'No category';
+  return (
+    <Paper component="section" aria-labelledby="spending-title" sx={SECTION}>
+      <Typography id="spending-title" variant="h6" component="h2">
+        Spending, by your bank statements
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        {formatCents(spending.spentCents)} spent in the statements imported for this month, bills among it.
+      </Typography>
+      <TableContainer>
+        <Table size="small" sx={PHONE_TABLE}>
+          <TableHead>
+            <TableRow>
+              <TableCell>Category</TableCell>
+              <TableCell align="right">Transactions</TableCell>
+              <TableCell align="right">Spent</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {spending.categories.flatMap(row => {
+              const name = named(row.category);
+              const its = spending.transactions
+                .map(kept => kept.transaction)
+                .filter(kept => kept.flow === 'spend' && named(kept.category).toLowerCase() === name.toLowerCase());
+              return [
+                <TableRow key={name}>
+                  <TableCell>
+                    <Button
+                      size="small"
+                      color="inherit"
+                      aria-expanded={shown === name}
+                      onClick={() => setShown(current => (current === name ? null : name))}
+                    >
+                      {name}
+                    </Button>
+                  </TableCell>
+                  <TableCell align="right">{row.count}</TableCell>
+                  <TableCell align="right" sx={{ fontFamily: MONO }}>
+                    {formatCents(row.cents)}
+                  </TableCell>
+                </TableRow>,
+                ...(shown === name ? its : []).map(kept => (
+                  <TableRow key={`${name} ${kept.id}`}>
+                    <TableCell sx={{ pl: 4 }}>{kept.name}</TableCell>
+                    <TableCell align="right">{formatDay(kept.on)}</TableCell>
+                    <TableCell align="right" sx={{ fontFamily: MONO }}>
+                      {formatCents(-kept.amountCents)}
+                    </TableCell>
+                  </TableRow>
+                )),
+              ];
+            })}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Paper>
+  );
+}
+
 export function ReportsPage() {
   const { today } = useCoreQuery('get_overview');
   const { core } = useBudget();
   const { showError } = useNotification();
   const [month, setMonth] = useState(today.slice(0, 7));
   const report = useCoreQuery('get_report', { month });
+  const spending = useCoreQuery('get_spending', { month });
   const { shown: taskmintShown } = useTaskMint();
   const current = today.slice(0, 7);
 
@@ -183,6 +249,8 @@ export function ReportsPage() {
           </Typography>
         </Paper>
       )}
+
+      {spending.categories.length > 0 && <Spending spending={spending} />}
 
       <Paper component="section" aria-labelledby="categories-title" sx={SECTION}>
         <Typography id="categories-title" variant="h6" component="h2" sx={{ mb: 2 }}>

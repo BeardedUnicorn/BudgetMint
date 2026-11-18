@@ -24,6 +24,7 @@ const SCENARIOS: &[&str] = &[
     include_str!("scenarios/a_balance_checked_and_money_set_aside.json"),
     include_str!("scenarios/a_week_around_the_balances_day.json"),
     include_str!("scenarios/several_bank_accounts.json"),
+    include_str!("scenarios/a_statement_imported.json"),
 ];
 
 #[derive(Debug, Deserialize)]

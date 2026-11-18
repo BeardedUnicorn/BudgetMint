@@ -18,6 +18,7 @@ use crate::plan::{
 use crate::reminders::{self, Reminder};
 use crate::report::{self, ReportView};
 use crate::time::Ctx;
+use crate::transactions::{self, ImportInput, SpendingView};
 use crate::views::{
     self, AccountView, ForecastView, ItemView, MonthView, OccurrenceView, Overview,
 };
@@ -71,6 +72,8 @@ pub enum Command {
     GetAccountOverview(AccountIdArgs),
     GetAccountForecast(AccountIdArgs),
     GetGlance(GlanceArgs),
+    ImportStatement(ImportStatementArgs),
+    GetSpending(MonthArgs),
 }
 
 macro_rules! command_types {
@@ -142,6 +145,8 @@ command_types! {
     "get_account_overview": AccountIdArgs => Overview,
     "get_account_forecast": AccountIdArgs => ForecastView,
     "get_glance": GlanceArgs => Vec<GlanceDay>,
+    "import_statement": ImportStatementArgs => Planned,
+    "get_spending": MonthArgs => SpendingView,
 }
 
 /// `reply` read as a `T` and written back.
@@ -453,11 +458,28 @@ pub struct ReadStatementArgs {
     #[cfg_attr(feature = "ts", ts(optional))]
     pub account_id: Option<String>,
     /// The statement file's text.
-    pub text: String,
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub text: Option<String>,
+    /// Several files' (a month each, say), read as one statement.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub texts: Option<Vec<String>>,
     /// A CSV's columns, when they weren't found.
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub columns: Option<CsvColumns>,
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ImportStatementArgs {
+    /// The bank account the statement is of; none: the main one.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub account_id: Option<String>,
+    pub statement: ImportInput,
 }
 
 impl Command {
@@ -644,13 +666,31 @@ pub fn execute(
             args.balance,
             ctx,
         )?),
-        Command::ReadStatement(args) => to_value(bank::read_statement_of(
+        Command::ReadStatement(args) => {
+            let texts: Vec<String> = args
+                .text
+                .into_iter()
+                .chain(args.texts.unwrap_or_default())
+                .collect();
+            to_value(bank::read_statement_of(
+                snapshot,
+                args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
+                &texts,
+                args.columns,
+                ctx,
+            )?)
+        }
+        Command::ImportStatement(args) => to_value(transactions::import(
             snapshot,
+            forecast,
             args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
-            &args.text,
-            args.columns,
+            args.statement,
             ctx,
         )?),
+        Command::GetSpending(args) => to_value(
+            transactions::spending(snapshot, &args.month)
+                .ok_or_else(|| CoreError::InvalidArgs(format!("Not a month: {}", args.month)))?,
+        ),
         Command::GetScheduleDates(args) => {
             plan::check_date(args.from)?;
             plan::check_repeat(args.repeat)?;

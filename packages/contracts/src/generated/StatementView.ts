@@ -3,6 +3,7 @@ import type { Balance } from "./Balance";
 import type { BankTransaction } from "./BankTransaction";
 import type { CsvColumns } from "./CsvColumns";
 import type { OccurrenceView } from "./OccurrenceView";
+import type { RecurringFound } from "./RecurringFound";
 import type { StatementFormat } from "./StatementFormat";
 import type { StatementMatch } from "./StatementMatch";
 
@@ -21,6 +22,10 @@ columns: CsvColumns | null, transactions: Array<BankTransaction>,
  */
 skippedRows: number, 
 /**
+ * Lines the bank hasn't settled yet: left for a later statement.
+ */
+pendingRows: number, 
+/**
  * What the statement says the balance was at its end.
  */
 balance: Balance | null, matches: Array<StatementMatch>, 
@@ -32,4 +37,9 @@ already: Array<number>,
  * The bills and income still open around the statement's days that
  * nothing matched: what a transaction left over can be matched to by hand.
  */
-open: Array<OccurrenceView>, };
+open: Array<OccurrenceView>, 
+/**
+ * The charges (and income) that come round and are no bill or income
+ * here yet.
+ */
+recurring: Array<RecurringFound>, };

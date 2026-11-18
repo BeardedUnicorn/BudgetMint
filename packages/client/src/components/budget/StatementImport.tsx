@@ -1,8 +1,8 @@
 /**
  * Importing a bank statement from wherever it's offered (Bills, the
- * Overview's Add, Settings → Your data): a file picked (CSV or OFX), read by
- * core, and matched in StatementDialog. The file stays on this device: only
- * what's marked is saved.
+ * Overview's Add, Settings → Your data): a file picked, or several (a month
+ * each, say: CSV or OFX), read by core as one statement, and gone through in
+ * StatementDialog. Nothing of it is kept until that's saved.
  */
 
 import { type ChangeEvent, type ReactNode, useRef, useState } from 'react';
@@ -23,17 +23,18 @@ export function StatementImport({
   const { core } = useBudget();
   const { showError } = useNotification();
   const picker = useRef<HTMLInputElement>(null);
-  const [statement, setStatement] = useState<{ text: string; first: StatementView } | null>(null);
+  const [statement, setStatement] = useState<{ texts: string[]; first: StatementView } | null>(null);
   const problem = onProblem ?? showError;
 
   const picked = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    // (A file input always has its list of files)
+    const files = [...event.target.files!];
     // The same file can be picked again
     event.target.value = '';
-    if (!file) return;
-    const text = await file.text();
+    if (files.length === 0) return;
+    const texts = await Promise.all(files.map(file => file.text()));
     try {
-      setStatement({ text, first: core.call('read_statement', { text }) });
+      setStatement({ texts, first: core.call('read_statement', { texts }) });
     } catch (error) {
       problem((error as Error).message);
     }
@@ -46,6 +47,7 @@ export function StatementImport({
         ref={picker}
         type="file"
         accept=".csv,.ofx,.qfx,.txt,text/csv,application/x-ofx"
+        multiple
         hidden
         aria-label="Bank statement file"
         onChange={event => void picked(event)}

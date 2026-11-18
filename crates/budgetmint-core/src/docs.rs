@@ -7,12 +7,16 @@
 //! | `item~{id}` | an [`Item`] |
 //! | `occ~{YYYY-MM-DD}~{itemId}` | an [`Override`]: the occurrence its schedule puts on that date |
 //! | `account~{id}` | an [`Account`]: a bank account besides the main one (`account~main`: the main one's name) |
+//! | `txns~{accountId}~{YYYY-MM}` | a [`MonthTransactions`]: the bank statements' lines kept for an account's month |
 //!
 //! The date leads an occurrence's id so the client can listen to a range of
 //! dates. Each document's JSON is the type's; the client wraps it with the
 //! fields the rules want (kind, schema, device, epoch, time).
 
-use crate::model::{Account, Item, ItemKind, Override, Settings, MAIN_ACCOUNT, MAIN_ACCOUNT_NAME};
+use crate::model::{
+    Account, Item, ItemKind, MonthTransactions, Override, Settings, MAIN_ACCOUNT, MAIN_ACCOUNT_NAME,
+};
+use crate::time::in_calendar;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -23,7 +27,9 @@ use std::collections::{BTreeMap, BTreeSet};
 /// money set aside, everyday spending and balance checks (fields an older
 /// BudgetMint would drop). 3: an amount already set aside for a bill.
 /// 4: bank accounts besides the main one, the items in them, and transfers.
-pub const BUDGET_SCHEMA: u32 = 4;
+/// 5: bank statements' transactions kept, and the categories remembered
+/// for their merchants.
+pub const BUDGET_SCHEMA: u32 = 5;
 
 /// The schema a document is written with when it has nothing a newer one added.
 pub const BASE_SCHEMA: u32 = 2;
@@ -38,7 +44,22 @@ pub trait Versioned {
     }
 }
 
-impl Versioned for Settings {}
+impl Versioned for Settings {
+    fn schema(&self) -> u32 {
+        // An older BudgetMint would save the settings without the rules
+        if self.category_rules.is_some() {
+            5
+        } else {
+            BASE_SCHEMA
+        }
+    }
+}
+
+impl Versioned for MonthTransactions {
+    fn schema(&self) -> u32 {
+        5
+    }
+}
 
 impl Versioned for Override {}
 
@@ -83,8 +104,22 @@ pub fn valid_id(id: &str) -> bool {
 pub enum DocKey {
     Settings,
     Item(String),
-    Occ { date: NaiveDate, item_id: String },
+    Occ {
+        date: NaiveDate,
+        item_id: String,
+    },
     Account(String),
+    /// An account's kept transactions of a month (YYYY-MM).
+    Txns {
+        account_id: String,
+        month: String,
+    },
+}
+
+/// Whether `month` is a month as documents name one: YYYY-MM, in the calendar.
+pub fn valid_month(month: &str) -> bool {
+    month.len() == 7
+        && NaiveDate::parse_from_str(&format!("{}-01", month), "%Y-%m-%d").is_ok_and(in_calendar)
 }
 
 impl DocKey {
@@ -104,6 +139,13 @@ impl DocKey {
                     item_id: item_id.to_string(),
                 })
             }
+            "txns" => {
+                let (account_id, month) = rest.split_once('~')?;
+                (valid_id(account_id) && valid_month(month)).then(|| DocKey::Txns {
+                    account_id: account_id.to_string(),
+                    month: month.to_string(),
+                })
+            }
             _ => None,
         }
     }
@@ -114,6 +156,7 @@ impl DocKey {
             DocKey::Item(id) => format!("item~{}", id),
             DocKey::Occ { date, item_id } => format!("occ~{}~{}", date.format("%Y-%m-%d"), item_id),
             DocKey::Account(id) => format!("account~{}", id),
+            DocKey::Txns { account_id, month } => format!("txns~{}~{}", account_id, month),
         }
     }
 
@@ -124,6 +167,7 @@ impl DocKey {
             DocKey::Item(_) => "item",
             DocKey::Occ { .. } => "occ",
             DocKey::Account(_) => "account",
+            DocKey::Txns { .. } => "txns",
         }
     }
 }
@@ -174,6 +218,8 @@ pub struct Snapshot {
     /// one, and the main one's name when it has one (`account` and
     /// `all_accounts` are what the rules go by).
     pub accounts: BTreeMap<String, Account>,
+    /// The bank statements' lines kept, by (account, month).
+    pub transactions: BTreeMap<(String, String), MonthTransactions>,
     /// Each document's JSON as read, to tell a change from none.
     json: BTreeMap<String, String>,
     /// Each document's schema as read: a write never lowers it (the rules
@@ -330,6 +376,22 @@ impl Snapshot {
                 }
                 Some(_) => return false,
             },
+            DocKey::Txns { account_id, month } => {
+                let at = (account_id.clone(), month.clone());
+                match json.map(serde_json::from_str::<MonthTransactions>) {
+                    None => {
+                        self.transactions.remove(&at);
+                    }
+                    Some(Ok(kept))
+                        if kept.account_id == *account_id
+                            && kept.month == *month
+                            && kept.transactions.iter().all(|t| in_calendar(t.on)) =>
+                    {
+                        self.transactions.insert(at, kept);
+                    }
+                    Some(_) => return false,
+                }
+            }
             DocKey::Occ { date, item_id } => {
                 let at = (item_id.clone(), *date);
                 match json.map(serde_json::from_str::<Override>) {
@@ -845,5 +907,64 @@ mod tests {
         assert_eq!(schema(&mut snapshot, &odd), 4);
         // The settings and what's said of an occurrence stay the base schema
         assert_eq!(Versioned::schema(&Settings::default()), BASE_SCHEMA);
+    }
+
+    #[test]
+    fn keeps_a_months_transactions_as_a_newer_document() {
+        use crate::model::{CategoryRule, LineFlow, Transaction};
+        let key = DocKey::Txns {
+            account_id: "main".into(),
+            month: "2026-10".into(),
+        };
+        assert_eq!(key.doc_id(), "txns~main~2026-10");
+        assert_eq!(key.kind(), "txns");
+        assert_eq!(DocKey::parse("txns~main~2026-10"), Some(key.clone()));
+        for bad in [
+            "txns~main",
+            "txns~a b~2026-10",
+            "txns~main~2026-13",
+            "txns~main~2026-1",
+            "txns~main~3026-10",
+        ] {
+            assert_eq!(DocKey::parse(bad), None, "{}", bad);
+        }
+        let month = |on| MonthTransactions {
+            account_id: "main".into(),
+            month: "2026-10".into(),
+            transactions: vec![Transaction {
+                id: "t1".into(),
+                on,
+                amount_cents: -1_299,
+                name: "Spotify".into(),
+                category: Some("Subscriptions".into()),
+                flow: LineFlow::Spend,
+                item_id: None,
+            }],
+        };
+        let mut s = Snapshot::default();
+        let (write, undo) = s.write(key.clone(), Some(&month(d(2026, 10, 2)))).unwrap();
+        assert_eq!((write.schema, write.kind.as_str()), (5, "txns"));
+        assert_eq!(undo.json, None);
+        assert_eq!(s.transactions.len(), 1);
+        // Another account's, another month's or a day outside the calendar: not read
+        let json = |kept: &MonthTransactions| Some(serde_json::to_string(kept).unwrap());
+        let applied = s.apply(vec![
+            doc("txns~other~2026-10", json(&month(d(2026, 10, 2)))),
+            doc("txns~main~2026-11", json(&month(d(2026, 10, 2)))),
+            doc("txns~main~2026-09", json(&month(d(3026, 10, 2)))),
+        ]);
+        assert_eq!(applied.unreadable.len(), 3);
+        s.write::<MonthTransactions>(key, None);
+        assert!(s.transactions.is_empty());
+        // Settings that remember a merchant's category are newer too
+        let remembering = Settings {
+            category_rules: Some(vec![CategoryRule {
+                merchant: "spotify".into(),
+                category: "Music".into(),
+            }]),
+            ..Settings::default()
+        };
+        assert_eq!(remembering.schema(), 5);
+        assert_eq!(Settings::default().schema(), BASE_SCHEMA);
     }
 }

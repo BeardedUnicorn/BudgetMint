@@ -7,12 +7,14 @@
  * yet. The end is the schedule's last part's: what comes after it doesn't
  * happen. A varying amount is expected at the average of the last few paid;
  * a bill can have money set aside for it a month at a time. Core's refusals
- * are said under the field they're about.
+ * are said under the field they're about. With a `draft` (a charge a bank
+ * statement shows coming round), the form starts from it and hands it back
+ * rather than saving: it's added when the statement is.
  */
 
 import { useRef, useState } from 'react';
 import { Alert, Autocomplete, Checkbox, FormControlLabel, MenuItem, Stack, Switch, TextField } from '@mui/material';
-import type { FormField, ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
+import type { FormField, ItemInput, ItemKind, ItemView, Repeat, Segment, Weekends } from '@budgetmint/contracts';
 import { LIMITS, MAIN_ACCOUNT } from '@budgetmint/contracts';
 import type { CoreRefusal } from '../../core';
 import { otherAccount, useAccounts, useBudget, useBudgetChange, useCoreQuery } from '../../data/BudgetContext';
@@ -138,18 +140,20 @@ export interface ItemDialogProps {
   defaultLeadDays: number;
   /** A savings goal to add: a bill once, saved up for. */
   goal?: boolean;
+  /** One not saved yet to start from, and where it goes instead of being saved. */
+  draft?: { item: ItemInput; onDraft: (item: ItemInput) => void };
   onClose: () => void;
 }
 
-export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, onClose }: ItemDialogProps) {
+export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, draft, onClose }: ItemDialogProps) {
   const { core } = useBudget();
   const change = useBudgetChange();
   // The categories already in use, offered as it's typed
   const categories = categoriesOf(useCoreQuery('get_items'));
   const item = view?.item;
   // The part of its schedule in force today (core's)
-  const segment = view?.current ?? null;
-  const [name, setName] = useState(item?.name ?? '');
+  const segment = view?.current ?? draft?.item.schedule[0] ?? null;
+  const [name, setName] = useState(item?.name ?? draft?.item.name ?? '');
   const [amount, setAmount] = useState(centsToInput(segment?.amountCents ?? null));
   // A paycheck most often comes every two weeks; a bill, every month
   const fresh: { every: Every; n: number } = goal
@@ -176,9 +180,9 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const [endsOn, setEndsOn] = useState(lastUntil ?? '');
   /** After how many payments it ends, as typed. */
   const [payments, setPayments] = useState('');
-  const [category, setCategory] = useState(item?.category ?? '');
+  const [category, setCategory] = useState(item?.category ?? draft?.item.category ?? '');
   // The bank account it's in: kept as it is when the form doesn't show it (one account in use)
-  const [accountId, setAccountId] = useState(item?.accountId ?? MAIN_ACCOUNT);
+  const [accountId, setAccountId] = useState(item?.accountId ?? draft?.item.accountId ?? MAIN_ACCOUNT);
   // Where a transfer goes: as it is (the main account, when it names none), or as chosen
   const [wantedTo, setWantedTo] = useState<string | null>(item?.toAccountId ?? (item ? MAIN_ACCOUNT : null));
   const toAccountId = otherAccount(useAccounts().live, accountId, wantedTo);
@@ -187,7 +191,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
   const [reminded, setReminded] = useState(item ? item.reminder !== null : kind === 'bill');
   const [leads, setLeads] = useState<number[]>(item?.reminder?.leadDays ?? [defaultLeadDays]);
   const [note, setNote] = useState(item?.note ?? '');
-  const [varies, setVaries] = useState(item?.varies ?? false);
+  const [varies, setVaries] = useState(item?.varies ?? draft?.item.varies ?? false);
   const [saveUp, setSaveUp] = useState(item ? item.saveUp !== null : goal);
   /** What's set aside for it already, as typed: given, setting aside starts over from it today. */
   const [alreadySaved, setAlreadySaved] = useState('');
@@ -298,7 +302,7 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
     const until = ends === 'on' ? endsOn : ends === 'after' ? lastPayment!.scheduled : null;
     setWrong(null);
     const base = {
-      id: item?.id ?? crypto.randomUUID(),
+      id: item?.id ?? draft?.item.id ?? crypto.randomUUID(),
       kind,
       name,
       category: category || null,
@@ -334,15 +338,11 @@ export function ItemDialog({ kind, view, today, defaultLeadDays, goal = false, o
           saved
         );
       } else {
-        change(
-          'save_item',
-          // An edit is refused if the item was deleted (on another device) meanwhile
-          {
-            item: { ...base, schedule: scheduleChanged || !item ? newSchedule : endingOn(item.schedule, until) },
-            edit: item !== undefined,
-          },
-          saved
-        );
+        const whole = { ...base, schedule: scheduleChanged || !item ? newSchedule : endingOn(item.schedule, until) };
+        // A draft goes back to where it came from; else it's saved (an edit
+        // is refused if the item was deleted, on another device, meanwhile)
+        if (draft) draft.onDraft(whole);
+        else change('save_item', { item: whole, edit: item !== undefined }, saved);
       }
     } catch (error) {
       // Said under its field, when it's about one

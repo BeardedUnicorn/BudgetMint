@@ -9,7 +9,11 @@ accountId?: string,
 /**
  * The statement file's text.
  */
-text: string, 
+text?: string, 
+/**
+ * Several files' (a month each, say), read as one statement.
+ */
+texts?: Array<string>, 
 /**
  * A CSV's columns, when they weren't found.
  */

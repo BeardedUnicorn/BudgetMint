@@ -44,7 +44,9 @@ const sourceOf = (docId: string): DocsSource =>
       ? 'items'
       : docId.startsWith('account~')
         ? 'accounts'
-        : 'occurrences';
+        : docId.startsWith('txns~')
+          ? 'transactions'
+          : 'occurrences';
 
 export function createFakeStore(): FakeStore {
   let user: CloudUser | null = null;
@@ -122,7 +124,7 @@ export function createFakeStore(): FakeStore {
         const open = { onDocs, onError, from };
         listening.add(open);
         // The first answer: what's there, per source
-        for (const source of ['settings', 'items', 'occurrences', 'accounts'] as const) {
+        for (const source of ['settings', 'items', 'occurrences', 'accounts', 'transactions'] as const) {
           const found = [...docs]
             .filter(([docId]) => sourceOf(docId) === source && !(source === 'occurrences' && docId < `occ~${from}`))
             .map(([docId, doc]) => ({ docId, json: doc.json, schema: doc.schema }));
