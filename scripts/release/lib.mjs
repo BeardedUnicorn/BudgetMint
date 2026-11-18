@@ -507,6 +507,35 @@ export function verifyApkAlignment({ status, output }) {
   );
 }
 
+/**
+ * Checks that the app `name` (its package) is still up some seconds after it
+ * was started on a phone or emulator: `pid` is what `pidof` printed then, and
+ * `crashLog` is `logcat -b crash` since just before the start. A release
+ * build is minified, so it can lose a class a library finds by name and die
+ * before its first screen, which no other check sees (2.9.0 did:
+ * WorkManager's database). Throws with the crash's reasons.
+ */
+export function verifyApkLaunch({ name, pid, crashLog }) {
+  const lines = crashLog.split('\n').map(line => line.replace(/^.*? [A-Z] (?=\w[\w.]*\s*: )/, ''));
+  // A Java crash names its process after "FATAL EXCEPTION"; a native one's
+  // tombstone has it between >>> and <<<
+  const ours = new RegExp(`(?:Process: |>>> )${name.replaceAll('.', '\\.')}(?::[\\w.]+)?(?:,| <<<)`);
+  const at = lines.findIndex(line => ours.test(line));
+  if (at >= 0) {
+    const rest = lines.slice(at + 1);
+    const next = rest.findIndex(line => /FATAL EXCEPTION|\*\*\* \*\*\* \*\*\*/.test(line));
+    const crash = next < 0 ? rest : rest.slice(0, next);
+    const reasons = crash
+      .map(line => line.replace(/^\w[\w.]*\s*: /, '').trim())
+      .filter((line, index) => index === 0 || /^(?:Caused by:|signal |Abort message:)/.test(line))
+      .filter(Boolean);
+    throw new Error(`${name} crashed after it was started:\n${reasons.join('\n') || lines[at].trim()}`);
+  }
+  if (!/^\d+(?:\s+\d+)*$/.test(pid.trim())) {
+    throw new Error(`${name} isn't running any more after it was started, with nothing in the crash log`);
+  }
+}
+
 // The release's checksums, so a download can be checked against the release
 // it came from.
 
