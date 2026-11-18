@@ -33,7 +33,7 @@
     "release": "node scripts/release.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.8",
     "@firebase/rules-unit-testing": "6.0.0",
     "@resvg/resvg-js": "catalog:",
     "@types/node": "catalog:",
