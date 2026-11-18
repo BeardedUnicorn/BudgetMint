@@ -245,29 +245,41 @@ describe('an occurrence’s dialog', () => {
 
   it('closes on Back, asking first when something changed, and then goes back a page', async () => {
     const { user, store } = await startBudget({ items: [monthly('rent', 'Rent', 12, 50_000)] });
-    const back = () => act(() => window.history.back());
+    // jsdom works out where a Back goes in one task (setImmediate) and moves in the next. One asked for
+    // while the app's own move is on its way (its forward, to stay on a dialog that asks first; its back,
+    // as one closes by itself) would start from the entry before that move, and end a page too far back:
+    // each Back here waits for the history to be still, before and after. Two tasks queued behind a
+    // move's first run after its second
+    const still = () => act(() => new Promise<void>(done => setImmediate(() => setImmediate(done))));
+    const back = async () => {
+      await still();
+      const popped = new Promise(done => window.addEventListener('popstate', done, { once: true }));
+      act(() => window.history.back());
+      await popped;
+      await still();
+    };
     await user.click(screen.getByRole('button', { name: 'Bills' }));
     // Nothing changed: Back just closes it
     await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
-    back();
+    await back();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     // Changed: Back asks, Back again keeps editing, and Discard throws it away
     await user.click(screen.getByRole('button', { name: 'Edit Rent' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit Rent' });
     await user.type(within(dialog).getByLabelText('Name'), '!');
-    back();
+    await back();
     expect(await screen.findByRole('dialog', { name: 'Discard your changes?' })).toBeInTheDocument();
-    back();
+    await back();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Discard your changes?' })).toBeNull());
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Rent!');
-    back();
+    await back();
     await user.click(await screen.findByRole('button', { name: 'Discard' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     // History, too; then Back leaves Bills for the page before
     await user.click(screen.getByRole('button', { name: "Rent's history" }));
-    back();
+    await back();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    back();
+    await back();
     expect(await screen.findByRole('heading', { name: 'Overview' })).toBeInTheDocument();
     expect(store.writes).toHaveLength(0);
   });
