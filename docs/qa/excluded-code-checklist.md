@@ -337,8 +337,17 @@ Cargo (`environment.rs`, tested) and Gradle (`app/build.gradle.kts`, not).
 
 On the emulator or a phone with Google Play services, with the release APK
 (`pnpm release --rebuild --target android-arm64`, the README's "Android
-signing") unless a step says otherwise:
+signing") unless a step says otherwise. A dev or debug build proves nothing
+about starting: only the release build is minified (R8), and 2.9.0's closed
+on opening because R8 had removed a constructor WorkManager's database is
+made with, which every dev build kept.
 
+- [ ] **Starts and stays up:** `pnpm android:smoke <the APK>` installs it,
+      starts it and finds it running 15 seconds on, with nothing in the
+      crash log. `pnpm release --rebuild --target android-arm64` does this
+      on the one connected phone or emulator (`ANDROID_SERIAL` picks among
+      several), and the Release workflow on an emulator, with an x86_64
+      build of the same release, before it publishes.
 - [ ] **Installs over the last one:** the APK installs over the previous
       release's and keeps the sign-in.
 - [ ] **Not backed up:** `adb shell bmgr backupnow com.budgetmint.android`

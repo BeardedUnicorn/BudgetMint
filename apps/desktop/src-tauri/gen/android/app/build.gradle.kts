@@ -144,6 +144,12 @@ dependencies {
     // BudgetMint: the home screen's widgets (widgets/Widgets.kt)
     implementation("androidx.glance:glance-appwidget:1.2.0")
     implementation("androidx.glance:glance-material3:1.2.0")
+    // BudgetMint: Glance uses WorkManager, and alone brings 2.7.1 with Room
+    // 2.2.5, whose keep rule lets R8 remove the constructor WorkManager's
+    // database is made with: the release build then closes on opening
+    // (2.9.0 did). From 2.11.0 it's on Room 2.7.0, which keeps it. As
+    // TaskMint's (scripts/android-project.test.mjs checks this line)
+    implementation("androidx.work:work-runtime:2.11.2")
 }
 
 apply(from = file("tauri.build.gradle.kts"))

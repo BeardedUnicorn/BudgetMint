@@ -38,6 +38,7 @@ import {
   updateBundlePaths,
   updateManifest,
   verifyApkAlignment,
+  verifyApkLaunch,
   verifyApkPackage,
   verifyApkSigner,
   verifyUpdateSignature,
@@ -616,6 +617,97 @@ describe('verifyApkAlignment', () => {
     );
     assert.throws(() => verifyApkAlignment({ status: 1, output: 'Unable to open\n' }), /16 KB pages:\nUnable to open$/);
     assert.throws(() => verifyApkAlignment({ status: 2, output: '' }), /zipalign exited with 2$/);
+  });
+});
+
+describe('verifyApkLaunch', () => {
+  const name = 'com.budgetmint.android';
+  const java = (process, lines) =>
+    ['FATAL EXCEPTION: main', `Process: ${process}, PID: 11159`, ...lines]
+      .map(line => `11-17 15:04:10.641 11159 11159 E AndroidRuntime: ${line}`)
+      .join('\n');
+  // What 2.9.0 logged: R8 had removed the constructor Room makes WorkManager's database with
+  const workDatabase = [
+    'java.lang.RuntimeException: Unable to get provider androidx.startup.InitializationProvider',
+    '\tat android.app.ActivityThread.installProvider(ActivityThread.java:9237)',
+    'Caused by: sh: java.lang.RuntimeException: Failed to create an instance of androidx.work.impl.WorkDatabase',
+    '\tat v8.l(r8-map-id-b0a9:101)',
+    'Caused by: java.lang.RuntimeException: Failed to create an instance of androidx.work.impl.WorkDatabase',
+    '\t... 17 more',
+  ];
+
+  it('passes an app that is still running with nothing of its own in the crash log', () => {
+    assert.doesNotThrow(() => verifyApkLaunch({ name, pid: '30468\n', crashLog: '' }));
+    assert.doesNotThrow(() =>
+      verifyApkLaunch({ name, pid: '30468 30511', crashLog: '--------- beginning of crash\n' })
+    );
+    assert.doesNotThrow(() =>
+      verifyApkLaunch({ name, pid: '30468', crashLog: java('com.taskmint.android', workDatabase) })
+    );
+    // The dev build is another app
+    assert.doesNotThrow(() => verifyApkLaunch({ name, pid: '30468', crashLog: java(`${name}.dev`, workDatabase) }));
+  });
+
+  it('refuses an app that crashed, with the reasons and no stack', () => {
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '', crashLog: java(name, workDatabase) }),
+      error =>
+        error.message ===
+        'com.budgetmint.android crashed after it was started:\n' +
+          'java.lang.RuntimeException: Unable to get provider androidx.startup.InitializationProvider\n' +
+          'Caused by: sh: java.lang.RuntimeException: Failed to create an instance of androidx.work.impl.WorkDatabase\n' +
+          'Caused by: java.lang.RuntimeException: Failed to create an instance of androidx.work.impl.WorkDatabase'
+    );
+  });
+
+  it('refuses a crash the app came back from, or one of its other processes', () => {
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '30468', crashLog: java(name, ['java.lang.IllegalStateException: no']) }),
+      /crashed after it was started:\njava\.lang\.IllegalStateException: no$/
+    );
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '30468', crashLog: java(`${name}:widgets`, ['java.lang.Error: gone']) }),
+      /crashed after it was started:\njava\.lang\.Error: gone$/
+    );
+  });
+
+  it("reads only the app's own crash among several", () => {
+    const crashLog = [
+      java('com.taskmint.android', ['java.lang.Error: theirs']),
+      java(name, ['java.lang.Error: ours']),
+      java('com.taskmint.android', ['java.lang.Error: theirs', 'Caused by: java.lang.Error: also theirs']),
+    ].join('\n');
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '30468', crashLog }),
+      error => error.message === 'com.budgetmint.android crashed after it was started:\njava.lang.Error: ours'
+    );
+  });
+
+  it('refuses a native crash', () => {
+    const crashLog = [
+      '*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***',
+      `pid: 4242, tid: 4250, name: tokio-runtime  >>> ${name} <<<`,
+      'signal 6 (SIGABRT), code -1 (SI_QUEUE), fault addr --------',
+      "Abort message: 'panicked at src/app.rs'",
+      '    x0  0000000000000000',
+    ]
+      .map(line => `11-17 15:04:10.641  4300  4300 F DEBUG   : ${line}`)
+      .join('\n');
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '', crashLog }),
+      /crashed after it was started:\nsignal 6 \(SIGABRT\), code -1 \(SI_QUEUE\), fault addr --------\nAbort message: 'panicked at src\/app\.rs'$/
+    );
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '', crashLog: `F DEBUG   : pid: 1, tid: 1, name: main  >>> ${name} <<<` }),
+      />>> com\.budgetmint\.android <<<$/
+    );
+  });
+
+  it('refuses an app that has gone without a crash', () => {
+    assert.throws(
+      () => verifyApkLaunch({ name, pid: '\n', crashLog: '' }),
+      /com\.budgetmint\.android isn't running any more after it was started, with nothing in the crash log/
+    );
   });
 });
 

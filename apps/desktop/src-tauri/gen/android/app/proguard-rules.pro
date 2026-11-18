@@ -43,6 +43,11 @@
 -keep class androidx.credentials.playservices.** {
   *;
 }
+# BudgetMint: Room makes a database from its generated class by name, with
+# its no-argument constructor. Room 2.7.0's own rule keeps it; older ones
+# don't, and without it WorkManager's database can't be made and the app
+# closes on opening
+-keep class * extends androidx.room.RoomDatabase { void <init>(); }
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.

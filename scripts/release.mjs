@@ -69,6 +69,7 @@ import {
   verifyApkSigner,
   verifyUpdateSignature,
 } from './release/lib.mjs';
+import { smoke } from './android-smoke.mjs';
 import { MARKER_FILE, readEnvironmentMarker } from './environment.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -404,7 +405,27 @@ function buildApk(version, plan) {
   if (aligned.error) stop(`zipalign: ${aligned.error.message}`);
   checked(() => verifyApkAlignment({ status: aligned.status, output: `${aligned.stdout}${aligned.stderr}` }));
   requireProductionWebview();
+  smokeApk(join(root, apk), name);
   return apk;
+}
+
+/**
+ * Starts the APK on the connected phone or emulator and stops unless it
+ * stays up (scripts/android-smoke.mjs): the build is minified, and only
+ * running it shows a class R8 removed. With no device, or several and no
+ * ANDROID_SERIAL to pick one, it says so and goes on: the Release workflow
+ * starts its own build on an emulator.
+ */
+function smokeApk(apk, name) {
+  const listed = spawnSync('adb', ['devices'], { encoding: 'utf8' });
+  const devices = listed.error ? [] : listed.stdout.split('\n').filter(line => /\tdevice$/.test(line));
+  if (devices.length === 0 || (devices.length > 1 && !process.env.ANDROID_SERIAL)) {
+    const why = devices.length === 0 ? 'no phone or emulator is connected' : 'several devices are connected';
+    console.log(`\nThe APK wasn't started: ${why}. Start it with \`pnpm android:smoke ${apk}\`.`);
+    return;
+  }
+  console.log('');
+  checked(() => smoke({ apk, name }));
 }
 
 /** The newest released Build-Tools' apksigner in the Android SDK. */
