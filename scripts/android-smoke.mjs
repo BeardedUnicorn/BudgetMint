@@ -29,6 +29,9 @@ import { verifyApkLaunch } from './release/lib.mjs';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const TAURI_ANDROID_CONF = 'apps/desktop/src-tauri/tauri.android.conf.json';
 
+/** How long the phone gets after an install to start the app again by itself. */
+const SETTLE_SECONDS = 5;
+
 class Stop extends Error {}
 const stop = message => {
   throw new Stop(message);
@@ -50,9 +53,15 @@ export function smoke({ apk, name, serial, wait = 15 }) {
 
   console.log(`Installing ${apk}`);
   adb(['install', '-r', apk]);
+  // Android 17 starts an app that was open again once its update is in. A
+  // start on top of that one replaces its activity while the app is still
+  // coming up, and the app then exits by itself, which looks like a failed
+  // start. So that one is left to finish before the app is stopped
+  spawnSync('sleep', [String(SETTLE_SECONDS)]);
   // The crash log is read from here on, so an earlier crash doesn't count
   const since = adb(['shell', 'date', "+'%m-%d %H:%M:%S.000'"]).trim();
   adb(['shell', 'am', 'force-stop', name]);
+  spawnSync('sleep', ['1']);
   const activity = adb([
     'shell',
     'cmd',
