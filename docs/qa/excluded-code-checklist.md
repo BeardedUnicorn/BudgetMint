@@ -346,8 +346,8 @@ made with, which every dev build kept.
       starts it and finds it running 15 seconds on, with nothing in the
       crash log. `pnpm release --rebuild --target android-arm64` does this
       on the one connected phone or emulator (`ANDROID_SERIAL` picks among
-      several), and the Release workflow on an emulator, with an x86_64
-      build of the same release, before it publishes.
+      several). The Release workflow has no device and doesn't, so run it on
+      a release's APK before telling anyone to install it.
 - [ ] **Installs over the last one:** the APK installs over the previous
       release's and keeps the sign-in.
 - [ ] **Not backed up:** `adb shell bmgr backupnow com.budgetmint.android`

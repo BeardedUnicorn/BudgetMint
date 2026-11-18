@@ -413,8 +413,8 @@ function buildApk(version, plan) {
  * Starts the APK on the connected phone or emulator and stops unless it
  * stays up (scripts/android-smoke.mjs): the build is minified, and only
  * running it shows a class R8 removed. With no device, or several and no
- * ANDROID_SERIAL to pick one, it says so and goes on: the Release workflow
- * starts its own build on an emulator.
+ * ANDROID_SERIAL to pick one, it says so and goes on, as in the Release
+ * workflow, which has no device.
  */
 function smokeApk(apk, name) {
   const listed = spawnSync('adb', ['devices'], { encoding: 'utf8' });

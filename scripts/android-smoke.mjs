@@ -12,10 +12,10 @@
  *
  * Run it on the release build: that's the minified one. A dev build keeps
  * every class, so it starts fine where a release can lose one a library
- * looks up by name and close before its first screen, as 2.9.0 did. The
- * Release workflow runs this on an emulator before it publishes an APK, and
- * `pnpm release --rebuild --target android-arm64` does on a connected phone
- * or emulator.
+ * looks up by name and close before its first screen, as 2.9.0 did.
+ * `pnpm release --rebuild --target android-arm64` runs this on a connected
+ * phone or emulator. The Release workflow doesn't: it has no device, so a
+ * release's APK is started by hand (docs/qa/excluded-code-checklist.md).
  *
  * The package is tauri.android.conf.json's identifier unless --package names
  * another (com.budgetmint.android.dev, for a build of the dev environment).
