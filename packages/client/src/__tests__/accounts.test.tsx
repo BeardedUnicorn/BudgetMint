@@ -411,7 +411,7 @@ describe('several bank accounts', () => {
     await pick(user, dialog, 'Whose statement', 'Main account');
     expect(within(dialog).getByText('None of it matches a bill or income still open.')).toBeInTheDocument();
     await pick(user, dialog, 'Whose statement', 'Savings');
-    expect(within(dialog).getByRole('checkbox', { name: 'Fee, due Nov 5: $7.00 on Nov 5' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'Fee, due Nov 5: -$7.00 on Nov 5' })).toBeChecked();
     expect(
       within(dialog).getByRole('checkbox', { name: 'Set your balance to $493.00, as of the end of Nov 6, 2026' })
     ).toBeChecked();

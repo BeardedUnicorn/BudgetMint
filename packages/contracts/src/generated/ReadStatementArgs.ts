@@ -17,4 +17,9 @@ texts?: Array<string>,
 /**
  * A CSV's columns, when they weren't found.
  */
-columns?: CsvColumns, };
+columns?: CsvColumns, 
+/**
+ * The statement writes money out above zero (a card's, say): take
+ * each amount the other way round.
+ */
+reversed?: boolean, };

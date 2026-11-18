@@ -149,7 +149,13 @@ function ItemActions({ actions, label, compact }: { actions: Action[]; label: st
   }
   return (
     <>
-      <IconButton size="small" aria-label={label} onClick={event => setAnchor(event.currentTarget)}>
+      <IconButton
+        size="small"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={anchor !== null}
+        onClick={event => setAnchor(event.currentTarget)}
+      >
         <MoreIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
@@ -431,7 +437,7 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
             <StatementImport>
               {choose => (
                 <Button variant="outlined" onClick={choose}>
-                  Import a statement
+                  Import a bank statement
                 </Button>
               )}
             </StatementImport>
@@ -454,7 +460,11 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
         />
       ) : (
         <>
-          <Paper sx={SECTION}>
+          <Paper component="section" aria-labelledby="current-title" sx={SECTION}>
+            {/* The list's own heading, for a screen reader: the sections under it have theirs */}
+            <Typography id="current-title" component="h2" sx={VISUALLY_HIDDEN}>
+              Current {words.title.toLowerCase()}
+            </Typography>
             {views.length > 1 && (
               <ItemFilters query={asked} categories={categories} accounts={several ? live : []} onChange={setQuery} />
             )}
@@ -479,12 +489,16 @@ export function ItemsPage({ kind }: { kind: ItemKind }) {
                 <Typography id="finished-title" variant="h6" component="h2">
                   Finished ({finished.length})
                 </Typography>
-                <Button onClick={() => setShowFinished(shown => !shown)} aria-expanded={showFinished}>
+                <Button
+                  onClick={() => setShowFinished(shown => !shown)}
+                  aria-expanded={showFinished}
+                  aria-controls={showFinished ? 'finished-list' : undefined}
+                >
                   {showFinished ? 'Hide' : 'Show'}
                 </Button>
               </Stack>
               {showFinished && (
-                <Box sx={{ mt: 2 }}>
+                <Box id="finished-list" sx={{ mt: 2 }}>
                   <ItemsTable views={finished} today={today} onOpen={setDialog} />
                 </Box>
               )}

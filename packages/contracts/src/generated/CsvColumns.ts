@@ -15,4 +15,9 @@ debit: number | null, credit: number | null,
 /**
  * The balance after each.
  */
-balance: number | null, };
+balance: number | null, 
+/**
+ * One saying which way each went ("Debit", "CR"), when the amount
+ * doesn't.
+ */
+kind: number | null, };

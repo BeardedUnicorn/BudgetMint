@@ -469,6 +469,11 @@ pub struct ReadStatementArgs {
     #[serde(default)]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub columns: Option<CsvColumns>,
+    /// The statement writes money out above zero (a card's, say): take
+    /// each amount the other way round.
+    #[serde(default)]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub reversed: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -672,11 +677,12 @@ pub fn execute(
                 .into_iter()
                 .chain(args.texts.unwrap_or_default())
                 .collect();
-            to_value(bank::read_statement_of(
+            to_value(bank::read_statement_with(
                 snapshot,
                 args.account_id.as_deref().unwrap_or(MAIN_ACCOUNT),
                 &texts,
                 args.columns,
+                args.reversed.unwrap_or_default(),
                 ctx,
             )?)
         }

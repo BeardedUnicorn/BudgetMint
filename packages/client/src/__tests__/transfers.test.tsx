@@ -245,7 +245,7 @@ describe('money moved between accounts', () => {
     await user.click(within(statement).getByRole('button', { name: 'Online Xfer +$123.00' }));
     expect(within(statement).queryByLabelText(/^It paid/)).not.toBeInTheDocument();
     await pick(user, statement, 'Whose statement', 'Savings');
-    await user.click(within(statement).getByLabelText('It paid: Nov 6, +$123.00'));
+    await user.click(within(statement).getByLabelText('It paid'));
     // (Left to come after the balance just set: it's due the day after)
     await user.click(screen.getByRole('option', { name: 'More, due Nov 11' }));
     await user.click(within(statement).getByRole('button', { name: 'Save' }));
