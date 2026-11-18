@@ -859,11 +859,13 @@ describe('a bank statement', () => {
     });
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
     expect(
-      within(dialog).getByText('4 transactions, Nov 1, 2026 to Nov 7, 2026. 1 line didn’t read as one.')
+      within(dialog).getByText(
+        '4 transactions, Nov 1, 2026 to Nov 7, 2026. 1 line didn’t read as one. 4 out (-$1,325.90).'
+      )
     ).toBeInTheDocument();
-    const rent = within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: $1,200.00 on Nov 1' });
+    const rent = within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: -$1,200.00 on Nov 1' });
     const power = within(dialog).getByRole('checkbox', {
-      name: 'City Power, due Nov 3: $91.40 on Nov 3 (expected $90.00)',
+      name: 'City Power, due Nov 3: -$91.40 on Nov 3 (expected $90.00)',
     });
     expect(rent).toBeChecked();
     expect(within(dialog).getByText('1 marked paid already.')).toBeInTheDocument();
@@ -872,6 +874,12 @@ describe('a bank statement', () => {
     expect(within(spent).getByText('Home: $1,200.00')).toBeInTheDocument();
     expect(within(spent).getByText('Dining: $4.50')).toBeInTheDocument();
     expect(within(spent).getByText('No category: $121.40')).toBeInTheDocument();
+    // A to Z, what has no category last
+    expect(Array.from(spent.children, chip => chip.textContent)).toEqual([
+      'Dining: $4.50',
+      'Home: $1,200.00',
+      'No category: $121.40',
+    ]);
     const balance = within(dialog).getByRole('checkbox', {
       name: 'Set your balance to $674.10, as of the end of Nov 7, 2026',
     });
@@ -913,7 +921,7 @@ describe('a bank statement', () => {
     const { user, store } = await startBudget({ items: [...rentAndPay(), water] });
     await user.click(screen.getByRole('button', { name: 'Bills' }));
     const choose = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);
-    await user.click(screen.getByRole('button', { name: 'Import a statement' }));
+    await user.click(screen.getByRole('button', { name: 'Import a bank statement' }));
     expect(choose).toHaveBeenCalled();
     choose.mockRestore();
     // A file that isn't a statement: said in a toast
@@ -930,34 +938,83 @@ describe('a bank statement', () => {
     const others = within(dialog).getByRole('group', { name: 'What else it shows' });
     // By who it was paid to, with what's known of them: two coffees, in Dining
     const coffee = within(others).getByRole('group', { name: 'Coffee' });
-    expect(within(coffee).getByRole('button', { name: 'Coffee (2) $10.00' })).toBeInTheDocument();
+    expect(within(coffee).getByRole('button', { name: 'Coffee (2) -$10.00' })).toBeInTheDocument();
     expect(within(coffee).getByLabelText('Category for Coffee')).toHaveValue('Dining');
     expect(within(others).getByLabelText('Category for these')).toHaveValue('');
     // Only what has no category yet, to go through
     await user.click(within(others).getByRole('switch', { name: 'Only what has no category (2)' }));
     expect(within(others).queryByRole('group', { name: 'Coffee' })).not.toBeInTheDocument();
+    // One given a category stays where it is while only those are shown: just the count says so
+    const these = within(others).getByLabelText('Category for these');
+    await user.type(these, 'Misc');
+    expect(within(others).getByRole('switch', { name: 'Only what has no category (2)' })).toBeInTheDocument();
+    await user.tab();
+    expect(within(others).getByRole('switch', { name: 'Only what has no category (1)' })).toBeInTheDocument();
+    expect(within(others).getByRole('group', { name: 'No description' })).toBeInTheDocument();
+    await user.clear(these);
     await user.click(within(others).getByRole('switch', { name: 'Only what has no category (2)' }));
-    // Another category for coffee: for both lines, and remembered
+    // In the order it was read in: what had no category first, then the most money
+    const order = () =>
+      within(others)
+        .getAllByRole('group')
+        .map(group => group.getAttribute('aria-label'));
+    expect(order()).toEqual(['Aqua Co', 'No description', 'Coffee']);
+    // Another category for coffee: for both lines, and remembered. Nothing moves as it's emptied, or
+    // while it's typed; it's taken when the field is left
     const category = within(others).getByLabelText('Category for Coffee');
     await user.clear(category);
+    expect(within(others).getByRole('switch', { name: 'Only what has no category (3)' })).toBeInTheDocument();
     await user.type(category, 'Treats');
+    expect(within(dialog).queryByText('Treats: $10.00')).not.toBeInTheDocument();
+    await user.tab();
     expect(within(dialog).getByText('Treats: $10.00')).toBeInTheDocument();
+    expect(order()).toEqual(['Aqua Co', 'No description', 'Coffee']);
+    // One of the categories there are, picked
+    await user.clear(category);
+    await user.click(category);
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['Dining', 'Utilities']);
+    await user.click(screen.getByRole('option', { name: 'Utilities' }));
+    expect(within(dialog).getByText('Utilities: $10.00')).toBeInTheDocument();
+    // Typed in other letters and entered: the same category to pick, once, as it was first spelled
+    await user.clear(category);
+    await user.type(category, 'dining{Enter}');
+    expect(within(dialog).getByText('dining: $10.00')).toBeInTheDocument();
+    await user.click(these);
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['Dining', 'Utilities']);
+    await user.keyboard('{Escape}');
+    await user.clear(category);
+    await user.type(category, 'Treats');
+    await user.tab();
     // The water bill went out as AQUA CO: opened, its line is renamed, put where it goes and matched by hand
     const aqua = within(others).getByRole('group', { name: 'Aqua Co' });
-    await user.click(within(aqua).getByRole('button', { name: 'Aqua Co $27.00' }));
+    const opener = within(aqua).getByRole('button', { name: 'Aqua Co -$27.00' });
+    expect(opener).not.toHaveAttribute('aria-controls');
+    await user.click(opener);
+    expect(document.getElementById(opener.getAttribute('aria-controls')!)).toBeInTheDocument();
     expect(within(aqua).getByText('AQUA CO')).toBeInTheDocument();
-    const name = within(aqua).getByLabelText('Name: Nov 6, $27.00');
+    // Its day and amount stand over its fields, and name them
+    const line = within(aqua).getByRole('group', { name: 'Nov 6, -$27.00' });
+    // The merchant's category is each of its lines', until a line has its own
+    const whole = within(aqua).getByLabelText('Category for Aqua Co');
+    await user.type(whole, 'Bills');
+    await user.tab();
+    expect(within(line).getByLabelText('Category')).toHaveValue('Bills');
+    await user.clear(whole);
+    expect(within(line).getByLabelText('Category')).toHaveValue('');
+    const name = within(line).getByLabelText('Name');
     await user.clear(name);
     await user.type(name, 'Water company');
-    await user.type(within(aqua).getByLabelText('Category: Nov 6, $27.00'), 'Utilities');
-    await user.click(within(aqua).getByLabelText('It paid: Nov 6, $27.00'));
+    await user.type(within(line).getByLabelText('Category'), 'Utilities');
+    await user.click(within(line).getByLabelText('It paid'));
     expect(screen.getByRole('option', { name: 'No bill or income here' })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'Water, due Nov 6' }));
     // Money in, without a description: nothing here it could have been
     const unnamed = within(others).getByRole('group', { name: 'No description' });
     await user.click(within(unnamed).getByRole('button', { name: 'No description +$25.00' }));
     expect(within(aqua).queryByLabelText(/^Name/)).not.toBeInTheDocument();
-    expect(within(unnamed).getByLabelText('Name: Nov 8, +$25.00')).toHaveValue('');
+    expect(within(within(unnamed).getByRole('group', { name: 'Nov 8, +$25.00' })).getByLabelText('Name')).toHaveValue(
+      ''
+    );
     expect(within(unnamed).queryByLabelText(/^It paid/)).not.toBeInTheDocument();
     await user.click(within(unnamed).getByRole('button', { name: 'No description +$25.00' }));
     expect(within(unnamed).queryByLabelText(/^Name/)).not.toBeInTheDocument();
@@ -982,11 +1039,11 @@ describe('a bank statement', () => {
     const again = await screen.findByRole('dialog', { name: 'Bank statement' });
     expect(
       within(again).getByText(
-        '8 transactions, Nov 1, 2026 to Nov 10, 2026. 7 are kept already, from a statement before.'
+        '8 transactions, Nov 1, 2026 to Nov 10, 2026. 7 are kept already, from a statement before. 1 out (-$3.00).'
       )
     ).toBeInTheDocument();
     expect(within(again).getByLabelText('Category for Coffee')).toHaveValue('Treats');
-    expect(within(again).getByRole('button', { name: 'Coffee $3.00' })).toBeInTheDocument();
+    expect(within(again).getByRole('button', { name: 'Coffee -$3.00' })).toBeInTheDocument();
   });
 
   it('offers what comes round as bills and income, to add with it', async () => {
@@ -1015,7 +1072,9 @@ describe('a bank statement', () => {
       new File([fall], 'fall.csv'),
     ]);
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
-    expect(within(dialog).getByText('10 transactions, Jul 13, 2026 to Oct 28, 2026.')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('10 transactions, Jul 13, 2026 to Oct 28, 2026. 7 out (-$479.97), 3 in (+$4,500.00).')
+    ).toBeInTheDocument();
     const round = within(dialog).getByRole('group', { name: 'What comes round' });
     const netflix = within(round).getByRole('checkbox', {
       name: 'Netflix: $19.99, monthly on the 28th, next Nov 28 · Subscriptions',
@@ -1116,10 +1175,10 @@ describe('a bank statement', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
     expect(
       within(dialog).getByText(
-        '3 transactions, Nov 1, 2026 to Nov 2, 2026. 1 isn’t settled yet: left for a later statement.'
+        '3 transactions, Nov 1, 2026 to Nov 2, 2026. 1 isn’t settled yet: left for a later statement. 1 out (-$18.30).'
       )
     ).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Walmart $18.30' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Walmart -$18.30' })).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Category for Walmart')).toHaveValue('Groceries');
     expect(within(dialog).getByText('1 of cash back (+$0.92): kept, and not counted as income.')).toBeInTheDocument();
     expect(
@@ -1175,7 +1234,7 @@ describe('a bank statement', () => {
     await pick(user, dialog, 'Or money out', 'How much');
     await pick(user, dialog, 'Or money out', 'None');
     await user.click(read);
-    expect(within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: $1,200.00 on Nov 1' })).toBeChecked();
+    expect(within(dialog).getByRole('checkbox', { name: 'Rent, due Nov 1: -$1,200.00 on Nov 1' })).toBeChecked();
     // A click outside keeps it; with something to save, Escape asks before dropping it
     await user.click(document.querySelector('.MuiBackdrop-root')!);
     expect(dialog).toBeInTheDocument();
@@ -1233,11 +1292,53 @@ describe('a bank statement', () => {
       '<OFX><STMTTRN><DTPOSTED>20261101<TRNAMT>-1200.00<NAME>RENT</STMTTRN><LEDGERBAL><BALAMT>800.00<DTASOF>20261107</LEDGERBAL></OFX>'
     );
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
-    expect(within(dialog).getByText('1 transaction, Nov 1, 2026 to Nov 1, 2026.')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('1 transaction, Nov 1, 2026 to Nov 1, 2026. 1 out (-$1,200.00).')
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() =>
       expect(docOf(store, 'settings~account').balance).toEqual({ cents: 80_000, asOf: '2026-11-07' })
     );
+  });
+
+  it('reads a statement the other way round, or by other columns, when asked', async () => {
+    // What was spent written above zero, as a card's statement often has it
+    const card = [
+      'Date,Description,Amount,Way',
+      '11/01/2026,GROCER,54.20,debit',
+      '11/02/2026,REFUND CO,4.50,credit',
+    ].join('\n');
+    const { user } = await importing(card);
+    const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(within(dialog).getByText('2 transactions, Nov 1, 2026 to Nov 2, 2026. 2 in (+$58.70).')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Every amount here reads as money in/)).toBeInTheDocument();
+    const turn = within(dialog).getByRole('switch', { name: 'Amounts are the other way round' });
+    await user.click(turn);
+    expect(
+      within(dialog).getByText('2 transactions, Nov 1, 2026 to Nov 2, 2026. 2 out (-$58.70).')
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Every amount here reads as money in/)).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Grocer -$54.20' })).toBeInTheDocument();
+    await user.click(turn);
+    expect(within(dialog).getByRole('button', { name: 'Grocer +$54.20' })).toBeInTheDocument();
+    // The columns core took, chosen again: they start as they were read, and can be left so
+    await user.click(within(dialog).getByRole('button', { name: 'Choose the columns' }));
+    expect(within(dialog).getByText('Which of this file’s columns hold what?')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Amount (out below zero)')).toHaveTextContent('Amount');
+    await user.click(within(dialog).getByRole('button', { name: 'Leave them as they were' }));
+    expect(within(dialog).getByRole('button', { name: 'Grocer +$54.20' })).toBeInTheDocument();
+    // One of them says which way each went
+    await user.click(within(dialog).getByRole('button', { name: 'Choose the columns' }));
+    await pick(user, dialog, 'Says which way (debit or credit)', 'Way');
+    await user.click(within(dialog).getByRole('button', { name: 'Read it' }));
+    expect(
+      within(dialog).getByText('2 transactions, Nov 1, 2026 to Nov 2, 2026. 1 out (-$54.20), 1 in (+$4.50).')
+    ).toBeInTheDocument();
+    // Read the other way round, it's still by the columns chosen
+    await user.click(within(dialog).getByRole('switch', { name: 'Amounts are the other way round' }));
+    expect(
+      within(dialog).getByText('2 transactions, Nov 1, 2026 to Nov 2, 2026. 1 out (-$4.50), 1 in (+$54.20).')
+    ).toBeInTheDocument();
   });
 
   it('says when the columns chosen don’t read', async () => {

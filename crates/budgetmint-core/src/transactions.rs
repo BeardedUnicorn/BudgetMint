@@ -100,6 +100,12 @@ fn keep(
             ));
         }
         let name = cut(&input.name, MAX_NAME);
+        // What paid a transfer was moved, not spent (or come in)
+        let moved = input
+            .item_id
+            .as_deref()
+            .and_then(|id| snapshot.items.get(id))
+            .is_some_and(|item| item.kind == crate::model::ItemKind::Transfer);
         let month = months
             .entry(input.on.format("%Y-%m").to_string())
             .or_default();
@@ -115,7 +121,7 @@ fn keep(
             id: input.id,
             on: input.on,
             amount_cents: input.amount_cents,
-            flow: input.flow,
+            flow: if moved { LineFlow::Moved } else { input.flow },
         });
         if month.len() > MAX_MONTH_TRANSACTIONS {
             return Err(too_many());
@@ -413,6 +419,60 @@ mod tests {
             .unwrap(),
             Planned::default()
         );
+    }
+
+    #[test]
+    fn keeps_what_paid_a_transfer_as_money_moved() {
+        use crate::model::MAIN_ACCOUNT;
+        use crate::occur::tests::transfer;
+        let mut s = Snapshot::default();
+        s.write(DocKey::Settings, Some(&Settings::default()));
+        put_account(&mut s, "savings", None);
+        put_item(
+            &mut s,
+            transfer(
+                "put",
+                (None, Some("savings")),
+                d(2026, 11, 3),
+                Repeat::Once,
+                40_000,
+            ),
+        );
+        put_item(
+            &mut s,
+            item(
+                "rent",
+                ItemKind::Bill,
+                d(2026, 11, 1),
+                Repeat::Once,
+                120_000,
+            ),
+        );
+        let paying = |id: &str, item: &str, cents| TransactionInput {
+            item_id: Some(item.into()),
+            ..line(id, d(2026, 11, 3), cents, "Paid", None)
+        };
+        keep(
+            &mut s,
+            MAIN_ACCOUNT,
+            vec![
+                paying("t1", "put", -40_000),
+                paying("t2", "rent", -120_000),
+                paying("t3", "gone", -100),
+            ],
+        )
+        .unwrap();
+        let flows: Vec<LineFlow> = month(&s, MAIN_ACCOUNT, "2026-11")
+            .iter()
+            .map(|kept| kept.flow)
+            .collect();
+        assert_eq!(
+            flows,
+            vec![LineFlow::Moved, LineFlow::Spend, LineFlow::Spend]
+        );
+        // Moved: none of the month's spending
+        let spent = spending(&s, "2026-11").unwrap();
+        assert_eq!(spent.spent_cents, 120_100);
     }
 
     #[test]

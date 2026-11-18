@@ -9,17 +9,22 @@
  * - everything else, by who it was paid to, each with the category core
  *   suggests: changed for a merchant, it's remembered for the statements to
  *   come; opened, each of its lines can be renamed, put in a category of its
- *   own, or matched by hand to a bill or income still open;
+ *   own, or matched by hand to a bill or income still open. They stay in the
+ *   order they were read in: choosing a category moves nothing;
  * - the statement's closing balance, to take.
  *
+ * Money out is written below zero ("-$4.50") and money in with a plus. A
+ * statement that writes what was spent above zero (a card's, often) is read
+ * the other way round with a switch; a CSV's columns can be chosen again
+ * when core took the wrong ones, and are asked for when it can't tell them.
+ *
  * Saving keeps every line (core's import_statement), as one change with
- * Undo; lines kept from a statement before are left as they are. When a
- * CSV's columns can't be told, they're chosen here. With more than one bank
- * account, it's one account's statement, chosen at the top: it's matched to
- * what's in that account, and settles that one.
+ * Undo; lines kept from a statement before are left as they are. With more
+ * than one bank account, it's one account's statement, chosen at the top:
+ * it's matched to what's in that account, and settles that one.
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -60,7 +65,7 @@ import { ConfirmDialog } from '../ui/dialogs/ConfirmDialog';
 import { AccountField } from './AccountField';
 import { ItemDialog } from './ItemDialog';
 
-type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit';
+type ColumnKey = 'date' | 'description' | 'amount' | 'debit' | 'credit' | 'kind';
 
 const COLUMN_LABELS: Record<ColumnKey, string> = {
   date: 'Date',
@@ -68,60 +73,92 @@ const COLUMN_LABELS: Record<ColumnKey, string> = {
   amount: 'Amount (out below zero)',
   debit: 'Or money out',
   credit: 'And money in',
+  kind: 'Says which way (debit or credit)',
 };
 
 /** Which columns hold what, chosen from the CSV's header: the date and an amount at least. */
-function ColumnChooser({ headers, onRead }: { headers: string[]; onRead: (columns: CsvColumns) => void }) {
-  const [chosen, setChosen] = useState<Partial<Record<ColumnKey, number>>>({});
-  const ready = chosen.date !== undefined && [chosen.amount, chosen.debit, chosen.credit].some(at => at !== undefined);
+function ColumnChooser({
+  headers,
+  found,
+  onRead,
+  onBack,
+}: {
+  headers: string[];
+  /** The columns core took, to start from: none when it couldn't tell them. */
+  found: CsvColumns | null;
+  onRead: (columns: CsvColumns) => void;
+  /** Leaves them as they were read (when they were). */
+  onBack?: () => void;
+}) {
+  const [chosen, setChosen] = useState<Partial<Record<ColumnKey, number | null>>>(found ?? {});
+  const at = (key: ColumnKey) => chosen[key] ?? null;
+  const ready = at('date') !== null && [at('amount'), at('debit'), at('credit')].some(column => column !== null);
   return (
     <Stack spacing={2}>
-      <Alert severity="info">BudgetMint can’t tell this file’s columns apart. Which hold what?</Alert>
+      <Alert severity="info">
+        {found
+          ? 'Which of this file’s columns hold what?'
+          : 'BudgetMint can’t tell this file’s columns apart. Which hold what?'}
+      </Alert>
       {(Object.keys(COLUMN_LABELS) as ColumnKey[]).map(key => (
         <TextField
           key={key}
           select
           size="small"
           label={COLUMN_LABELS[key]}
-          value={chosen[key] ?? ''}
+          value={at(key) ?? ''}
           onChange={event =>
             setChosen(current => ({
               ...current,
-              [key]: event.target.value === '' ? undefined : Number(event.target.value),
+              [key]: event.target.value === '' ? null : Number(event.target.value),
             }))
           }
         >
           <MenuItem value="">
             <em>None</em>
           </MenuItem>
-          {headers.map((header, at) => (
-            <MenuItem key={`${at} ${header}`} value={at}>
-              {header || `Column ${at + 1}`}
+          {headers.map((header, column) => (
+            <MenuItem key={`${column} ${header}`} value={column}>
+              {header || `Column ${column + 1}`}
             </MenuItem>
           ))}
         </TextField>
       ))}
-      <Button
-        variant="outlined"
-        disabled={!ready}
-        onClick={() =>
-          onRead({
-            date: chosen.date!,
-            description: chosen.description ?? null,
-            amount: chosen.amount ?? null,
-            debit: chosen.debit ?? null,
-            credit: chosen.credit ?? null,
-            balance: null,
-          })
-        }
-      >
-        Read it
-      </Button>
+      <Stack direction="row" sx={{ gap: 1 }}>
+        <Button
+          variant="outlined"
+          disabled={!ready}
+          onClick={() =>
+            onRead({
+              date: at('date')!,
+              description: at('description'),
+              amount: at('amount'),
+              debit: at('debit'),
+              credit: at('credit'),
+              // The balance column stays the one core found
+              balance: found?.balance ?? null,
+              kind: at('kind'),
+            })
+          }
+        >
+          Read it
+        </Button>
+        {onBack && (
+          <Button color="secondary" onClick={onBack}>
+            Leave them as they were
+          </Button>
+        )}
+      </Stack>
     </Stack>
   );
 }
 
-/** A category, typed or picked from the ones in use. */
+/**
+ * A category, picked from the ones in use or typed (any name will do). What's
+ * typed is taken when the field is left, Enter is pressed or one is picked
+ * (and at once when it's emptied), not letter by letter: nothing around it
+ * changes while it's being typed.
+ */
 function CategoryField({
   label,
   value,
@@ -133,19 +170,34 @@ function CategoryField({
   options: string[];
   onChange: (category: string) => void;
 }) {
+  const [typed, setTyped] = useState(value);
+  // Changed from outside (the merchant's, for one of its lines): shown
+  const [shown, setShown] = useState(value);
+  if (shown !== value) {
+    setShown(value);
+    setTyped(value);
+  }
+  const take = (category: string) => category !== value && onChange(category);
   return (
     <Autocomplete
       freeSolo
       size="small"
       options={options}
-      inputValue={value}
-      // (It also says so when nothing changed: when it's first shown)
-      onInputChange={(_event, typed) => typed !== value && onChange(typed)}
+      inputValue={typed}
+      // Emptied, it has none at once: there's nothing more to type
+      onInputChange={(_event, text) => {
+        setTyped(text);
+        if (text === '') take('');
+      }}
+      // Picked or entered
+      onChange={(_event, picked) => take(picked ?? '')}
+      onBlur={() => take(typed)}
       sx={{ flex: 1, minWidth: 160 }}
       renderInput={params => (
         <TextField
           {...params}
           label={label}
+          placeholder="Pick one or type your own"
           slotProps={{
             ...params.slotProps,
             htmlInput: { ...params.slotProps.htmlInput, maxLength: LIMITS.MAX_CATEGORY },
@@ -156,7 +208,11 @@ function CategoryField({
   );
 }
 
-const signed = (cents: number) => `${cents < 0 ? '' : '+'}${formatCents(Math.abs(cents))}`;
+/** Money out below zero ("-$4.50"), money in with a plus ("+$4.50"). */
+const signed = (cents: number) => `${cents > 0 ? '+' : ''}${formatCents(cents)}`;
+/** Money in is green as well as plus. */
+const toneOf = (cents: number) => (cents > 0 ? 'success.main' : 'text.primary');
+const NO_CATEGORY = 'No category';
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const sum = (lines: BankTransaction[]) => lines.reduce((total, line) => total + line.amountCents, 0);
 
@@ -198,27 +254,52 @@ export function StatementDialog({
   const [editing, setEditing] = useState<RecurringFound | null>(null);
   /** The merchant whose lines are shown one by one. */
   const [opened, setOpened] = useState<string | null>(null);
-  const [onlyBare, setOnlyBare] = useState(false);
+  /** The merchants without a category when only those were asked for: one given a category since stays in view. */
+  const [onlyBare, setOnlyBare] = useState<string[] | null>(null);
+  /** The columns chosen here (none: the ones core finds), and whether they're being chosen. */
+  const [columns, setColumns] = useState<CsvColumns | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  /** The statement writes money out above zero: read the other way round. */
+  const [reversed, setReversed] = useState(false);
+  const linesId = useId();
   /** Escape was pressed with something to save: asking before it's dropped. */
   const [asking, setAsking] = useState(false);
   const dirty = useDirty([unticked, takeBalance, pays, chosen, own, adding, drafts]);
 
-  const read = (columns: CsvColumns | null, account = accountId) => {
+  /** Reads it again, another way: what was chosen by its lines' places starts over. */
+  const read = (next: { columns?: CsvColumns | null; account?: string; reversed?: boolean }) => {
+    const given = next.columns === undefined ? columns : next.columns;
     try {
-      setView(core.call('read_statement', { texts, columns: columns ?? undefined, accountId: account }));
+      setView(
+        core.call('read_statement', {
+          texts,
+          columns: given ?? undefined,
+          accountId: next.account ?? accountId,
+          reversed: next.reversed ?? reversed,
+        })
+      );
       setProblem(null);
     } catch (error) {
       setProblem((error as Error).message);
+      return;
     }
+    setColumns(given);
+    setChoosing(false);
+    setUnticked([]);
+    setPays({});
+    setOwn({});
+    setAdding([]);
+    setOnlyBare(null);
   };
-  /** Another account's: read again against what's in that one, with nothing chosen yet. */
+  /** Another account's: read again against what's in that one. */
   const choose = (account: string) => {
     setAccountId(account);
     setPicked(true);
-    setUnticked([]);
-    setPays({});
-    setAdding([]);
-    read(view.columns, account);
+    read({ account });
+  };
+  const turn = (other: boolean) => {
+    setReversed(other);
+    read({ reversed: other });
   };
 
   const ticked = view.matches.filter(match => !unticked.includes(match.transaction));
@@ -262,7 +343,9 @@ export function StatementDialog({
     ...byHand.map(({ line, occurrence }) => [line.index, occurrence.itemId] as const),
   ]);
 
-  // By who each was paid to: what has no category first, then the most money
+  // By who each was paid to, in the order the statement gives them: what
+  // it has no category for first, then the most money. A category chosen
+  // here moves none of them
   const groups = [...new Set(lines.map(line => line.merchant))]
     .map(merchant => {
       const its = lines.filter(line => line.merchant === merchant);
@@ -271,26 +354,41 @@ export function StatementDialog({
         merchant,
         its,
         category: chosen[merchant] ?? its[0].category ?? '',
+        // Still to file: any of its lines without a category
+        bare: its.some(line => categoryOf(line) === ''),
+        unfiled: its.some(line => !line.category),
         cents: sum(its),
         who,
         title: its.length > 1 ? `${who} (${its.length})` : who,
       };
     })
-    .sort((a, b) => Number(a.category !== '') - Number(b.category !== '') || Math.abs(b.cents) - Math.abs(a.cents));
-  const bare = groups.filter(group => group.category === '');
+    .sort((a, b) => Number(b.unfiled) - Number(a.unfiled) || Math.abs(b.cents) - Math.abs(a.cents));
+  const bare = groups.filter(group => group.bare);
+  const shown = onlyBare ? groups.filter(group => onlyBare.includes(group.merchant)) : groups;
+  // Every category there is to pick, each once however it's spelled (as a bill spells it, first)
   const options = [
-    ...new Set([
-      ...inUse,
-      ...view.transactions.flatMap(line => (line.category ? [line.category] : [])),
-      ...Object.values(chosen).filter(Boolean),
-    ]),
+    ...new Map(
+      [
+        ...inUse,
+        ...view.transactions.flatMap(line => (line.category ? [line.category] : [])),
+        ...Object.values(chosen),
+        ...Object.values(own).flatMap(line => line.category ?? []),
+      ]
+        .filter(Boolean)
+        .reverse()
+        .map(category => [category.toLowerCase(), category])
+    ).values(),
   ].sort((a, b) => a.localeCompare(b));
   // What was spent, by category as it stands
   const totals = new Map<string, number>();
   for (const line of fresh.filter(line => line.flow === 'spend')) {
-    const category = categoryOf(line) || 'No category';
+    const category = categoryOf(line) || NO_CATEGORY;
     totals.set(category, (totals.get(category) ?? 0) - line.amountCents);
   }
+  // What goes out and what comes in, of the lines new here
+  const ways = fresh.filter(line => line.flow === 'spend' || line.flow === 'income');
+  const out = ways.filter(line => line.amountCents < 0);
+  const into = ways.filter(line => line.amountCents > 0);
 
   /** A charge that comes round as the bill (or income) it would be added as. */
   const itemOf = (found: RecurringFound): ItemInput =>
@@ -373,8 +471,13 @@ export function StatementDialog({
             helperText={picked ? undefined : 'Which account is this statement from?'}
             size="small"
           />
-          {!picked ? null : view.columns === null && view.format === 'csv' ? (
-            <ColumnChooser headers={view.headers} onRead={read} />
+          {!picked ? null : view.format === 'csv' && (view.columns === null || choosing) ? (
+            <ColumnChooser
+              headers={view.headers}
+              found={view.columns}
+              onRead={chosen => read({ columns: chosen })}
+              onBack={view.columns ? () => setChoosing(false) : undefined}
+            />
           ) : (
             <>
               <Typography variant="body2">
@@ -387,12 +490,37 @@ export function StatementDialog({
                     `${count(view.pendingRows, 'isn’t', 'aren’t')} settled yet: left for a later statement.`,
                   fresh.length < view.transactions.length &&
                     `${count(view.transactions.length - fresh.length, 'is', 'are')} kept already, from a statement before.`,
+                  // Which way the money went: how many out and in, and what they come to
+                  ways.length > 0 &&
+                    `${[
+                      out.length > 0 && `${out.length} out (${signed(sum(out))})`,
+                      into.length > 0 && `${into.length} in (${signed(sum(into))})`,
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}.`,
                 ]
                   .filter(Boolean)
                   .join(' ')}
               </Typography>
+              {view.allIn && !reversed && (
+                <Alert severity="info">
+                  Every amount here reads as money in. If these are what you spent (a card’s statement often writes them
+                  so), switch on “Amounts are the other way round”.
+                </Alert>
+              )}
+              <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <FormControlLabel
+                  control={<Switch checked={reversed} onChange={event => turn(event.target.checked)} />}
+                  label="Amounts are the other way round"
+                />
+                {view.format === 'csv' && (
+                  <Button size="small" onClick={() => setChoosing(true)}>
+                    Choose the columns
+                  </Button>
+                )}
+              </Stack>
               {view.matches.length > 0 ? (
-                <FormGroup aria-label="Bills and income it shows paid">
+                <FormGroup role="group" aria-label="Bills and income it shows paid">
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     Mark these paid (or received)?
                   </Typography>
@@ -414,7 +542,7 @@ export function StatementDialog({
                             }
                           />
                         }
-                        label={`${occurrence.name}, due ${formatDay(occurrence.due)}: ${formatCents(Math.abs(transaction.amountCents))} on ${formatDay(transaction.date)}${match.exact ? '' : ` (expected ${formatCents(occurrence.expectedCents)})`}`}
+                        label={`${occurrence.name}, due ${formatDay(occurrence.due)}: ${signed(transaction.amountCents)} on ${formatDay(transaction.date)}${match.exact ? '' : ` (expected ${formatCents(occurrence.expectedCents)})`}`}
                       />
                     );
                   })}
@@ -465,28 +593,39 @@ export function StatementDialog({
               )}
               {groups.length > 0 && (
                 <Stack spacing={1} role="group" aria-label="What else it shows">
-                  <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Stack
+                    direction="row"
+                    sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}
+                  >
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       The rest, by who it was paid to
                     </Typography>
                     <FormControlLabel
-                      control={<Switch checked={onlyBare} onChange={event => setOnlyBare(event.target.checked)} />}
+                      control={
+                        <Switch
+                          checked={onlyBare !== null}
+                          onChange={event =>
+                            setOnlyBare(event.target.checked ? bare.map(group => group.merchant) : null)
+                          }
+                        />
+                      }
                       label={`Only what has no category (${bare.length})`}
                     />
                   </Stack>
-                  {(onlyBare ? bare : groups).map(({ merchant, its, category, cents, who, title }) => (
+                  {shown.map(({ merchant, its, category, cents, who, title }, place) => (
                     <Stack key={merchant} spacing={1} role="group" aria-label={who}>
                       <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Button
                           size="small"
                           color="inherit"
                           aria-expanded={opened === merchant}
+                          aria-controls={opened === merchant ? `${linesId}-${place}` : undefined}
                           aria-label={`${title} ${signed(cents)}`}
                           onClick={() => setOpened(current => (current === merchant ? null : merchant))}
                           sx={{ flex: 2, minWidth: 200, justifyContent: 'space-between', textAlign: 'left' }}
                         >
                           <span>{title}</span>
-                          <Box component="span" sx={{ fontFamily: MONO, pl: 1 }}>
+                          <Box component="span" sx={{ fontFamily: MONO, pl: 1, color: toneOf(cents) }}>
                             {signed(cents)}
                           </Box>
                         </Button>
@@ -497,60 +636,70 @@ export function StatementDialog({
                           onChange={value => setChosen(current => ({ ...current, [merchant]: value }))}
                         />
                       </Stack>
-                      {opened === merchant &&
-                        its.map(line => {
-                          const out = line.amountCents < 0;
-                          const about = `${formatDay(line.date)}, ${signed(line.amountCents)}`;
-                          const open = view.open.filter(open => wayOf(open) === (out ? 'out' : 'in'));
-                          return (
-                            <Stack key={line.index} direction="row" sx={{ gap: 1, flexWrap: 'wrap', pl: 2 }}>
-                              <TextField
-                                size="small"
-                                label={`Name: ${about}`}
-                                value={nameOf(line)}
-                                onChange={event =>
-                                  setOwn(current => ({
-                                    ...current,
-                                    [line.index]: { ...current[line.index], name: event.target.value },
-                                  }))
-                                }
-                                helperText={line.description}
-                                sx={{ flex: 2, minWidth: 200 }}
-                                slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NAME } }}
-                              />
-                              <CategoryField
-                                label={`Category: ${about}`}
-                                value={categoryOf(line)}
-                                options={options}
-                                onChange={value =>
-                                  setOwn(current => ({
-                                    ...current,
-                                    [line.index]: { ...current[line.index], category: value },
-                                  }))
-                                }
-                              />
-                              {open.length > 0 && (
-                                <TextField
-                                  select
-                                  size="small"
-                                  label={`It paid: ${about}`}
-                                  value={pays[line.index] ?? ''}
-                                  onChange={event =>
-                                    setPays(current => ({ ...current, [line.index]: event.target.value }))
-                                  }
-                                  sx={{ flex: 1, minWidth: 160 }}
-                                >
-                                  <MenuItem value="">No bill or income here</MenuItem>
-                                  {open.map(open => (
-                                    <MenuItem key={keyOf(open)} value={keyOf(open)}>
-                                      {`${open.name}, due ${formatDay(open.due)}`}
-                                    </MenuItem>
-                                  ))}
-                                </TextField>
-                              )}
-                            </Stack>
-                          );
-                        })}
+                      {opened === merchant && (
+                        <Stack id={`${linesId}-${place}`} spacing={1.5} sx={{ pl: 2 }}>
+                          {its.map(line => {
+                            const about = `${formatDay(line.date)}, ${signed(line.amountCents)}`;
+                            const open = view.open.filter(
+                              open => wayOf(open) === (line.amountCents < 0 ? 'out' : 'in')
+                            );
+                            return (
+                              // Each line's day and amount stand over its fields, and name them
+                              <Stack key={line.index} spacing={1} role="group" aria-label={about}>
+                                <Typography variant="body2" sx={{ fontFamily: MONO, color: toneOf(line.amountCents) }}>
+                                  {about}
+                                </Typography>
+                                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                                  <TextField
+                                    size="small"
+                                    label="Name"
+                                    value={nameOf(line)}
+                                    onChange={event =>
+                                      setOwn(current => ({
+                                        ...current,
+                                        [line.index]: { ...current[line.index], name: event.target.value },
+                                      }))
+                                    }
+                                    helperText={line.description}
+                                    sx={{ flex: 2, minWidth: 200 }}
+                                    slotProps={{ htmlInput: { maxLength: LIMITS.MAX_NAME } }}
+                                  />
+                                  <CategoryField
+                                    label="Category"
+                                    value={categoryOf(line)}
+                                    options={options}
+                                    onChange={value =>
+                                      setOwn(current => ({
+                                        ...current,
+                                        [line.index]: { ...current[line.index], category: value },
+                                      }))
+                                    }
+                                  />
+                                  {open.length > 0 && (
+                                    <TextField
+                                      select
+                                      size="small"
+                                      label="It paid"
+                                      value={pays[line.index] ?? ''}
+                                      onChange={event =>
+                                        setPays(current => ({ ...current, [line.index]: event.target.value }))
+                                      }
+                                      sx={{ flex: 1, minWidth: 160 }}
+                                    >
+                                      <MenuItem value="">No bill or income here</MenuItem>
+                                      {open.map(open => (
+                                        <MenuItem key={keyOf(open)} value={keyOf(open)}>
+                                          {`${open.name}, due ${formatDay(open.due)}`}
+                                        </MenuItem>
+                                      ))}
+                                    </TextField>
+                                  )}
+                                </Stack>
+                              </Stack>
+                            );
+                          })}
+                        </Stack>
+                      )}
                     </Stack>
                   ))}
                 </Stack>
@@ -568,7 +717,8 @@ export function StatementDialog({
               {totals.size > 0 && (
                 <Stack direction="row" role="group" aria-label="Spent, by category" sx={{ gap: 1, flexWrap: 'wrap' }}>
                   {[...totals]
-                    .sort((a, b) => b[1] - a[1])
+                    // A to Z, what has none last: a chip keeps its place as the amounts change
+                    .sort(([a], [b]) => (a === NO_CATEGORY ? 1 : b === NO_CATEGORY ? -1 : a.localeCompare(b)))
                     .map(([category, cents]) => (
                       <Chip key={category} size="small" label={`${category}: ${formatCents(cents)}`} />
                     ))}

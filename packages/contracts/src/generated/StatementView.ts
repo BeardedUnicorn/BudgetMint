@@ -42,4 +42,9 @@ open: Array<OccurrenceView>,
  * The charges (and income) that come round and are no bill or income
  * here yet.
  */
-recurring: Array<RecurringFound>, };
+recurring: Array<RecurringFound>, 
+/**
+ * Several lines, and none of them money out: a statement that writes
+ * what was spent above zero (a card's, say) reads so.
+ */
+allIn: boolean, };

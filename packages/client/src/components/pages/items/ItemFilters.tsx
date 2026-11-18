@@ -33,7 +33,6 @@ const ORDERS: Record<ItemOrder, string> = {
   monthly: 'A month',
 };
 
-/** What the list's items are filed under, A to Z. */
 /** A category whatever its letters' case: "Utilities" and "utilities" are one. */
 const sameCategory = (a: string | null, b: string) => a !== null && a.toLocaleLowerCase() === b.toLocaleLowerCase();
 

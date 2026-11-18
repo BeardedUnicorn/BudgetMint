@@ -80,6 +80,10 @@ pub struct CsvColumns {
     /// The balance after each.
     #[serde(default)]
     pub balance: Option<u32>,
+    /// One saying which way each went ("Debit", "CR"), when the amount
+    /// doesn't.
+    #[serde(default)]
+    pub kind: Option<u32>,
 }
 
 /// A bill or income the statement shows paid, and the transaction.
@@ -119,6 +123,9 @@ pub struct StatementView {
     /// The charges (and income) that come round and are no bill or income
     /// here yet.
     pub recurring: Vec<RecurringFound>,
+    /// Several lines, and none of them money out: a statement that writes
+    /// what was spent above zero (a card's, say) reads so.
+    pub all_in: bool,
 }
 
 /// `text` as the main account's statement (read_statement_of).
@@ -142,6 +149,20 @@ pub fn read_statement_of(
     columns: Option<CsvColumns>,
     ctx: &Ctx,
 ) -> Result<StatementView, CoreError> {
+    read_statement_with(snapshot, account_id, texts, columns, false, ctx)
+}
+
+/// read_statement_of, `reversed` when the statement writes money out above
+/// zero and money in below (as a card's often does): each amount is taken
+/// the other way round.
+pub fn read_statement_with(
+    snapshot: &Snapshot,
+    account_id: &str,
+    texts: &[String],
+    columns: Option<CsvColumns>,
+    reversed: bool,
+    ctx: &Ctx,
+) -> Result<StatementView, CoreError> {
     crate::plan::live_account(snapshot, account_id)?;
     if texts.len() > MAX_FILES {
         return Err(invalid(format!(
@@ -151,7 +172,7 @@ pub fn read_statement_of(
     }
     let mut views = Vec::new();
     for text in texts {
-        views.push(read_file(text, columns)?);
+        views.push(read_file(text, columns, reversed)?);
     }
     let mut view = merged(views).ok_or_else(not_a_statement)?;
     let categories = Categories::new(snapshot);
@@ -185,11 +206,19 @@ pub fn read_statement_of(
         .chain(view.already.iter().copied())
         .collect();
     view.recurring = recurring::found(snapshot, account_id, &view.transactions, &taken);
+    let ways = view.transactions.iter().filter(|line| {
+        matches!(line.flow, LineFlow::Spend | LineFlow::Income) && line.amount_cents != 0
+    });
+    view.all_in = ways.clone().count() > 1 && ways.clone().all(|line| line.amount_cents > 0);
     Ok(view)
 }
 
 /// One file's lines, each with an id.
-fn read_file(text: &str, columns: Option<CsvColumns>) -> Result<StatementView, CoreError> {
+fn read_file(
+    text: &str,
+    columns: Option<CsvColumns>,
+    reversed: bool,
+) -> Result<StatementView, CoreError> {
     if text.len() > MAX_STATEMENT_BYTES {
         return Err(invalid(
             "That file is too large: export a few months at a time",
@@ -198,9 +227,9 @@ fn read_file(text: &str, columns: Option<CsvColumns>) -> Result<StatementView, C
     let text = text.trim_start_matches('\u{feff}');
     let lower = text.to_ascii_lowercase();
     let mut view = if lower.contains("<ofx>") || lower.trim_start().starts_with("ofxheader") {
-        read_ofx(text)
+        read_ofx(text, reversed)
     } else {
-        read_csv(text, columns)
+        read_csv(text, columns, reversed)
     }?;
     // One without the bank's id: what it says, and which of the lines
     // saying just that it is
@@ -326,22 +355,25 @@ fn not_a_statement() -> CoreError {
 
 // ---- Reading values ----
 
-/// An amount as banks write them: "$1,234.56", "-12.34", "(12.34)",
-/// "12.34-", "1.234,56", "12.34 DR". None when it isn't one (or is too large).
+/// An amount as banks write them: "$1,234.56", "-12.34", "$-12.34",
+/// "(12.34)", "12.34-", "1.234,56", "12.34 DR", "DR 12.34". None when it
+/// isn't one (or is too large).
 pub fn parse_amount(cell: &str) -> Option<Cents> {
     let cell = cell.trim();
-    let upper = cell.to_ascii_uppercase();
-    let negative = cell.starts_with('-')
-        || cell.ends_with('-')
+    // What's written around the number says which way: a minus (the
+    // typographic one too), brackets, or DR (DB) as a word of its own
+    let first = cell.find(|c: char| c.is_ascii_digit())?;
+    let last = cell.rfind(|c: char| c.is_ascii_digit()).unwrap_or(first);
+    let around = format!("{} {}", &cell[..first], &cell[last + 1..]).to_ascii_uppercase();
+    let negative = around.contains(['-', '\u{2212}'])
         || (cell.starts_with('(') && cell.ends_with(')'))
-        || upper.ends_with("DR");
+        || around
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .any(|word| word == "DR" || word == "DB");
     let kept: String = cell
         .chars()
         .filter(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
         .collect();
-    if !kept.bytes().any(|b| b.is_ascii_digit()) {
-        return None;
-    }
     // The decimal mark is the last separator with one or two digits after it
     let (whole, fraction) = match kept.rfind(['.', ',']) {
         Some(at) if (1..=2).contains(&(kept.len() - at - 1)) => (&kept[..at], &kept[at + 1..]),
@@ -509,7 +541,24 @@ fn find_columns(headers: &[String]) -> Option<CsvColumns> {
         &["credit", "deposit", "money in", "paid in", "inflow"],
         &["debit"],
     );
-    let amount = column(headers, &["amount", "value"], &["balance"]);
+    // An amount for both ways: not one that names a way ("Debit Amount")
+    // or a day ("Value Date")
+    let amount = column(
+        headers,
+        &["amount", "value"],
+        &[
+            "balance",
+            "date",
+            "debit",
+            "credit",
+            "withdrawal",
+            "deposit",
+            "paid",
+            "money",
+            "inflow",
+            "outflow",
+        ],
+    );
     if amount.is_none() && debit.is_none() && credit.is_none() {
         return None;
     }
@@ -533,7 +582,38 @@ fn find_columns(headers: &[String]) -> Option<CsvColumns> {
         debit,
         credit,
         balance: column(headers, &["balance", "running balance"], &[]),
+        kind: column(
+            headers,
+            &[
+                "type",
+                "transaction type",
+                "dr/cr",
+                "cr/dr",
+                "debit/credit",
+                "credit/debit",
+            ],
+            &[],
+        ),
     })
+}
+
+/// Which way a line went, as a column saying so has it: out (true), in
+/// (false), or nothing told of it.
+fn way_out(cell: &str) -> Option<bool> {
+    match cell.trim().to_ascii_lowercase().as_str() {
+        "debit" | "dr" | "db" | "d" | "withdrawal" | "out" => Some(true),
+        "credit" | "cr" | "c" | "deposit" | "in" => Some(false),
+        _ => None,
+    }
+}
+
+/// `cents` the other way round when the statement is `reversed`.
+fn turned(cents: Cents, reversed: bool) -> Cents {
+    if reversed {
+        -cents
+    } else {
+        cents
+    }
 }
 
 /// A statement with nothing read of it yet.
@@ -550,6 +630,7 @@ fn blank(format: StatementFormat) -> StatementView {
         already: Vec::new(),
         open: Vec::new(),
         recurring: Vec::new(),
+        all_in: false,
     }
 }
 
@@ -653,7 +734,11 @@ fn read_venmo(rows: &[Vec<String>], header_at: usize, at: Vec<usize>) -> Stateme
     view
 }
 
-fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, CoreError> {
+fn read_csv(
+    text: &str,
+    given: Option<CsvColumns>,
+    reversed: bool,
+) -> Result<StatementView, CoreError> {
     let rows = csv_rows(text);
     if rows.is_empty() {
         return Err(not_a_statement());
@@ -699,11 +784,19 @@ fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, Core
             view.skipped_rows += 1;
             continue;
         };
-        let amount = parse_amount(cell(row, columns.amount)).or_else(|| {
-            let debit = parse_amount(cell(row, columns.debit)).map(|cents| -cents.abs());
-            let credit = parse_amount(cell(row, columns.credit)).map(|cents| cents.abs());
-            debit.filter(|cents| *cents != 0).or(credit)
-        });
+        // One amount, the way its own sign or the column beside it says;
+        // or the one of the two columns that has it
+        let amount = parse_amount(cell(row, columns.amount))
+            .map(|cents| match way_out(cell(row, columns.kind)) {
+                Some(true) => -cents.abs(),
+                Some(false) => cents.abs(),
+                None => cents,
+            })
+            .or_else(|| {
+                let debit = parse_amount(cell(row, columns.debit)).map(|cents| -cents.abs());
+                let credit = parse_amount(cell(row, columns.credit)).map(|cents| cents.abs());
+                debit.filter(|cents| *cents != 0).or(credit)
+            });
         let Some(amount_cents) = amount else {
             view.skipped_rows += 1;
             continue;
@@ -714,7 +807,7 @@ fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, Core
         view.transactions.push(line(
             "",
             date,
-            amount_cents,
+            turned(amount_cents, reversed),
             cell(row, columns.description).trim().to_string(),
             None,
         ));
@@ -750,7 +843,7 @@ fn ofx_value(block: &str, tag: &str) -> Option<String> {
     (!value.is_empty()).then(|| value.to_string())
 }
 
-fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
+fn read_ofx(text: &str, reversed: bool) -> Result<StatementView, CoreError> {
     let upper = text.to_ascii_uppercase();
     let mut view = blank(StatementFormat::Ofx);
     let mut from = 0;
@@ -771,6 +864,16 @@ fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
             view.skipped_rows += 1;
             continue;
         };
+        // One with no sign of its own goes the way its type says
+        let out = ofx_value(block, "TRNTYPE").is_some_and(|kind| {
+            ["DEBIT", "CHECK", "PAYMENT", "FEE", "SRVCHG"]
+                .contains(&kind.to_ascii_uppercase().as_str())
+        });
+        let amount_cents = if out {
+            -amount_cents.abs()
+        } else {
+            amount_cents
+        };
         let name = ofx_value(block, "NAME").unwrap_or_default();
         let memo = ofx_value(block, "MEMO").filter(|memo| *memo != name);
         let description = [Some(name), memo]
@@ -782,7 +885,7 @@ fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
         view.transactions.push(line(
             &ofx_value(block, "FITID").unwrap_or_default(),
             date,
-            amount_cents,
+            turned(amount_cents, reversed),
             description,
             None,
         ));
@@ -1108,6 +1211,7 @@ mod tests {
                 debit: None,
                 credit: None,
                 balance: Some(3),
+                kind: None,
             })
         );
         assert_eq!(view.transactions.len(), 5);
@@ -1171,6 +1275,93 @@ mod tests {
             .map(|m| m.occurrence.item_id.as_str())
             .collect();
         assert_eq!(matched, vec!["pay", "rent"]);
+    }
+
+    /// Each line's amount, in the statement's order.
+    fn amounts(view: &StatementView) -> Vec<Cents> {
+        view.transactions.iter().map(|t| t.amount_cents).collect()
+    }
+
+    #[test]
+    fn reads_money_out_as_out_however_the_bank_names_its_columns() {
+        // "Debit Amount" is the money out, not an amount for both ways
+        let named = "Date,Description,Debit Amount,Credit Amount\n\
+                     2026-11-01,LANDLORD,1200.00,\n\
+                     2026-11-06,PAYROLL,,2500.00\n";
+        let view = read_statement(&budget(), named, None, &ctx()).unwrap();
+        assert_eq!(amounts(&view), vec![-120_000, 250_000]);
+        assert_eq!(view.transactions[0].flow, LineFlow::Spend);
+        // A "Value Date" is a day, not the value
+        let valued = "Date,Value Date,Description,Debit,Credit\n\
+                      01/11/2026,02/11/2026,LANDLORD,1200.00,\n\
+                      06/11/2026,06/11/2026,PAYROLL,,2500.00\n";
+        let view = read_statement(&budget(), valued, None, &ctx()).unwrap();
+        assert_eq!(amounts(&view), vec![-120_000, 250_000]);
+        // A minus after the currency, the typographic minus, DR before it
+        for (cell, cents) in [
+            ("$-12.34", Some(-1_234)),
+            ("USD -5.00", Some(-500)),
+            ("€-9,99", Some(-999)),
+            ("£ -3.00", Some(-300)),
+            ("\u{2212}12.34", Some(-1_234)),
+            ("DR 12.34", Some(-1_234)),
+            ("12.34 DB", Some(-1_234)),
+            ("12.34 CR", Some(1_234)),
+            ("IDR 12.34", Some(1_234)),
+            ("-", None),
+        ] {
+            assert_eq!(parse_amount(cell), cents, "{:?}", cell);
+        }
+        // OFX that leaves the sign to the type
+        let ofx = "<OFX><STMTRS>\
+                   <STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261101<TRNAMT>1200.00<NAME>LANDLORD</STMTTRN>\
+                   <STMTTRN><TRNTYPE>check<DTPOSTED>20261102<TRNAMT>40.00<NAME>CHECK 12</STMTTRN>\
+                   <STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261106<TRNAMT>2500.00<NAME>PAYROLL</STMTTRN>\
+                   <STMTTRN><DTPOSTED>20261107<TRNAMT>5.00<NAME>NO TYPE</STMTTRN>\
+                   </STMTRS></OFX>";
+        let view = read_statement(&budget(), ofx, None, &ctx()).unwrap();
+        assert_eq!(amounts(&view), vec![-120_000, -4_000, 250_000, 500]);
+    }
+
+    #[test]
+    fn takes_the_way_from_the_column_that_says_it_or_the_other_way_round_when_told() {
+        // Amounts with no sign, and a column saying which way each went
+        let typed = "Date,Description,Amount,Type
+                     2026-11-01,LANDLORD,1200.00,Debit
+                     2026-11-06,PAYROLL,2500.00,CR
+                     2026-11-07,REFUND,-5.00,Credit
+                     2026-11-08,COFFEE,-4.50,Sale
+";
+        let view = read_statement(&budget(), typed, None, &ctx()).unwrap();
+        assert_eq!(view.columns.unwrap().kind, Some(3));
+        assert_eq!(amounts(&view), vec![-120_000, 250_000, 500, -450]);
+        assert!(!view.all_in);
+        // A card's statement: what was spent above zero, what was paid below
+        let card = "Date,Description,Amount
+                    2026-11-01,GROCER,54.20
+                    2026-11-02,COFFEE,4.50
+";
+        let texts = [card.to_string()];
+        let read = |reversed| {
+            read_statement_with(&budget(), MAIN_ACCOUNT, &texts, None, reversed, &ctx()).unwrap()
+        };
+        let view = read(false);
+        assert_eq!(amounts(&view), vec![5_420, 450]);
+        // Nothing going out, of several: likely the other way round
+        assert!(view.all_in);
+        let turned = read(true);
+        assert_eq!(amounts(&turned), vec![-5_420, -450]);
+        assert_eq!(turned.transactions[0].flow, LineFlow::Spend);
+        assert!(!turned.all_in);
+        // One line going in says nothing of the rest
+        let one = "Date,Amount\n2026-11-06,2500.00\n";
+        assert!(!read_statement(&budget(), one, None, &ctx()).unwrap().all_in);
+        // OFX too
+        let ofx = [
+            "<OFX><STMTTRN><DTPOSTED>20261101<TRNAMT>54.20<NAME>GROCER</STMTTRN></OFX>".to_string(),
+        ];
+        let view = read_statement_with(&budget(), MAIN_ACCOUNT, &ofx, None, true, &ctx()).unwrap();
+        assert_eq!(amounts(&view), vec![-5_420]);
     }
 
     #[test]
@@ -1352,8 +1543,8 @@ mod tests {
         let columns =
             find_columns(&["Date".into(), "Debit/Credit".into(), "Amount".into()]).unwrap();
         assert_eq!(
-            (columns.debit, columns.credit, columns.amount),
-            (None, None, Some(2))
+            (columns.debit, columns.credit, columns.amount, columns.kind),
+            (None, None, Some(2), Some(1))
         );
         assert_eq!(find_columns(&["Date".into(), "Description".into()]), None);
         assert_eq!(words("A to Zed's Co"), vec!["zed".to_string()]);
