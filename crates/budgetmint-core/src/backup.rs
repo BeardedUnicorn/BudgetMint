@@ -8,9 +8,11 @@
 //! reads only when it's BudgetMint's, from this version or an older one,
 //! with every document as the cloud would take it (crate::docs).
 
-use crate::docs::{valid_id, Snapshot, Versioned, BASE_SCHEMA};
+use crate::docs::{valid_id, valid_month, Snapshot, Versioned, BASE_SCHEMA};
 use crate::error::{invalid, CoreError};
-use crate::model::{Account, Item, ItemKind, OccStatus, Override, Settings, MAIN_ACCOUNT};
+use crate::model::{
+    Account, Item, ItemKind, MonthTransactions, OccStatus, Override, Settings, MAIN_ACCOUNT,
+};
 use crate::occur::occurrences;
 use crate::time::Ctx;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
@@ -22,7 +24,7 @@ pub const BACKUP_FORMAT: &str = "budgetmint-backup";
 /// The newest backup version this BudgetMint reads. It writes the newest
 /// schema any of the backup's documents needs (crate::docs::Versioned), so
 /// a backup with nothing newer still restores in an older BudgetMint.
-pub const BACKUP_VERSION: u32 = 4;
+pub const BACKUP_VERSION: u32 = 5;
 /// How far back the spreadsheet starts: a year.
 pub const CSV_DAYS_BACK: i64 = 366;
 
@@ -41,6 +43,9 @@ pub struct Backup {
     pub items: Vec<Item>,
     #[serde(default)]
     pub occurrences: Vec<Override>,
+    /// The bank statements' lines kept, a month of an account each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transactions: Vec<MonthTransactions>,
 }
 
 /// The budget's files, for the client to save.
@@ -65,12 +70,15 @@ pub fn export(snapshot: &Snapshot, ctx: &Ctx) -> BudgetExport {
             .values()
             .map(Versioned::schema)
             .chain(snapshot.accounts.values().map(Versioned::schema))
+            .chain(snapshot.settings.iter().map(Versioned::schema))
+            .chain(snapshot.transactions.values().map(Versioned::schema))
             .fold(BASE_SCHEMA, u32::max),
         exported_at: ctx.now,
         settings: snapshot.settings.clone(),
         accounts: snapshot.accounts.values().cloned().collect(),
         items: snapshot.items.values().cloned().collect(),
         occurrences: snapshot.overrides.values().cloned().collect(),
+        transactions: snapshot.transactions.values().cloned().collect(),
     };
     BudgetExport {
         backup: serde_json::to_string_pretty(&backup).expect("a backup is plain data"),
@@ -86,6 +94,8 @@ pub struct Restored {
     pub accounts: BTreeMap<String, Account>,
     pub items: BTreeMap<String, Item>,
     pub overrides: BTreeMap<(String, chrono::NaiveDate), Override>,
+    /// By (account, month).
+    pub transactions: BTreeMap<(String, String), MonthTransactions>,
 }
 
 /// `json` read as a backup, every part of it checked as the documents are
@@ -143,6 +153,23 @@ pub fn read_backup(json: &str) -> Result<Restored, CoreError> {
         restored
             .overrides
             .insert((over.item_id.clone(), over.date), over);
+    }
+    for kept in backup.transactions {
+        // Each month is of the main account or one of the backup's own
+        let known =
+            kept.account_id == MAIN_ACCOUNT || restored.accounts.contains_key(&kept.account_id);
+        if !known
+            || !valid_month(&kept.month)
+            || !kept
+                .transactions
+                .iter()
+                .all(|t| crate::time::in_calendar(t.on))
+        {
+            return Err(damaged());
+        }
+        restored
+            .transactions
+            .insert((kept.account_id.clone(), kept.month.clone()), kept);
     }
     Ok(restored)
 }

@@ -141,6 +141,7 @@ export type ChangeCommand =
   | 'save_settings'
   | 'restore_budget'
   | 'settle'
+  | 'import_statement'
   | 'record'
   | 'save_account'
   | 'archive_account'

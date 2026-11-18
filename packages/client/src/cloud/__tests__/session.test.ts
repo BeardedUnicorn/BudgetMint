@@ -132,6 +132,7 @@ describe('the session', () => {
     store.putDoc('settings~account', null);
     store.putDoc('occ~2026-12-01~rent', null);
     store.putDoc('account~savings', null);
+    store.putDoc('txns~main~2026-10', null);
     expect(session.getView()).toMatchObject({ offline: false, saving: false });
   });
 

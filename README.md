@@ -24,7 +24,7 @@ Built with Tauri v2, React, TypeScript and Rust, the same stack and design as
 | **Calendar** | Each day's bills, income and withdrawals, and the balance at the end of it, in red below your low-balance mark. Click a day for its details. |
 | **Forecast** | The balance line over the next 14 to 366 days (and what's left of it besides the money set aside), with your low-balance mark, a day-by-day table, and the assumptions it rests on, everyday spending among them. |
 | **Reports** | A month looked back on: bills paid against what was expected, by category; income and TaskMint's withdrawals; bills paid late; spending besides the bills; and the six months up to it. |
-| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX to mark bills paid), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop and Android) updates. |
+| **Settings** | Your account, your data (backups, a spreadsheet, and a bank statement imported as CSV or OFX, Venmo's among them, to mark bills paid, find the charges that come round and keep what was spent by category), the forecast's assumptions and everyday spending, TaskMint's connection, reminders on this device, appearance, privacy (on the web and Android: usage statistics) and (on the desktop and Android) updates. |
 
 **Getting around.** BudgetMint opens on the Overview. On the desktop the
 sidebar lists every page (⌘1–⌘8), and on macOS the menu bar adds File, Go

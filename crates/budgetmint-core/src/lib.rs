@@ -11,7 +11,9 @@
 //! - Money set aside for bills ([`goals`]), what's safe to spend, and the
 //!   months gone by ([`report`]); today's and the coming days' at a glance,
 //!   for the widgets ([`glance`]).
-//! - A bank's statement read and matched to the bills ([`bank`]).
+//! - A bank's statement read and matched to the bills ([`bank`]), its lines
+//!   put in categories ([`categorize`]) and kept ([`transactions`]), and the
+//!   charges that come round found ([`recurring`]).
 //! - The documents they're kept in ([`docs`]), and the writes each change
 //!   makes ([`plan`]).
 //!
@@ -22,6 +24,7 @@
 pub mod backup;
 pub mod balance;
 pub mod bank;
+pub mod categorize;
 pub mod command;
 pub mod docs;
 pub mod earn;
@@ -35,9 +38,11 @@ pub mod occur;
 pub mod plan;
 pub mod project;
 pub mod recur;
+pub mod recurring;
 pub mod reminders;
 pub mod report;
 pub mod time;
+pub mod transactions;
 pub mod views;
 
 #[cfg(test)]

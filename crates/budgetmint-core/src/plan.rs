@@ -6,9 +6,9 @@
 use crate::docs::{valid_id, DocKey, DocWrite, Snapshot};
 use crate::error::{invalid, invalid_at, CoreError, FormField};
 use crate::model::{
-    Account, Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, Leg, OccStatus,
-    Override, Repeat, SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAIN_ACCOUNT, MAX_CENTS,
-    MAX_HORIZON_DAYS, MIN_HORIZON_DAYS,
+    Account, Balance, Cents, FutureEarnings, Item, ItemKind, ItemReminder, Leg, MonthTransactions,
+    OccStatus, Override, Repeat, SaveUp, Segment, Settings, Weekends, WithdrawPolicy, MAIN_ACCOUNT,
+    MAX_CENTS, MAX_HORIZON_DAYS, MIN_HORIZON_DAYS,
 };
 use crate::occur::MOVE_DAYS;
 use crate::recur::{is_item_date, item_dates};
@@ -250,7 +250,7 @@ fn check_reminder(reminder: Option<ItemReminder>) -> Result<Option<ItemReminder>
 
 /// `category` as another item spells it, when one does ignoring case: one
 /// category, not "Utilities" and "utilities".
-fn spelled_as_before(snapshot: &Snapshot, id: &str, category: String) -> String {
+pub(crate) fn spelled_as_before(snapshot: &Snapshot, id: &str, category: String) -> String {
     snapshot
         .items
         .values()
@@ -650,6 +650,12 @@ pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, Co
             .chain(restored.accounts.keys())
             .map(|id| DocKey::Account(id.clone())),
     );
+    let months: Vec<(String, String)> = snapshot.transactions.keys().cloned().collect();
+    let txns = |(account_id, month): &(String, String)| DocKey::Txns {
+        account_id: account_id.clone(),
+        month: month.clone(),
+    };
+    keys.extend(months.iter().chain(restored.transactions.keys()).map(txns));
     for key in &keys {
         ours(snapshot, key)?;
     }
@@ -678,6 +684,15 @@ pub fn restore_budget(snapshot: &mut Snapshot, json: &str) -> Result<Planned, Co
     }
     for (at, over) in &restored.overrides {
         planned.add(snapshot.write(occ(at), Some(over)));
+    }
+    for at in months
+        .iter()
+        .filter(|at| !restored.transactions.contains_key(at))
+    {
+        planned.add(snapshot.write::<MonthTransactions>(txns(at), None));
+    }
+    for (at, kept) in &restored.transactions {
+        planned.add(snapshot.write(txns(at), Some(kept)));
     }
     Ok(planned)
 }
@@ -1075,10 +1090,12 @@ pub fn save_settings(snapshot: &mut Snapshot, settings: Settings) -> Result<Plan
         )));
     }
     cents(settings.spending_weekly_cents, "everyday spending")?;
-    // The balance and its checks are set_balance's and settle's: they stay as they are
+    // The balance and its checks are set_balance's and settle's, and the
+    // categories remembered a statement's: they stay as they are
     let saved = Settings {
         balance: snapshot.settings().balance,
         checks: snapshot.settings().checks,
+        category_rules: snapshot.settings().category_rules,
         ..settings
     };
     let mut planned = Planned::default();
@@ -1241,6 +1258,22 @@ pub fn delete_account(snapshot: &mut Snapshot, account_id: &str) -> Result<Plann
         ));
     }
     let mut planned = Planned::default();
+    // What its statements kept goes with it
+    let months: Vec<String> = snapshot
+        .transactions
+        .keys()
+        .filter(|(account, _)| account == account_id)
+        .map(|(_, month)| month.clone())
+        .collect();
+    for month in months {
+        planned.add(snapshot.write::<MonthTransactions>(
+            DocKey::Txns {
+                account_id: account_id.to_string(),
+                month,
+            },
+            None,
+        ));
+    }
     planned.add(snapshot.write::<Account>(DocKey::Account(account_id.to_string()), None));
     Ok(planned)
 }

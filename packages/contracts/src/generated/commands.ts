@@ -17,6 +17,7 @@ import type { ForecastView } from "./ForecastView";
 import type { GlanceArgs } from "./GlanceArgs";
 import type { GlanceDay } from "./GlanceDay";
 import type { GoalsView } from "./GoalsView";
+import type { ImportStatementArgs } from "./ImportStatementArgs";
 import type { ItemHistoryArgs } from "./ItemHistoryArgs";
 import type { ItemIdArgs } from "./ItemIdArgs";
 import type { ItemView } from "./ItemView";
@@ -42,6 +43,7 @@ import type { SetOccurrenceArgs } from "./SetOccurrenceArgs";
 import type { SettingsView } from "./SettingsView";
 import type { SettleArgs } from "./SettleArgs";
 import type { SpendingEstimate } from "./SpendingEstimate";
+import type { SpendingView } from "./SpendingView";
 import type { StatementView } from "./StatementView";
 import type { UndoArgs } from "./UndoArgs";
 
@@ -83,6 +85,8 @@ export interface CommandMap {
   get_account_overview: { args: AccountIdArgs; reply: Overview };
   get_account_forecast: { args: AccountIdArgs; reply: ForecastView };
   get_glance: { args: GlanceArgs; reply: Array<GlanceDay> };
+  import_statement: { args: ImportStatementArgs; reply: Planned };
+  get_spending: { args: MonthArgs; reply: SpendingView };
 }
 
 export type CommandName = keyof CommandMap;

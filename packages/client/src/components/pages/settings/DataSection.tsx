@@ -94,8 +94,9 @@ export function DataSection() {
         <Button onClick={() => picker.current?.click()}>Restore from a backup…</Button>
       </Stack>
       <Typography variant="body2" sx={{ mt: 3, mb: 1 }}>
-        Your bank’s statement, exported as a CSV or OFX file, marks the bills and income it shows paid, and can set your
-        balance. It stays on this device: only what you mark is saved.
+        Your bank’s statement, exported as a CSV or OFX file (several months’ files at once, if you like), marks the
+        bills and income it shows paid, finds the charges that come round, and can set your balance. Its transactions
+        are kept with your budget, each in a category, for Reports; the file itself stays on this device.
       </Typography>
       <StatementImport onProblem={setProblem}>
         {choose => (

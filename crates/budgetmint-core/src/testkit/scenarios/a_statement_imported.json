@@ -1,0 +1,89 @@
+{
+  "name": "a statement imported",
+  "zone": "America/Chicago",
+  "nowMs": 1794333600000,
+  "steps": [
+    {
+      "call": "read_statement",
+      "args": {
+        "texts": [
+          "Date,Description,Amount\n2026-08-28,NETFLIX.COM,-19.99\n2026-09-28,NETFLIX.COM,-19.99\n",
+          "<OFX><STMTRS><STMTTRN><DTPOSTED>20261028<TRNAMT>-19.99<FITID>n10<NAME>NETFLIX.COM</STMTTRN><STMTTRN><DTPOSTED>20261030<TRNAMT>-45.00<FITID>w10<NAME>WM SUPERCENTER #2780</STMTTRN></STMTRS></OFX>"
+        ]
+      },
+      "expect": {
+        "pendingRows": 0,
+        "recurring": [
+          {
+            "key": "netflix",
+            "kind": "bill",
+            "name": "Netflix",
+            "amountCents": 1999,
+            "varies": false,
+            "repeat": { "every": "months", "n": 1, "day": 28 },
+            "from": "2026-11-28",
+            "category": "Subscriptions",
+            "count": 3,
+            "lastOn": "2026-10-28",
+            "transactions": [0, 1, 2]
+          }
+        ]
+      }
+    },
+    {
+      "call": "import_statement",
+      "args": {
+        "statement": {
+          "transactions": [
+            { "id": "n8", "on": "2026-08-28", "amountCents": -1999, "name": "Netflix", "category": "Subscriptions", "flow": "spend" },
+            { "id": "n9", "on": "2026-09-28", "amountCents": -1999, "name": "Netflix", "category": "Subscriptions", "flow": "spend" },
+            { "id": "n10", "on": "2026-10-28", "amountCents": -1999, "name": "Netflix", "category": "Subscriptions", "flow": "spend" },
+            { "id": "w10", "on": "2026-10-30", "amountCents": -4500, "name": "Walmart", "category": "Household", "flow": "spend" }
+          ],
+          "items": [
+            {
+              "id": "netflix",
+              "kind": "bill",
+              "name": "Netflix",
+              "category": "Subscriptions",
+              "schedule": [{ "from": "2026-11-28", "repeat": { "every": "months", "n": 1, "day": 28 }, "amountCents": 1999 }]
+            }
+          ],
+          "rules": [{ "merchant": "walmart", "category": "Household" }]
+        }
+      }
+    },
+    {
+      "call": "get_spending",
+      "args": { "month": "2026-10" },
+      "expect": {
+        "month": "2026-10",
+        "spentCents": 6499,
+        "categories": [
+          { "category": "Household", "cents": 4500, "count": 1 },
+          { "category": "Subscriptions", "cents": 1999, "count": 1 }
+        ]
+      }
+    },
+    { "call": "get_spending", "args": { "month": "nope" }, "error": "Not a month: nope" },
+    {
+      "call": "read_statement",
+      "args": {
+        "text": "<OFX><STMTRS><STMTTRN><DTPOSTED>20261028<TRNAMT>-19.99<FITID>n10<NAME>NETFLIX.COM</STMTTRN><STMTTRN><DTPOSTED>20261030<TRNAMT>-45.00<FITID>w10<NAME>WM SUPERCENTER #2780</STMTTRN></STMTRS></OFX>"
+      },
+      "expect": {
+        "recurring": [],
+        "transactions": [
+          { "id": "n10", "merchant": "Netflix", "category": "Subscriptions", "stored": true },
+          { "id": "w10", "merchant": "Walmart", "category": "Household", "stored": true }
+        ]
+      }
+    },
+    {
+      "call": "import_statement",
+      "args": { "accountId": "gone", "statement": {} },
+      "error": "That account isn't there any more (deleted on another device?)"
+    },
+    { "call": "get_settings", "expect": { "settings": { "categoryRules": [{ "merchant": "walmart", "category": "Household" }] } } }
+  ]
+}

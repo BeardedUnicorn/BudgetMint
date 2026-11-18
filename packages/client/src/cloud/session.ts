@@ -62,7 +62,7 @@ export const SESSION_OPTIONS: SessionOptions = {
   restart: () => window.location.reload(),
 };
 
-const SOURCES: DocsSource[] = ['settings', 'items', 'occurrences', 'accounts'];
+const SOURCES: DocsSource[] = ['settings', 'items', 'occurrences', 'accounts', 'transactions'];
 
 /** Before the cloud has said what TaskMint published (core's state then too). */
 const NO_FORECAST: ForecastStatus = {

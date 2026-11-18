@@ -240,15 +240,13 @@ describe('money moved between accounts', () => {
     const csv = 'Date,Description,Amount\n2026-11-06,ONLINE XFER,123.00\n';
     await user.upload(screen.getByLabelText('Bank statement file'), new File([csv], 'savings.csv'));
     const statement = await screen.findByRole('dialog', { name: 'Bank statement' });
-    const line = () => within(statement).getByLabelText('ONLINE XFER: +$123.00 on Nov 6');
     // Into the main account, it isn't this transfer out of it
     await pick(user, statement, 'Whose statement', 'Main account');
-    await user.click(line());
-    // (Left to come after the balance just set: it's due the day after)
-    expect(screen.queryByRole('option', { name: 'More, due Nov 11' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('option', { name: 'Not in BudgetMint: leave it' }));
+    await user.click(within(statement).getByRole('button', { name: 'Online Xfer +$123.00' }));
+    expect(within(statement).queryByLabelText(/^It paid/)).not.toBeInTheDocument();
     await pick(user, statement, 'Whose statement', 'Savings');
-    await user.click(line());
+    await user.click(within(statement).getByLabelText('It paid: Nov 6, +$123.00'));
+    // (Left to come after the balance just set: it's due the day after)
     await user.click(screen.getByRole('option', { name: 'More, due Nov 11' }));
     await user.click(within(statement).getByRole('button', { name: 'Save' }));
     await closed();

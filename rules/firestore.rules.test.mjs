@@ -91,6 +91,8 @@ describe('the data documents', () => {
       ['budgetmint/bea/data/occ~2026-11-30~rent-1', budget({ kind: 'occ', json: 'x'.repeat(4000) })],
       ['budgetmint/bea/data/account~savings-1', budget({ kind: 'account', json: 'x'.repeat(20000), schema: 4 })],
       ['budgetmint/bea/data/account~main', budget({ kind: 'account', schema: 4 })],
+      ['budgetmint/bea/data/txns~main~2026-10', budget({ kind: 'txns', json: 'x'.repeat(500000), schema: 5 })],
+      ['budgetmint/bea/data/txns~savings-1~2026-11', budget({ kind: 'txns', schema: 5 })],
     ];
     for (const [path, data] of allowed) {
       await assertSucceeds(setDoc(doc(bea(), path), data));
@@ -109,6 +111,10 @@ describe('the data documents', () => {
       ['budgetmint/bea/data/account~', budget({ kind: 'account' })],
       ['budgetmint/bea/data/account~a b', budget({ kind: 'account' })],
       ['budgetmint/bea/data/account~savings', budget({ kind: 'item' })],
+      ['budgetmint/bea/data/txns~main~2026-10', budget({ kind: 'txns', json: 'x'.repeat(500001) })],
+      ['budgetmint/bea/data/txns~main', budget({ kind: 'txns' })],
+      ['budgetmint/bea/data/txns~main~2026-1', budget({ kind: 'txns' })],
+      ['budgetmint/bea/data/txns~a b~2026-10', budget({ kind: 'txns' })],
       // A kind under another kind's id
       ['budgetmint/bea/data/item~rent', budget({ kind: 'occ' })],
       ['budgetmint/bea/data/secret~x', budget({ kind: 'secret' })],

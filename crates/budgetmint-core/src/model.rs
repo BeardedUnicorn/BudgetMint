@@ -376,6 +376,70 @@ pub struct Settings {
     /// The balance's past updates, against what BudgetMint expected then,
     /// newest last (crate::plan::MAX_CHECKS of them).
     pub checks: Vec<BalanceCheck>,
+    /// The category the user chose for a merchant, for the statements to
+    /// come (crate::transactions::MAX_RULES of them, the latest last).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub category_rules: Option<Vec<CategoryRule>>,
+}
+
+/// The category a merchant's transactions go in, as the user chose.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct CategoryRule {
+    /// The merchant, as crate::categorize::merchant_key spells it.
+    pub merchant: String,
+    pub category: String,
+}
+
+/// What a bank statement's line is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum LineFlow {
+    /// Money spent.
+    Spend,
+    /// Money that came in.
+    Income,
+    /// The user's own money moved in or out (funds added, a transfer):
+    /// neither spent nor earned.
+    Moved,
+    /// Cash back.
+    Reward,
+}
+
+/// A bank statement's line, kept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Transaction {
+    /// The bank's id for it (or one made of what it says), to tell it's
+    /// the same one in a later statement.
+    pub id: String,
+    pub on: NaiveDate,
+    /// Into the account above zero, out below.
+    pub amount_cents: Cents,
+    /// Who it was paid to or came from.
+    pub name: String,
+    #[serde(default)]
+    pub category: Option<String>,
+    pub flow: LineFlow,
+    /// The bill or income it paid, when it did.
+    #[serde(default)]
+    pub item_id: Option<String>,
+}
+
+/// One bank account's kept transactions of one month: one document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct MonthTransactions {
+    pub account_id: String,
+    /// YYYY-MM.
+    pub month: String,
+    /// By day, then id.
+    pub transactions: Vec<Transaction>,
 }
 
 /// An update of the balance, against what the cash flow expected it to be.
@@ -427,6 +491,7 @@ impl Default for Settings {
             week_starts_monday: false,
             spending_weekly_cents: 0,
             checks: Vec::new(),
+            category_rules: None,
         }
     }
 }

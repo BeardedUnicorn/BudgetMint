@@ -634,6 +634,62 @@ describe('checking the balance as it’s updated', () => {
 });
 
 describe('reports', () => {
+  it('shows what the bank statements kept were spent on, by category, each opening to its transactions', async () => {
+    const { user, store } = await startBudget({});
+    await user.click(screen.getByRole('button', { name: 'Reports' }));
+    expect(screen.queryByRole('heading', { name: 'Spending, by your bank statements' })).not.toBeInTheDocument();
+    const line = (
+      id: string,
+      on: string,
+      amountCents: number,
+      name: string,
+      category: string | null,
+      flow = 'spend'
+    ) => ({
+      id,
+      on,
+      amountCents,
+      name,
+      category,
+      flow,
+      itemId: null,
+    });
+    store.putDoc(
+      'txns~main~2026-11',
+      JSON.stringify({
+        accountId: 'main',
+        month: '2026-11',
+        transactions: [
+          line('a', '2026-11-02', -4_500, 'Walmart', 'Groceries'),
+          line('b', '2026-11-03', -1_250, 'Cafe', 'Dining'),
+          line('c', '2026-11-04', -700, 'Kiosk', null),
+          line('d', '2026-11-05', -2_000, 'WinCo Foods', 'groceries'),
+          line('e', '2026-11-06', 5_000, 'Add funds', null, 'moved'),
+        ],
+      }),
+      5
+    );
+    const spending = await screen.findByRole('region', { name: 'Spending, by your bank statements' });
+    expect(
+      within(spending).getByText('$84.50 spent in the statements imported for this month, bills among it.')
+    ).toBeInTheDocument();
+    const rows = () =>
+      within(spending)
+        .getAllByRole('row')
+        .map(row => row.textContent);
+    expect(rows()).toEqual(['CategoryTransactionsSpent', 'Groceries2$65.00', 'Dining1$12.50', 'No category1$7.00']);
+    await user.click(within(spending).getByRole('button', { name: 'Groceries' }));
+    expect(rows().slice(1, 4)).toEqual(['Groceries2$65.00', 'WalmartNov 2$45.00', 'WinCo FoodsNov 5$20.00']);
+    await user.click(within(spending).getByRole('button', { name: 'No category' }));
+    expect(rows()).toContain('KioskNov 4$7.00');
+    expect(rows()).not.toContain('WalmartNov 2$45.00');
+    await user.click(within(spending).getByRole('button', { name: 'No category' }));
+    expect(rows()).toHaveLength(4);
+    // Another month has none
+    await user.click(screen.getByRole('button', { name: 'The month before' }));
+    expect(screen.queryByRole('heading', { name: 'Spending, by your bank statements' })).not.toBeInTheDocument();
+  });
+
   it('looks back on a month: by category, paid late, besides the bills, six months', async () => {
     const rent = monthly('rent', 'Rent', 1, 100_000, { category: 'Home' });
     const pay = item({
@@ -791,6 +847,8 @@ describe('a bank statement', () => {
 
   it('marks the bills it shows paid, and takes its balance, with Undo', async () => {
     const { user, store } = await importing(statement, {
+      // Rent has a category: what pays it is kept in it
+      items: rentAndPay().map(bill => (bill.id === 'rent' ? { ...bill, category: 'Home' } : bill)),
       overrides: [
         override({
           itemId: 'gym',
@@ -808,9 +866,12 @@ describe('a bank statement', () => {
       name: 'City Power, due Nov 3: $91.40 on Nov 3 (expected $90.00)',
     });
     expect(rent).toBeChecked();
-    expect(
-      within(dialog).getByText('1 marked paid already; 1 that isn’t a bill or income in BudgetMint.')
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText('1 marked paid already.')).toBeInTheDocument();
+    // What was spent, as it will be kept: rent where the bill is, coffee where coffee goes
+    const spent = within(dialog).getByRole('group', { name: 'Spent, by category' });
+    expect(within(spent).getByText('Home: $1,200.00')).toBeInTheDocument();
+    expect(within(spent).getByText('Dining: $4.50')).toBeInTheDocument();
+    expect(within(spent).getByText('No category: $121.40')).toBeInTheDocument();
     const balance = within(dialog).getByRole('checkbox', {
       name: 'Set your balance to $674.10, as of the end of Nov 7, 2026',
     });
@@ -828,15 +889,25 @@ describe('a bank statement', () => {
     });
     expect(store.docs.has('occ~2026-11-03~power')).toBe(false);
     expect(docOf(store, 'settings~account').balance).toEqual({ cents: 100_000, asOf: '2026-11-09' });
+    // Every line is kept, in its month: the rent's with the bill it paid
+    expect(store.docs.get('txns~main~2026-11')!.schema).toBe(5);
+    expect(docOf(store, 'txns~main~2026-11').transactions).toMatchObject([
+      { on: '2026-11-01', amountCents: -120_000, name: 'Rent', category: 'Home', flow: 'spend', itemId: 'rent' },
+      { on: '2026-11-03', name: 'Citypower', category: null, itemId: 'power' },
+      { on: '2026-11-04', name: 'Gym', category: null, itemId: null },
+      { on: '2026-11-07', name: 'Coffee', category: 'Dining', itemId: null },
+    ]);
     await user.click(await screen.findByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(store.docs.has('occ~2026-11-01~rent')).toBe(false));
+    expect(store.docs.has('txns~main~2026-11')).toBe(false);
   });
 
-  it('is imported from Bills too, and records or matches by hand what nothing matched', async () => {
+  it('is imported from Bills too, each line put in a category, renamed or matched by hand', async () => {
     const water = item({
       id: 'water',
       kind: 'bill',
       name: 'Water',
+      category: 'Utilities',
       schedule: [{ from: '2026-11-06', until: null, repeat: { every: 'once' }, amountCents: 2_500, weekends: 'keep' }],
     });
     const { user, store } = await startBudget({ items: [...rentAndPay(), water] });
@@ -852,19 +923,44 @@ describe('a bank statement', () => {
       ...statement.split('\n').slice(0, 5),
       '11/06/2026,AQUA CO,-27.00,647.10',
       '11/08/2026,,25.00,672.10',
+      '11/09/2026,COFFEE,-5.50,666.60',
     ].join('\n');
     await user.upload(screen.getByLabelText('Bank statement file'), new File([text], 'statement.csv'));
     const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
     const others = within(dialog).getByRole('group', { name: 'What else it shows' });
-    // Coffee's no bill: recorded as a one-off; the water bill went out as AQUA CO
-    await user.click(within(others).getByLabelText('COFFEE: $4.50 on Nov 7'));
-    await user.click(screen.getByRole('option', { name: 'A one-off spend: record it' }));
-    await user.click(within(others).getByLabelText('AQUA CO: $27.00 on Nov 6'));
-    expect(screen.getByRole('option', { name: 'Not in BudgetMint: leave it' })).toBeInTheDocument();
+    // By who it was paid to, with what's known of them: two coffees, in Dining
+    const coffee = within(others).getByRole('group', { name: 'Coffee' });
+    expect(within(coffee).getByRole('button', { name: 'Coffee (2) $10.00' })).toBeInTheDocument();
+    expect(within(coffee).getByLabelText('Category for Coffee')).toHaveValue('Dining');
+    expect(within(others).getByLabelText('Category for these')).toHaveValue('');
+    // Only what has no category yet, to go through
+    await user.click(within(others).getByRole('switch', { name: 'Only what has no category (2)' }));
+    expect(within(others).queryByRole('group', { name: 'Coffee' })).not.toBeInTheDocument();
+    await user.click(within(others).getByRole('switch', { name: 'Only what has no category (2)' }));
+    // Another category for coffee: for both lines, and remembered
+    const category = within(others).getByLabelText('Category for Coffee');
+    await user.clear(category);
+    await user.type(category, 'Treats');
+    expect(within(dialog).getByText('Treats: $10.00')).toBeInTheDocument();
+    // The water bill went out as AQUA CO: opened, its line is renamed, put where it goes and matched by hand
+    const aqua = within(others).getByRole('group', { name: 'Aqua Co' });
+    await user.click(within(aqua).getByRole('button', { name: 'Aqua Co $27.00' }));
+    expect(within(aqua).getByText('AQUA CO')).toBeInTheDocument();
+    const name = within(aqua).getByLabelText('Name: Nov 6, $27.00');
+    await user.clear(name);
+    await user.type(name, 'Water company');
+    await user.type(within(aqua).getByLabelText('Category: Nov 6, $27.00'), 'Utilities');
+    await user.click(within(aqua).getByLabelText('It paid: Nov 6, $27.00'));
+    expect(screen.getByRole('option', { name: 'No bill or income here' })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: 'Water, due Nov 6' }));
-    // Money in, without a description: recorded as income, named for where it's from
-    await user.click(within(others).getByLabelText('No description: +$25.00 on Nov 8'));
-    await user.click(screen.getByRole('option', { name: 'A one-off: record it' }));
+    // Money in, without a description: nothing here it could have been
+    const unnamed = within(others).getByRole('group', { name: 'No description' });
+    await user.click(within(unnamed).getByRole('button', { name: 'No description +$25.00' }));
+    expect(within(aqua).queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    expect(within(unnamed).getByLabelText('Name: Nov 8, +$25.00')).toHaveValue('');
+    expect(within(unnamed).queryByLabelText(/^It paid/)).not.toBeInTheDocument();
+    await user.click(within(unnamed).getByRole('button', { name: 'No description +$25.00' }));
+    expect(within(unnamed).queryByLabelText(/^Name/)).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('checkbox', { name: /Set your balance/ }));
     await user.click(within(dialog).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -873,8 +969,187 @@ describe('a bank statement', () => {
       on: '2026-11-06',
       amountCents: 2_700,
     });
-    expect(itemNamed(store, 'COFFEE')).toMatchObject({ kind: 'bill', schedule: [{ from: '2026-11-07' }] });
-    expect(itemNamed(store, 'From the bank')).toMatchObject({ kind: 'income', schedule: [{ amountCents: 2_500 }] });
+    const kept = docOf(store, 'txns~main~2026-11').transactions as { name: string }[];
+    expect(kept.find(line => line.name === 'Water company')).toMatchObject({ category: 'Utilities', itemId: 'water' });
+    expect(kept.filter(line => line.name === 'Coffee')).toMatchObject([{ category: 'Treats' }, { category: 'Treats' }]);
+    expect(kept.find(line => line.name === 'From the bank')).toMatchObject({ flow: 'income', category: null });
+    expect(docOf(store, 'settings~account').categoryRules).toEqual([{ merchant: 'coffee', category: 'Treats' }]);
+    expect(store.docs.get('settings~account')!.schema).toBe(5);
+
+    // The next statement: coffee where it was put, and the lines kept before known
+    const next = [text, '11/10/2026,COFFEE,-3.00,663.60'].join('\n');
+    await user.upload(screen.getByLabelText('Bank statement file'), new File([next], 'statement.csv'));
+    const again = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(
+      within(again).getByText(
+        '8 transactions, Nov 1, 2026 to Nov 10, 2026. 7 are kept already, from a statement before.'
+      )
+    ).toBeInTheDocument();
+    expect(within(again).getByLabelText('Category for Coffee')).toHaveValue('Treats');
+    expect(within(again).getByRole('button', { name: 'Coffee $3.00' })).toBeInTheDocument();
+  });
+
+  it('offers what comes round as bills and income, to add with it', async () => {
+    const { user, store } = await startBudget({ settings: { balance: { cents: 100_000, asOf: '2026-11-09' } } });
+    await user.click(screen.getByRole('button', { name: 'Bills' }));
+    const summer = [
+      'Date,Description,Amount',
+      '2026-07-13,CITY POWER,-90.00',
+      '2026-08-12,CITY POWER,-120.00',
+      '2026-08-28,NETFLIX.COM,-19.99',
+      '2026-09-14,CITY POWER,-100.00',
+      '2026-09-25,ACME PAYROLL,1500.00',
+      '2026-09-28,NETFLIX.COM,-19.99',
+    ].join('\n');
+    const fall = [
+      'Date,Description,Amount',
+      '2026-09-28,NETFLIX.COM,-19.99',
+      '2026-10-09,ACME PAYROLL,1500.00',
+      '2026-10-13,CITY POWER,-110.00',
+      '2026-10-23,ACME PAYROLL,1500.00',
+      '2026-10-28,NETFLIX.COM,-19.99',
+    ].join('\n');
+    // Two months' files, as one statement: the line in both is read once
+    await user.upload(screen.getByLabelText('Bank statement file'), [
+      new File([summer], 'summer.csv'),
+      new File([fall], 'fall.csv'),
+    ]);
+    const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(within(dialog).getByText('10 transactions, Jul 13, 2026 to Oct 28, 2026.')).toBeInTheDocument();
+    const round = within(dialog).getByRole('group', { name: 'What comes round' });
+    const netflix = within(round).getByRole('checkbox', {
+      name: 'Netflix: $19.99, monthly on the 28th, next Nov 28 · Subscriptions',
+    });
+    expect(netflix).not.toBeChecked();
+    expect(
+      within(round).getByRole('checkbox', { name: 'City Power: about $110.00, monthly on the 13th, next Nov 13' })
+    ).toBeInTheDocument();
+    expect(
+      within(round).getByRole('checkbox', {
+        name: 'Acme Payroll (income): $1,500.00, every 2 weeks on friday, next Nov 6',
+      })
+    ).toBeInTheDocument();
+    await user.click(netflix);
+    await user.click(netflix);
+    await user.click(netflix);
+    // Edited first, in the bill's own form: as it's left there is how it's added
+    await user.click(within(round).getByRole('button', { name: 'Edit Acme Payroll' }));
+    const form = screen.getByRole('dialog', { name: 'Add income' });
+    const name = within(form).getByLabelText('Name');
+    expect(name).toHaveValue('Acme Payroll');
+    await user.clear(name);
+    await user.type(name, 'Paycheck');
+    await user.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add income' })).not.toBeInTheDocument());
+    expect(
+      within(round).getByRole('checkbox', { name: 'Paycheck (income): $1,500.00, every 2 weeks on friday, next Nov 6' })
+    ).toBeChecked();
+    // Edited again, it starts from how it was left
+    await user.click(within(round).getByRole('button', { name: 'Edit Paycheck' }));
+    const formAgain = screen.getByRole('dialog', { name: 'Add income' });
+    expect(within(formAgain).getByLabelText('Name')).toHaveValue('Paycheck');
+    await user.click(within(formAgain).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add income' })).not.toBeInTheDocument());
+    // Something was chosen: leaving asks first
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    const asking = await screen.findByRole('dialog', { name: 'Leave the statement unsaved?' });
+    await user.click(within(asking).getByRole('button', { name: 'Keep going' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Leave the statement unsaved?' })).toBeNull());
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(itemNamed(store, 'Netflix')).toMatchObject({
+      kind: 'bill',
+      category: 'Subscriptions',
+      varies: false,
+      reminder: { leadDays: [3] },
+      schedule: [{ from: '2026-11-28', repeat: { every: 'months', n: 1, day: 28 }, amountCents: 1_999 }],
+    });
+    expect(itemNamed(store, 'Paycheck')).toMatchObject({
+      kind: 'income',
+      reminder: null,
+      schedule: [{ from: '2026-11-06', repeat: { every: 'weeks', n: 2 }, amountCents: 150_000 }],
+    });
+    expect(itemNamed(store, 'City Power')).toBeUndefined();
+    expect(docOf(store, 'txns~main~2026-09').transactions).toHaveLength(3);
+    // One undo takes all of it back
+    await user.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(itemNamed(store, 'Netflix')).toBeUndefined());
+    expect(store.docs.has('txns~main~2026-09')).toBe(false);
+  });
+
+  it('reads Venmo’s statement: who was paid, cash back and money moved apart, and what isn’t settled left out', async () => {
+    const row = (
+      id: string,
+      at: string,
+      kind: string,
+      status: string,
+      said: [string, string, string],
+      amount: string
+    ) => `,${id},${at},${kind},${status},${said.join(',')},${amount},,,,,,Venmo balance,,,,,"BOISE, ID",,`;
+    const venmo = [
+      'Account Statement - (@pat) ,,,,,,,,,,,,,,,,,,,,,',
+      'Account Activity,,,,,,,,,,,,,,,,,,,,,',
+      ',ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer',
+      ',,,,,,,,,,,,,,,,$100.00,,,,,',
+      row(
+        '111',
+        '2026-11-01T01:20:03',
+        'Venmo Card Transaction',
+        'Complete',
+        ['', 'Pat Doe', 'WM SUPERCENTER #2780'],
+        '- $18.30'
+      ),
+      row(
+        '112',
+        '2026-11-01T17:38:37Z',
+        'Reward',
+        'Complete',
+        ['Cash back on your purchase at WM SUPERCENTER', '', 'pat'],
+        '+ $0.92'
+      ),
+      row('113', '2026-11-02T18:26:59', 'Instant Add Funds', 'Complete', ['', '', ''], '+ $50.00'),
+      row('114', '2026-11-04T00:46:36', 'Venmo Card Transaction', 'Pending', ['', 'Pat Doe', 'The Habit'], '- $9.31'),
+      ',,,,,,,,,,,,,,,,,$132.62,$0.00,,$0.00,"In case of errors\n   call us"',
+      'Cryptocurrency summary,,,,,,,,,,,,,,,,,,,,,',
+    ].join('\n');
+    const { user, store } = await importing(venmo);
+    const dialog = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(
+      within(dialog).getByText(
+        '3 transactions, Nov 1, 2026 to Nov 2, 2026. 1 isn’t settled yet: left for a later statement.'
+      )
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Walmart $18.30' })).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Category for Walmart')).toHaveValue('Groceries');
+    expect(within(dialog).getByText('1 of cash back (+$0.92): kept, and not counted as income.')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        '1 of your own money moved in or out (+$50.00): kept, and counted as neither spending nor income.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'Set your balance to $132.62, as of the end of Nov 2, 2026' })
+    ).toBeChecked();
+    // Nothing touched and nothing to mark paid: leaving doesn't ask
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await user.upload(screen.getByLabelText('Bank statement file'), new File([venmo], 'venmo.csv'));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Bank statement' })).getByRole('button', { name: 'Save' })
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(docOf(store, 'txns~main~2026-11').transactions).toMatchObject([
+      { id: '111', name: 'Walmart', category: 'Groceries', flow: 'spend' },
+      { id: '112', name: 'Walmart', category: null, flow: 'reward' },
+      { id: '113', name: 'Instant Add Funds', category: null, flow: 'moved' },
+    ]);
+    expect(docOf(store, 'settings~account').balance).toEqual({ cents: 13_262, asOf: '2026-11-02' });
+    // Read again: all of it is kept already, and without its balance there's nothing to save
+    await user.upload(screen.getByLabelText('Bank statement file'), new File([venmo], 'venmo.csv'));
+    const again = await screen.findByRole('dialog', { name: 'Bank statement' });
+    expect(within(again).getByText(/3 are kept already, from a statement before\./)).toBeInTheDocument();
+    await user.click(within(again).getByRole('checkbox', { name: /Set your balance/ }));
+    expect(within(again).getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   it('is offered from the Overview’s Add too', async () => {
@@ -909,12 +1184,16 @@ describe('a bank statement', () => {
     const asking = await screen.findByRole('dialog', { name: 'Leave the statement unsaved?' });
     await user.click(within(asking).getByRole('button', { name: 'Keep going' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Leave the statement unsaved?' })).toBeNull());
-    // Nothing to save once it's unticked and there's no balance in it
-    await user.click(within(dialog).getByRole('checkbox', { name: /Rent/ }));
-    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    // Dropped: nothing of it is marked paid, or kept
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Leave the statement unsaved?' })).getByRole('button', {
+        name: 'Discard',
+      })
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(store.docs.has('occ~2026-11-01~rent')).toBe(false);
+    expect(store.docs.has('txns~main~2026-11')).toBe(false);
   });
 
   it('says what it can’t read, or save', async () => {

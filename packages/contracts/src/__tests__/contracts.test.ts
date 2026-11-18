@@ -5,7 +5,7 @@ import type { CommandArgs, CommandName, CommandReply, OccStatus, Overview, Repea
 describe('the generated contracts', () => {
   it('name every command core runs, and its schemas and limits', () => {
     expect(COMMAND_NAMES).toContain('get_overview');
-    expect(BUDGET_SCHEMA).toBe(4);
+    expect(BUDGET_SCHEMA).toBe(5);
     expect(MAIN_ACCOUNT).toBe('main');
     expect(COMMAND_NAMES).toContain('save_account');
     expect(COMMAND_NAMES).toContain('settle');

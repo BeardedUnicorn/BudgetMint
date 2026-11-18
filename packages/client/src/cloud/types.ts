@@ -50,7 +50,7 @@ export interface CloudUser {
 }
 
 /** Which of the account's documents a snapshot is of. */
-export type DocsSource = 'settings' | 'items' | 'occurrences' | 'accounts';
+export type DocsSource = 'settings' | 'items' | 'occurrences' | 'accounts' | 'transactions';
 
 /** What changed in one of the listened-to sets of documents. */
 export interface DocsSnapshot {

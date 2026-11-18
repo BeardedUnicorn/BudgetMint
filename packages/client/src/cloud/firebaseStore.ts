@@ -222,6 +222,8 @@ export async function createFirebaseStore(config: CloudConfig): Promise<BudgetSt
         ['items', range(uid, 'item~', 'item~')],
         ['occurrences', range(uid, `occ~${occurrencesFrom}`, 'occ~')],
         ['accounts', range(uid, 'account~', 'account~')],
+        // The bank statements' lines kept: a document a month for each account
+        ['transactions', range(uid, 'txns~', 'txns~')],
       ] as const;
       const unsubscribe = [
         fs.onSnapshot(

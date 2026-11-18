@@ -310,6 +310,13 @@ describe('the Firebase store', () => {
         ['where', '__id__', '<=', 'account~'],
       ],
     });
+    expect(calls[4][0]).toEqual({
+      ref: { path: 'budgetmint/cal/data' },
+      constraints: [
+        ['where', '__id__', '>=', 'txns~'],
+        ['where', '__id__', '<=', 'txns~'],
+      ],
+    });
 
     const fields =
       (json: unknown, schema: unknown, epoch: unknown = 3) =>
@@ -359,7 +366,7 @@ describe('the Firebase store', () => {
       },
     ]);
     unsubscribe();
-    expect(stop).toHaveBeenCalledTimes(4);
+    expect(stop).toHaveBeenCalledTimes(5);
   });
 
   it('reads what a delete cut short left as deleted, and deletes it again', async () => {

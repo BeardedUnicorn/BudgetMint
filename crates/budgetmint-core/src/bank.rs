@@ -1,22 +1,30 @@
 //! A bank's statement, as the file the bank gives (CSV or OFX), read into
 //! its transactions and matched to the bills and income still open: the
 //! user picks which to mark paid (crate::balance::settle does it), and can
-//! take the statement's closing balance too. The client reads the file and
-//! passes its text; nothing here reads anything else.
+//! take the statement's closing balance too. Each line gets the merchant it
+//! names and a likely category (crate::categorize), the charges that come
+//! round are found (crate::recurring), and the lines are kept when the user
+//! saves (crate::transactions). The client reads the files and passes their
+//! text; nothing here reads anything else.
 
-use crate::docs::Snapshot;
+use crate::categorize::{merchant_name, Categories};
+use crate::docs::{Snapshot, MAX_ID_LEN};
 use crate::error::{invalid, CoreError};
-use crate::model::{Balance, Cents, Item, Leg, OccStatus, MAIN_ACCOUNT, MAX_CENTS};
+use crate::model::{Balance, Cents, Item, Leg, LineFlow, OccStatus, MAIN_ACCOUNT, MAX_CENTS};
 use crate::occur::occurrences;
+use crate::recurring::{self, RecurringFound};
 use crate::time::{in_calendar, Ctx};
 use crate::views::{occurrence_view, OccurrenceView};
 use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 /// The most of a statement read: a few years of a busy account.
 pub const MAX_ROWS: usize = 20_000;
 /// The largest file taken.
 pub const MAX_STATEMENT_BYTES: usize = 5_000_000;
+/// The most files read as one statement: two years of months.
+pub const MAX_FILES: usize = 24;
 /// How far from its due day a bill's payment may be on the statement.
 pub const MATCH_DAYS: i64 = 10;
 /// How many rows the header may come after (a bank's own lines first).
@@ -37,10 +45,20 @@ pub enum StatementFormat {
 pub struct BankTransaction {
     /// Its place among the statement's transactions (0 first).
     pub index: u32,
+    /// The bank's id for it, or one made of what it says: the same line in
+    /// another file (or a later statement) has the same one.
+    pub id: String,
     pub date: NaiveDate,
     /// Into the account above zero, out below.
     pub amount_cents: Cents,
     pub description: String,
+    /// Who it was paid to or came from, as a name.
+    pub merchant: String,
+    pub flow: LineFlow,
+    /// The category it most likely belongs in.
+    pub category: Option<String>,
+    /// Kept already, from a statement before.
+    pub stored: bool,
 }
 
 /// Which of a CSV's columns (0 first) hold what.
@@ -88,6 +106,8 @@ pub struct StatementView {
     pub transactions: Vec<BankTransaction>,
     /// Rows that didn't read as a transaction.
     pub skipped_rows: u32,
+    /// Lines the bank hasn't settled yet: left for a later statement.
+    pub pending_rows: u32,
     /// What the statement says the balance was at its end.
     pub balance: Option<Balance>,
     pub matches: Vec<StatementMatch>,
@@ -96,6 +116,9 @@ pub struct StatementView {
     /// The bills and income still open around the statement's days that
     /// nothing matched: what a transaction left over can be matched to by hand.
     pub open: Vec<OccurrenceView>,
+    /// The charges (and income) that come round and are no bill or income
+    /// here yet.
+    pub recurring: Vec<RecurringFound>,
 }
 
 /// `text` as the main account's statement (read_statement_of).
@@ -105,19 +128,68 @@ pub fn read_statement(
     columns: Option<CsvColumns>,
     ctx: &Ctx,
 ) -> Result<StatementView, CoreError> {
-    read_statement_of(snapshot, MAIN_ACCOUNT, text, columns, ctx)
+    read_statement_of(snapshot, MAIN_ACCOUNT, &[text.to_string()], columns, ctx)
 }
 
-/// `text` as `account_id`'s statement, its transactions matched to what's
-/// in that account: its bills and income, and its side of each transfer.
+/// `texts` (a file each: several months, say) as `account_id`'s statement,
+/// its transactions matched to what's in that account: its bills and
+/// income, and its side of each transfer. A line in two of the files is
+/// read once.
 pub fn read_statement_of(
     snapshot: &Snapshot,
     account_id: &str,
-    text: &str,
+    texts: &[String],
     columns: Option<CsvColumns>,
     ctx: &Ctx,
 ) -> Result<StatementView, CoreError> {
     crate::plan::live_account(snapshot, account_id)?;
+    if texts.len() > MAX_FILES {
+        return Err(invalid(format!(
+            "Choose up to {} files at a time",
+            MAX_FILES
+        )));
+    }
+    let mut views = Vec::new();
+    for text in texts {
+        views.push(read_file(text, columns)?);
+    }
+    let mut view = merged(views).ok_or_else(not_a_statement)?;
+    let categories = Categories::new(snapshot);
+    let kept: BTreeSet<&str> = snapshot
+        .transactions
+        .values()
+        .filter(|month| month.account_id == account_id)
+        .flat_map(|month| &month.transactions)
+        .map(|kept| kept.id.as_str())
+        .collect();
+    for (at, line) in view.transactions.iter_mut().enumerate() {
+        line.index = at as u32;
+        line.merchant = merchant_name(&line.description);
+        line.stored = kept.contains(line.id.as_str());
+        if matches!(line.flow, LineFlow::Spend | LineFlow::Income) {
+            line.category = categories.suggest(&line.description);
+        }
+    }
+    (view.matches, view.already) = match_open(snapshot, account_id, &view.transactions, ctx);
+    // What paid a bill belongs where the bill does
+    for matched in &view.matches {
+        if let Some(category) = &matched.occurrence.category {
+            view.transactions[matched.transaction as usize].category = Some(category.clone());
+        }
+    }
+    view.open = unmatched_open(snapshot, account_id, &view.transactions, &view.matches, ctx);
+    let taken: Vec<u32> = view
+        .matches
+        .iter()
+        .map(|matched| matched.transaction)
+        .chain(view.already.iter().copied())
+        .collect();
+    view.recurring = recurring::found(snapshot, account_id, &view.transactions, &taken);
+    Ok(view)
+}
+
+/// One file's lines, each with an id.
+fn read_file(text: &str, columns: Option<CsvColumns>) -> Result<StatementView, CoreError> {
     if text.len() > MAX_STATEMENT_BYTES {
         return Err(invalid(
             "That file is too large: export a few months at a time",
@@ -130,9 +202,92 @@ pub fn read_statement_of(
     } else {
         read_csv(text, columns)
     }?;
-    (view.matches, view.already) = match_open(snapshot, account_id, &view.transactions, ctx);
-    view.open = unmatched_open(snapshot, account_id, &view.transactions, &view.matches, ctx);
+    // One without the bank's id: what it says, and which of the lines
+    // saying just that it is
+    for at in 0..view.transactions.len() {
+        if view.transactions[at].id.is_empty() {
+            let says = said(&view.transactions[at]);
+            let nth = view.transactions[..at]
+                .iter()
+                .filter(|before| said(before) == says)
+                .count();
+            view.transactions[at].id = format!("x{:016x}-{}", fnv(&says), nth);
+        }
+    }
     Ok(view)
+}
+
+/// What a line says: its day, amount and description.
+fn said(line: &BankTransaction) -> String {
+    format!("{}|{}|{}", line.date, line.amount_cents, line.description)
+}
+
+/// FNV-1a: the same number for the same text, everywhere.
+fn fnv(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
+/// The files' statements as one: every line once, by day when there are
+/// several files, with the latest closing balance. None without a file.
+fn merged(mut views: Vec<StatementView>) -> Option<StatementView> {
+    if views.is_empty() {
+        return None;
+    }
+    let several = views.len() > 1;
+    // One whose columns are still to choose leads, for them to be chosen
+    let lead = views
+        .iter()
+        .position(|view| view.format == StatementFormat::Csv && view.columns.is_none())
+        .unwrap_or(0);
+    let mut view = views.remove(lead);
+    for other in views {
+        view.transactions.extend(other.transactions);
+        view.skipped_rows += other.skipped_rows;
+        view.pending_rows += other.pending_rows;
+        view.balance = [view.balance, other.balance]
+            .into_iter()
+            .flatten()
+            .max_by_key(|balance| balance.as_of);
+    }
+    if several {
+        let mut seen = BTreeSet::new();
+        view.transactions
+            .retain(|line| seen.insert(line.id.clone()));
+        view.transactions.sort_by_key(|line| line.date);
+    }
+    Some(view)
+}
+
+/// A line as it's read, before the rest is known of it. `id`: the bank's
+/// (its letters, digits and dashes), or none. `flow`: None, by its sign.
+pub(crate) fn line(
+    id: &str,
+    date: NaiveDate,
+    amount_cents: Cents,
+    description: String,
+    flow: Option<LineFlow>,
+) -> BankTransaction {
+    BankTransaction {
+        index: 0,
+        id: id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .take(MAX_ID_LEN)
+            .collect(),
+        date,
+        amount_cents,
+        description,
+        merchant: String::new(),
+        flow: flow.unwrap_or(if amount_cents < 0 {
+            LineFlow::Spend
+        } else {
+            LineFlow::Income
+        }),
+        category: None,
+        stored: false,
+    }
 }
 
 /// The open bills and income around the statement's days that nothing
@@ -381,10 +536,135 @@ fn find_columns(headers: &[String]) -> Option<CsvColumns> {
     })
 }
 
+/// A statement with nothing read of it yet.
+fn blank(format: StatementFormat) -> StatementView {
+    StatementView {
+        format,
+        headers: Vec::new(),
+        columns: None,
+        transactions: Vec::new(),
+        skipped_rows: 0,
+        pending_rows: 0,
+        balance: None,
+        matches: Vec::new(),
+        already: Vec::new(),
+        open: Vec::new(),
+        recurring: Vec::new(),
+    }
+}
+
+/// Venmo's statement names these columns (in this order here).
+const VENMO: [&str; 9] = [
+    "ID",
+    "Datetime",
+    "Type",
+    "Status",
+    "Note",
+    "From",
+    "To",
+    "Amount (total)",
+    "Ending Balance",
+];
+
+/// Where each of Venmo's columns is, when `headers` is its header row.
+fn venmo_columns(headers: &[String]) -> Option<Vec<usize>> {
+    VENMO
+        .iter()
+        .map(|name| {
+            headers
+                .iter()
+                .position(|header| header.trim().eq_ignore_ascii_case(name))
+        })
+        .collect()
+}
+
+/// Venmo's statement: who each line was paid to or came from (with its
+/// note), funds added as money moved and cash back as a reward, the lines
+/// not complete yet left out, and the closing balance from its last row.
+/// Its own lines (the balances, the small print, the cryptocurrency
+/// summary) aren't transactions that didn't read.
+fn read_venmo(rows: &[Vec<String>], header_at: usize, at: Vec<usize>) -> StatementView {
+    let (id, date, kind, status, note) = (at[0], at[1], at[2], at[3], at[4]);
+    let (from, to, amount, ending) = (at[5], at[6], at[7], at[8]);
+    let mut view = blank(StatementFormat::Csv);
+    view.headers = rows[header_at].clone();
+    view.columns = Some(CsvColumns {
+        date: date as u32,
+        description: Some(to as u32),
+        amount: Some(amount as u32),
+        ..CsvColumns::default()
+    });
+    let cell = |row: &[String], at: usize| row.get(at).map_or("", |cell| cell.trim()).to_string();
+    let mut closing = None;
+    for row in rows[header_at + 1..].iter().take(MAX_ROWS) {
+        if row[0]
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("cryptocurrency")
+        {
+            break;
+        }
+        closing = parse_amount(&cell(row, ending)).or(closing);
+        if cell(row, id).is_empty() {
+            continue;
+        }
+        let (Some(on), Some(amount_cents)) = (
+            parse_date(&cell(row, date), false),
+            parse_amount(&cell(row, amount)),
+        ) else {
+            view.skipped_rows += 1;
+            continue;
+        };
+        if !cell(row, status).eq_ignore_ascii_case("complete") {
+            view.pending_rows += 1;
+            continue;
+        }
+        let kind = cell(row, kind);
+        let lower = kind.to_lowercase();
+        let flow = if lower.contains("add funds") || lower.contains("transfer") {
+            Some(LineFlow::Moved)
+        } else if lower == "reward" {
+            Some(LineFlow::Reward)
+        } else {
+            None
+        };
+        // Who it went to or came from, and what was said of it; a
+        // repayment to Venmo itself names only the user
+        let who = if lower.contains("repayment") {
+            String::new()
+        } else {
+            cell(row, if amount_cents < 0 { to } else { from })
+        };
+        let mut parts = vec![who, cell(row, note)];
+        parts.retain(|part| !part.is_empty());
+        parts.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        let description = if parts.is_empty() {
+            kind
+        } else {
+            parts.join(": ")
+        };
+        view.transactions
+            .push(line(&cell(row, id), on, amount_cents, description, flow));
+    }
+    let last = view.transactions.iter().map(|line| line.date).max();
+    view.balance = closing
+        .zip(last)
+        .map(|(cents, as_of)| Balance { cents, as_of });
+    view
+}
+
 fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, CoreError> {
     let rows = csv_rows(text);
     if rows.is_empty() {
         return Err(not_a_statement());
+    }
+    let venmo = rows
+        .iter()
+        .take(HEADER_WITHIN)
+        .enumerate()
+        .find_map(|(at, row)| venmo_columns(row).map(|columns| (at, columns)));
+    if let (None, Some((header_at, columns))) = (given, venmo) {
+        return Ok(read_venmo(&rows, header_at, columns));
     }
     // The header: the first of the first rows that names the columns
     let found = rows
@@ -397,18 +677,9 @@ fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, Core
         (None, Some((at, columns))) => (Some(at), Some(columns)),
         (None, None) => (None, None),
     };
-    let headers = rows[header_at.unwrap_or(0)].clone();
-    let mut view = StatementView {
-        format: StatementFormat::Csv,
-        headers,
-        columns,
-        transactions: Vec::new(),
-        skipped_rows: 0,
-        balance: None,
-        matches: Vec::new(),
-        already: Vec::new(),
-        open: Vec::new(),
-    };
+    let mut view = blank(StatementFormat::Csv);
+    view.headers = rows[header_at.unwrap_or(0)].clone();
+    view.columns = columns;
     let Some(columns) = columns else {
         return Ok(view);
     };
@@ -440,12 +711,13 @@ fn read_csv(text: &str, given: Option<CsvColumns>) -> Result<StatementView, Core
         if let Some(balance) = parse_amount(cell(row, columns.balance)) {
             balances.push((date, balance));
         }
-        view.transactions.push(BankTransaction {
-            index: view.transactions.len() as u32,
+        view.transactions.push(line(
+            "",
             date,
             amount_cents,
-            description: cell(row, columns.description).trim().to_string(),
-        });
+            cell(row, columns.description).trim().to_string(),
+            None,
+        ));
     }
     // The balance after the latest: the file's last row of that day, or its
     // first when the file runs newest first
@@ -480,17 +752,7 @@ fn ofx_value(block: &str, tag: &str) -> Option<String> {
 
 fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
     let upper = text.to_ascii_uppercase();
-    let mut view = StatementView {
-        format: StatementFormat::Ofx,
-        headers: Vec::new(),
-        columns: None,
-        transactions: Vec::new(),
-        skipped_rows: 0,
-        balance: None,
-        matches: Vec::new(),
-        already: Vec::new(),
-        open: Vec::new(),
-    };
+    let mut view = blank(StatementFormat::Ofx);
     let mut from = 0;
     while let Some(start) = upper[from..].find("<STMTTRN>") {
         let start = from + start;
@@ -517,12 +779,13 @@ fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
             .filter(|part| !part.is_empty())
             .collect::<Vec<_>>()
             .join(" ");
-        view.transactions.push(BankTransaction {
-            index: view.transactions.len() as u32,
+        view.transactions.push(line(
+            &ofx_value(block, "FITID").unwrap_or_default(),
             date,
             amount_cents,
             description,
-        });
+            None,
+        ));
     }
     if view.transactions.is_empty() && view.skipped_rows == 0 && !upper.contains("<STMTRS>") {
         return Err(not_a_statement());
@@ -541,7 +804,7 @@ fn read_ofx(text: &str) -> Result<StatementView, CoreError> {
 // ---- Matching ----
 
 /// The words of a name worth looking for in a description: three letters or more.
-fn words(name: &str) -> Vec<String> {
+pub(crate) fn words(name: &str) -> Vec<String> {
     name.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.chars().count() >= 3)
@@ -1042,9 +1305,7 @@ mod tests {
         let s = budget();
         let t = |index: u32, date: NaiveDate, cents: Cents, description: &str| BankTransaction {
             index,
-            date,
-            amount_cents: cents,
-            description: description.into(),
+            ..line("", date, cents, description.into(), None)
         };
         let (matches, already) = match_open(&s, MAIN_ACCOUNT, &[], &ctx());
         assert!(matches.is_empty() && already.is_empty());
@@ -1192,7 +1453,7 @@ mod tests {
                    2026-11-03,TRANSFER IN,400.00\n\
                    2026-11-04,RENT,-50.00\n\
                    2026-11-05,FEE,-7.00\n";
-        let view = read_statement_of(&s, "savings", csv, None, &ctx()).unwrap();
+        let view = read_statement_of(&s, "savings", &[csv.to_string()], None, &ctx()).unwrap();
         let matched: Vec<_> = view
             .matches
             .iter()
@@ -1212,10 +1473,346 @@ mod tests {
         let open: Vec<&str> = main.open.iter().map(|o| o.item_id.as_str()).collect();
         assert_eq!(open, ["put"]);
         assert_eq!(
-            read_statement_of(&s, "gone", csv, None, &ctx())
+            read_statement_of(&s, "gone", &[csv.to_string()], None, &ctx())
                 .unwrap_err()
                 .to_string(),
             "That account isn't there any more (deleted on another device?)"
         );
+    }
+
+    /// A row of Venmo's statement.
+    fn venmo(
+        id: &str,
+        at: &str,
+        kind: &str,
+        status: &str,
+        said: [&str; 3],
+        amount: &str,
+    ) -> String {
+        let [note, from, to] = said;
+        format!(
+            ",{},{},{},{},{},{},{},{},,,,,,Venmo balance,,,,,\"BOISE, ID\",,\n",
+            id, at, kind, status, note, from, to, amount
+        )
+    }
+
+    fn venmo_statement(rows: &[String], ending: &str) -> String {
+        format!(
+            "Account Statement - (@pat) ,,,,,,,,,,,,,,,,,,,,,\n\
+             Account Activity,,,,,,,,,,,,,,,,,,,,,\n\
+             ,ID,Datetime,Type,Status,Note,From,To,Amount (total),Amount (tip),Amount (tax),Amount (fee),Tax Rate,Tax Exempt,Funding Source,Destination,Beginning Balance,Ending Balance,Statement Period Venmo Fees,Terminal Location,Year to Date Venmo Fees,Disclaimer\n\
+             ,,,,,,,,,,,,,,,,\"$1,632.81\",,,,,\n\
+             {}\
+             ,,,,,,,,,,,,,,,,,{},$2.50,,$17.88,\"In case of errors\n   telephone us, 2026-10-09\n\"\n\
+             Cryptocurrency summary,,,,,,,,,,,,,,,,,,,,,\n\
+             ,,Ethereum,,,,,,,,,,,,,,,,,,,\n\
+             ,Available beginning,2026-01-10,,,,,,0.0,,,,,,,,,,,,,\n",
+            rows.concat(),
+            ending
+        )
+    }
+
+    #[test]
+    fn reads_venmos_statement_as_venmo_writes_it() {
+        let csv = venmo_statement(
+            &[
+                venmo(
+                    "111",
+                    "2026-10-01T01:20:03",
+                    "Venmo Card Transaction",
+                    "Complete",
+                    ["", "Pat Doe", "LITTLE CAESARS 1273 00"],
+                    "- $22.42",
+                ),
+                venmo(
+                    "112",
+                    "2026-10-01T17:38:37Z",
+                    "Reward",
+                    "Complete",
+                    ["Cash back on your purchase at WM SUPERCENTER", "", "pat"],
+                    "+ $0.92",
+                ),
+                venmo(
+                    "113",
+                    "2026-10-01T18:35:41",
+                    "Payment",
+                    "Complete",
+                    ["Rent share", "Sam Roe", "Pat Doe"],
+                    "+ $20.00",
+                ),
+                venmo(
+                    "114",
+                    "2026-10-02T07:00:14Z",
+                    "Direct Debit",
+                    "Complete",
+                    ["ROCKET MORTGAGE", "Pat Doe", "ROCKET MORTGAGE"],
+                    "\"- $1,580.05\"",
+                ),
+                venmo(
+                    "115",
+                    "2026-10-02T18:26:59",
+                    "Instant Add Funds",
+                    "Complete",
+                    ["", "", ""],
+                    "+ $50.00",
+                ),
+                venmo(
+                    "116",
+                    "2026-10-03T21:28:38",
+                    "Venmo account repayment",
+                    "Complete",
+                    ["", "", "Pat Doe"],
+                    "- $2.57",
+                ),
+                venmo(
+                    "117",
+                    "2026-10-04T00:46:36",
+                    "Venmo Card Transaction",
+                    "Pending",
+                    ["", "Pat Doe", "The Habit"],
+                    "- $9.31",
+                ),
+                venmo(
+                    "118",
+                    "soon",
+                    "Payment",
+                    "Complete",
+                    ["", "", ""],
+                    "+ $1.00",
+                ),
+                venmo(
+                    "119",
+                    "2026-10-03T09:00:00",
+                    "Standard Transfer",
+                    "Complete",
+                    ["", "", ""],
+                    "- $40.00",
+                ),
+                // A short row, as the statement's own
+                ",,\n".to_string(),
+            ],
+            "\"$1,633.89\"",
+        );
+        let view = read_statement(&Snapshot::default(), &csv, None, &ctx()).unwrap();
+        assert_eq!(view.format, StatementFormat::Csv);
+        assert_eq!(
+            view.columns,
+            Some(CsvColumns {
+                date: 2,
+                description: Some(7),
+                amount: Some(8),
+                ..CsvColumns::default()
+            })
+        );
+        assert_eq!(view.headers[1], "ID");
+        assert_eq!((view.skipped_rows, view.pending_rows), (1, 1));
+        let lines: Vec<_> = view
+            .transactions
+            .iter()
+            .map(|t| {
+                (
+                    t.id.as_str(),
+                    t.description.as_str(),
+                    t.amount_cents,
+                    t.flow,
+                    t.merchant.as_str(),
+                    t.category.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                (
+                    "111",
+                    "LITTLE CAESARS 1273 00",
+                    -2_242,
+                    LineFlow::Spend,
+                    "Little Caesars",
+                    Some("Dining")
+                ),
+                (
+                    "112",
+                    "Cash back on your purchase at WM SUPERCENTER",
+                    92,
+                    LineFlow::Reward,
+                    "Walmart",
+                    None
+                ),
+                (
+                    "113",
+                    "Sam Roe: Rent share",
+                    2_000,
+                    LineFlow::Income,
+                    "Sam Roe",
+                    None
+                ),
+                (
+                    "114",
+                    "ROCKET MORTGAGE",
+                    -158_005,
+                    LineFlow::Spend,
+                    "Rocket Mortgage",
+                    Some("Housing")
+                ),
+                (
+                    "115",
+                    "Instant Add Funds",
+                    5_000,
+                    LineFlow::Moved,
+                    "Instant Add Funds",
+                    None
+                ),
+                (
+                    "116",
+                    "Venmo account repayment",
+                    -257,
+                    LineFlow::Spend,
+                    "Venmo account repayment",
+                    None
+                ),
+                (
+                    "119",
+                    "Standard Transfer",
+                    -4_000,
+                    LineFlow::Moved,
+                    "Standard Transfer",
+                    None
+                ),
+            ]
+        );
+        assert_eq!(
+            view.balance,
+            Some(Balance {
+                cents: 163_389,
+                as_of: d(2026, 10, 3)
+            })
+        );
+        // With the columns given, it's read as any other CSV
+        let given = CsvColumns {
+            date: 2,
+            description: Some(3),
+            amount: Some(8),
+            ..CsvColumns::default()
+        };
+        let plain = read_statement(&Snapshot::default(), &csv, Some(given), &ctx()).unwrap();
+        assert_eq!(plain.transactions[0].description, "Venmo Card Transaction");
+        assert_eq!(plain.pending_rows, 0);
+        // Nothing in it: no balance to take
+        let empty = read_statement(
+            &Snapshot::default(),
+            &venmo_statement(&[], "$5.00"),
+            None,
+            &ctx(),
+        )
+        .unwrap();
+        assert!(empty.transactions.is_empty() && empty.balance.is_none());
+    }
+
+    #[test]
+    fn reads_several_files_as_one_statement_each_line_once() {
+        let s = Snapshot::default();
+        let october = "Date,Description,Amount,Balance\n\
+                       2026-10-30,COFFEE,-4.50,95.50\n\
+                       2026-10-30,COFFEE,-4.50,91.00\n\
+                       2026-10-31,RENT,-50.00,41.00\n";
+        let november = "Date,Description,Amount,Balance\n\
+                        2026-10-31,RENT,-50.00,41.00\n\
+                        2026-11-02,PAY,100.00,141.00\n";
+        let texts = [november.to_string(), october.to_string()];
+        let view = read_statement_of(&s, MAIN_ACCOUNT, &texts, None, &ctx()).unwrap();
+        let lines: Vec<(u32, NaiveDate, &str)> = view
+            .transactions
+            .iter()
+            .map(|t| (t.index, t.date, t.description.as_str()))
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                (0, d(2026, 10, 30), "COFFEE"),
+                (1, d(2026, 10, 30), "COFFEE"),
+                (2, d(2026, 10, 31), "RENT"),
+                (3, d(2026, 11, 2), "PAY"),
+            ]
+        );
+        // The two coffees are two lines; each has an id of what it says
+        assert_ne!(view.transactions[0].id, view.transactions[1].id);
+        assert!(view.transactions[0].id.starts_with('x'));
+        assert_eq!(
+            view.balance,
+            Some(Balance {
+                cents: 14_100,
+                as_of: d(2026, 11, 2)
+            })
+        );
+        // One whose columns aren't found leads, for them to be chosen
+        let texts = [october.to_string(), "a,b\n1,2\n".to_string()];
+        let view = read_statement_of(&s, MAIN_ACCOUNT, &texts, None, &ctx()).unwrap();
+        assert_eq!((view.columns, view.headers.len()), (None, 2));
+        assert_eq!(view.transactions.len(), 3);
+        // No file, or too many
+        assert_eq!(
+            read_statement_of(&s, MAIN_ACCOUNT, &[], None, &ctx()).unwrap_err(),
+            not_a_statement()
+        );
+        let many = vec![october.to_string(); MAX_FILES + 1];
+        assert_eq!(
+            read_statement_of(&s, MAIN_ACCOUNT, &many, None, &ctx())
+                .unwrap_err()
+                .to_string(),
+            "Choose up to 24 files at a time"
+        );
+    }
+
+    #[test]
+    fn knows_a_line_kept_before_and_puts_what_paid_a_bill_where_the_bill_is() {
+        use crate::model::{MonthTransactions, Transaction};
+        let mut s = Snapshot::default();
+        let mut rent = item(
+            "rent",
+            ItemKind::Bill,
+            d(2026, 11, 1),
+            Repeat::Once,
+            120_000,
+        );
+        rent.category = Some("Home".into());
+        put_item(&mut s, rent);
+        let ofx = "OFXHEADER:100\n<OFX><STMTRS><STMTTRN><DTPOSTED>20261101<TRNAMT>-1200.00\
+                   <FITID>ab/12 3<NAME>RENT</STMTTRN>\
+                   <STMTTRN><DTPOSTED>20261102<TRNAMT>-5.00<NAME>COFFEE</STMTTRN></STMTRS></OFX>";
+        let kept = |account: &str| MonthTransactions {
+            account_id: account.into(),
+            month: "2026-11".into(),
+            transactions: vec![Transaction {
+                id: "ab123".into(),
+                on: d(2026, 11, 1),
+                amount_cents: -120_000,
+                name: "Rent".into(),
+                category: None,
+                flow: LineFlow::Spend,
+                item_id: None,
+            }],
+        };
+        // Another account's kept lines aren't this one's
+        s.write(
+            DocKey::Txns {
+                account_id: "other".into(),
+                month: "2026-11".into(),
+            },
+            Some(&kept("other")),
+        );
+        let view = read_statement(&s, ofx, None, &ctx()).unwrap();
+        assert_eq!(view.transactions[0].id, "ab123");
+        assert_eq!(view.transactions[0].category.as_deref(), Some("Home"));
+        assert!(!view.transactions[0].stored && !view.transactions[1].stored);
+        s.write(
+            DocKey::Txns {
+                account_id: "main".into(),
+                month: "2026-11".into(),
+            },
+            Some(&kept("main")),
+        );
+        let view = read_statement(&s, ofx, None, &ctx()).unwrap();
+        assert!(view.transactions[0].stored && !view.transactions[1].stored);
     }
 }
