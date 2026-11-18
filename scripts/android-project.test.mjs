@@ -1,7 +1,7 @@
 // What the Android project (apps/desktop/src-tauri/gen/android) has to say
-// for the release build to start. The build itself is only made, and
-// started, by the Release workflow (scripts/android-smoke.mjs); these run
-// with every `pnpm verify`.
+// for the release build to start. The build itself is only made by the
+// Release workflow, and started by hand (scripts/android-smoke.mjs); these
+// run with every `pnpm verify`.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
